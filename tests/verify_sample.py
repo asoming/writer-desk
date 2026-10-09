@@ -23,13 +23,23 @@ people = [p for p in book["notes"] if p["type"] == "人物"]
 assert len(chapters) == 36 and len(volumes) == 6 and len(people) == 32
 assert all(sum(c["volumeId"] == v["id"] for c in chapters) == 6 for v in volumes)
 counts = [sum(not ch.isspace() for ch in c["body"]) for c in chapters]
-assert min(counts) >= 2600 and 100000 <= sum(counts) <= 115000
+assert min(counts) >= 2600 and sum(counts) == 101506
 paragraphs = Counter(p.strip() for c in chapters for p in re.split(r"\n\s*\n", c["body"]) if len(p.strip()) >= 60)
 assert not [p for p, number in paragraphs.items() if number > 1], "Repeated long paragraphs"
 assert all(any(p["title"] in c["body"] for c in chapters) for p in people)
 assert all(not ({"父亲", "母亲"} & set(p["aliases"])) for p in people)
 assert len([o for o in book["outline"] if o["kind"] == "chapter"]) == 36
 assert all(p["profile"]["arcs"] for p in people)
+assert {o["category"] for o in book["outline"]} == {"故事主线", "分卷剧情", "世界设定", "人物设定", "伏笔回收", "连续性检查", "结局场景", "参考资料"}
+assert len(book["outline"]) == 49
+ensemble = next(o for o in book["outline"] if o["category"] == "人物设定")
+assert all(p["title"] in ensemble["body"] for p in people)
+assert all(group in ensemble["body"] for group in {p["profile"]["group"] for p in people})
+ending = next(o for o in book["outline"] if o["category"] == "结局场景")
+assert all(p["profile"]["ending"] in ending["body"] for p in people)
+assert ending["chapterIds"] == [c["id"] for c in chapters if c["volumeId"] == volumes[-1]["id"]]
+assert 5 <= len(book["atlasViews"]) <= 7
+assert all(view["personIds"] and set(view["personIds"]) <= {p["id"] for p in people} for view in book["atlasViews"])
 print(f"PASS: {sum(counts):,} characters, 6 volumes, 36 chapters, 32 people, valid links and no repeated long paragraphs")
 
 
@@ -55,6 +65,8 @@ with tempfile.TemporaryDirectory(prefix="writer-desk-sample-") as temporary:
         assert first["book"]["title"] != second["book"]["title"]
         assert {v["id"] for v in first["book"]["volumes"]}.isdisjoint(v["id"] for v in second["book"]["volumes"])
         assert [c["body"] for c in first["book"]["chapters"]] == [c["body"] for c in chapters]
+        assert first["book"]["atlasViews"] == book["atlasViews"]
+        assert [o["category"] for o in first["book"]["outline"]] == [o["category"] for o in book["outline"]]
         print("PASS: sample library creates independent editable copies with complete text")
 
         changed = copy.deepcopy(first["book"])
@@ -70,6 +82,8 @@ with tempfile.TemporaryDirectory(prefix="writer-desk-sample-") as temporary:
         assert restored["notes"] != changed["notes"]  # volume references are intentionally remapped
         assert [p["body"] for p in restored["notes"]] == [p["body"] for p in changed["notes"]]
         assert validate_book(restored) == restored
+        assert restored["atlasViews"] == changed["atlasViews"]
+        assert [o["category"] for o in restored["outline"]] == [o["category"] for o in changed["outline"]]
         assert request("/api/books/" + second["book"]["id"])["book"] == second["book"]
         print("PASS: full novel save/reload, rename/reorder links, backup remapping and cross-book isolation")
     finally:

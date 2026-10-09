@@ -279,6 +279,30 @@ def validate_book(data):
         return list(dict.fromkeys(value))
     for note in result["notes"]:
         note["chapterIds"] = checked_links(note["chapterIds"])
+    if "atlasViews" in data:
+        views = data["atlasViews"]
+        if not isinstance(views, list) or len(views) > 100:
+            raise ValueError("人物分图列表格式不正确或超过 100 个")
+        person_ids = {note["id"] for note in result["notes"] if note["type"] == "人物"}
+        result["atlasViews"], view_ids = [], set()
+        for view in views:
+            if not isinstance(view, dict):
+                raise ValueError("人物分图格式不正确")
+            view_id = checked_string(view.get("id"), "人物分图编号", 100, False)
+            if view_id in view_ids:
+                raise ValueError("人物分图编号重复")
+            view_ids.add(view_id)
+            members = view.get("personIds")
+            if (not isinstance(members, list) or len(members) > 10000
+                    or any(not isinstance(person_id, str) or person_id not in person_ids for person_id in members)):
+                raise ValueError("人物分图必须指向本作品的人物")
+            if len(set(members)) != len(members):
+                raise ValueError("人物分图中的人物编号重复")
+            result["atlasViews"].append({
+                "id": view_id, "title": checked_string(view.get("title"), "人物分图标题", 200, False),
+                "description": checked_string(view.get("description", ""), "人物分图说明", 50000),
+                "personIds": list(members),
+            })
     for key in ("outline", "relations"):
         items = data.get(key, [])
         if not isinstance(items, list) or len(items) > 10000:
@@ -297,6 +321,8 @@ def validate_book(data):
                 checked_string(clean["deletedAt"], "回收时间", 100, False)
             if key == "outline":
                 clean["title"] = checked_string(item.get("title", ""), "大纲标题", 200)
+                if "category" in item:
+                    clean["category"] = checked_string(item["category"], "大纲分类", 200)
                 clean["parentId"] = item.get("parentId")
                 clean["volumeId"] = checked_volume(item.get("volumeId"))
                 clean["kind"] = item.get("kind", "scene")
@@ -422,6 +448,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "找不到这个操作"}, 404)
             else:
                 files = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/story-analysis.js": "story-analysis.js",
+                         "/atlas-layout.js": "atlas-layout.js", "/atlas-ui.js": "atlas-ui.js", "/atlas.css": "atlas.css", "/outline.css": "outline.css",
+                         "/vendor/dagre.min.js": "vendor/dagre.min.js",
                          "/workspace.js": "workspace.js", "/i18n.js": "i18n.js", "/style.css": "style.css", "/favicon.svg": "favicon.svg"}
                 filename = files.get(path)
                 if not filename:

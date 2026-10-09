@@ -55,7 +55,7 @@ def assemble():
     if cover.exists():
         book["cover"] = "data:image/png;base64," + base64.b64encode(cover.read_bytes()).decode()
     root_id = identifier("outline", "story")
-    book["outline"].append({"id": root_id, "title": "全书总纲", "kind": "story", "volumeId": None,
+    book["outline"].append({"id": root_id, "title": "全书总纲", "kind": "story", "category": "故事主线", "volumeId": None,
                             "body": bible["premise"] + "\n\n" + bible["world"], "parentId": None,
                             "chapterIds": [], "deletedAt": None})
     for volume in bible["volumes"]:
@@ -64,7 +64,7 @@ def assemble():
         summary = volume["days"] + "\n\n" + volume["end"]
         selected = [i for i in metadata if i["volume"] == number]
         book["volumes"].append({"id": volume_id, "title": volume["title"], "summary": summary, "deletedAt": None})
-        book["outline"].append({"id": outline_id, "title": volume["title"], "kind": "volume", "volumeId": volume_id,
+        book["outline"].append({"id": outline_id, "title": volume["title"], "kind": "volume", "category": "分卷剧情", "volumeId": volume_id,
                                 "body": summary, "parentId": root_id,
                                 "chapterIds": [identifier("chapter", i["number"]) for i in selected], "deletedAt": None})
         for item in selected:
@@ -72,14 +72,40 @@ def assemble():
             if item.get("foreshadowing"):
                 body += "\n\n线索与照应\n" + "\n".join(item["foreshadowing"])
             book["outline"].append({"id": identifier("outline", item["number"]),
-                                    "title": f"第{item['number']}章 {item['title']}", "kind": "chapter",
+                                    "title": f"第{item['number']}章 {item['title']}", "kind": "chapter", "category": "分卷剧情",
                                     "volumeId": volume_id, "body": body, "parentId": outline_id,
                                     "chapterIds": [identifier("chapter", item["number"])], "deletedAt": None})
-    for title, body in [("世界规则与声段边界", "\n\n".join(bible["rules"])),
-                        ("七个空位与证据", "沈峦、莫云已故。陈汀、秦澈、贺安幸存。两位已离城学生以学生甲、学生乙档案代号表示。\n\n证据须区分原件、口述、回放、录音和推测。九分钟结束后盐纸不能再次发声。"),
-                        ("检验用说明", "这是完全虚构的原创长篇示例。每卷六章，共三十六章。\n\n可尝试调整卷章顺序、改名、从大纲与人物跳转正文、编辑别名后检查自动提及，以及导出再恢复备份。\n\n‘同章提及’包括回忆、谈论与转述，不等于人物实际在场。‘父亲’等泛称没有注册为人物别名。")]:
-        book["outline"].append({"id": identifier("outline", title), "title": title, "kind": "scene", "volumeId": None,
-                                "body": body, "parentId": None, "chapterIds": [], "deletedAt": None})
+    groups = {}
+    for name, alias, group, role, desire, flaw, ending in bible["cast"]:
+        groups.setdefault(group, []).append(name)
+    ensemble = "人物按工作与生活位置组织为五组。主题分图可以交叉收录同一人物。\n\n" + "\n\n".join(
+        group + "\n" + "、".join(names) for group, names in groups.items())
+    ensemble += "\n\n主要人物目标\n\n" + "\n\n".join(
+        name + "　" + role + "\n目标　" + desire + "\n矛盾　" + flaw
+        for name, alias, group, role, desire, flaw, ending in bible["cast"]
+        if name in {"沈砚", "唐霁", "乔渡", "许照", "苏遥", "韩铎", "孟苇", "顾棠"})
+    ending_outline = "结局落点\n" + bible["volumes"][-1]["end"]
+    ending_outline += "\n\n最后一幕\n" + metadata[-1]["summary"]
+    ending_outline += "\n\n各人去向\n\n" + "\n\n".join(
+        name + "　" + ending for name, alias, group, role, desire, flaw, ending in bible["cast"])
+    references = ("原创与虚构范围\n《潮汐档案馆》为完全原创的虚构小说。蓼港、白沙渡、人物、机构与事件均属于本书设定。\n\n"
+                  "创作资料\n故事主线、五组人物档案、六卷提要和三十六章事件记录共同构成本书的创作依据。"
+                  "人物目标与去向以既有档案和章节结局为准。\n\n"
+                  "规则边界\n盐纸回放声段是唯一超常机制。声段保留范围、九十秒上限、九分钟窗口和淡水洗除后果遵守世界设定。"
+                  "录音、原件、口述与推测分别标明来源，转抄和拼接不能创造新的声段。\n\n"
+                  "生活与行动\n电灯、无线电、机械水闸和普通电话维持既有技术范围。调查、维修、协商与互助承担实际推进，"
+                  "事故原因和灾后去向沿用已经建立的证据与人物选择。")
+    extra_sections = [("世界规则与声段边界", "世界设定", "\n\n".join(bible["rules"])),
+                        ("人物群像与分组", "人物设定", ensemble),
+                        ("七个空位与证据", "伏笔回收", "沈峦、莫云已故。陈汀、秦澈、贺安幸存。两位已离城学生以学生甲、学生乙档案代号表示。\n\n证据须区分原件、口述、回放、录音和推测。九分钟结束后盐纸不能再次发声。"),
+                        ("检验用说明", "连续性检查", "这是完全虚构的原创长篇示例。每卷六章，共三十六章。\n\n可尝试调整卷章顺序、改名、从大纲与人物跳转正文、编辑别名后检查自动提及，以及导出再恢复备份。\n\n‘同章提及’包括回忆、谈论与转述，不等于人物实际在场。‘父亲’等泛称没有注册为人物别名。"),
+                        ("最后一幕与各人去向", "结局场景", ending_outline),
+                        ("创作参考与虚构边界", "参考资料", references)]
+    for title, category, body in extra_sections:
+        book["outline"].append({"id": identifier("outline", title), "title": title, "kind": "scene", "category": category, "volumeId": None,
+                                "body": body, "parentId": None,
+                                "chapterIds": [identifier("chapter", item["number"]) for item in metadata if item["volume"] == 6]
+                                if category == "结局场景" else [], "deletedAt": None})
 
     for name, alias, group, role, desire, flaw, ending in bible["cast"]:
         related = [i for i in metadata if name in i["characters"]]
@@ -143,12 +169,31 @@ def assemble():
         book["notes"].append({"id": identifier("note", title), "type": kind, "title": title, "body": body,
                               "aliases": [], "chapterIds": [], "deletedAt": None})
 
+    # Themes overlap deliberately: they are story threads, not character groups.
+    themes = [
+        ("core", "核心调查", "沿船票、名卡、旧图与口述展开调查，查看三位主视角及其直接合作与矛盾。",
+         ["沈砚", "唐霁", "乔渡", "苏遥", "韩铎", "孟苇", "白榆", "贺安", "林穗", "陈汀"]),
+        ("archive", "档案与迁馆", "修复、编目与迁馆各有责任；从移交期限到保全易损材料与重建目录。",
+         ["沈砚", "韩铎", "孟苇", "江临", "白榆", "齐朔"]),
+        ("community", "下湾与家人", "家人、街巷与照护相互牵连，住户撤离之后仍要处理分工、费用与新的投递地址。",
+         ["乔渡", "陈汀", "周岚", "罗珊", "苏遥", "温梨", "田弥", "林穗", "赵翎"]),
+        ("old-case", "旧案与七张名卡", "沿十八年前白沙渡事故核验失踪、幸存与救援行动，区分缺失记录、删节与本人选择。",
+         ["沈砚", "沈峦", "莫云", "秦澈", "贺安", "陈汀", "孟苇", "邵闻", "韩铎", "姚远", "范启"]),
+        ("rescue", "水路与救援", "地图、闸房、灯号与无线电共同支撑分段执行，核对每次指令、停手复核与实际转运。",
+         ["唐霁", "林穗", "庞勤", "范启", "许照", "季川", "余默", "贺安", "姚远", "魏峤", "齐朔"]),
+        ("evidence", "证据与公开边界", "账页、声段、录音与点名册相互核验；公开材料须交代来源，私人经历须尊重当事人决定。",
+         ["沈砚", "顾棠", "梁笙", "陈汀", "秦澈", "邵闻", "陆衡", "魏峤"]),
+    ]
+    book["atlasViews"] = [{"id": identifier("view", key), "title": title, "description": description,
+                           "personIds": [identifier("person", name) for name in names]}
+                          for key, title, description, names in themes]
+
     sys.path.insert(0, str(ROOT))
     from server import validate_book
     assert validate_book(book) == book
     count = sum(sum(not char.isspace() for char in c["body"]) for c in chapters)
-    if count < 100000:
-        raise SystemExit(f"Novel requires roughly 100,000 characters; currently {count}.")
+    if count != 101506:
+        raise SystemExit(f"The unchanged original manuscript must contain 101506 characters; currently {count}.")
     backup = {"format": "yejian-backup", "version": 3, "book": book}
     write_json(ROOT / "examples" / "tide-archive.yejian.json", backup)
     write_json(ROOT / "examples" / "manifest.json", [{"id": "tide-archive", "title": bible["title"],
@@ -160,7 +205,8 @@ def assemble():
             if c["volumeId"] == volume["id"]:
                 manuscript += c["title"] + "\n\n" + c["body"] + "\n\n"
     (ROOT / "examples" / "潮汐档案馆.txt").write_text(manuscript.rstrip() + "\n", "utf-8")
-    print(json.dumps({"characters": count, "chapters": 36, "people": 32, "relations": len(relationships)}, ensure_ascii=False))
+    print(json.dumps({"characters": count, "chapters": 36, "people": 32, "relations": len(relationships),
+                      "outlineNodes": len(book["outline"]), "outlineCategories": len({o["category"] for o in book["outline"]})}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
