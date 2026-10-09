@@ -4,7 +4,7 @@
 
 ## Run a Linux release
 
-当前 Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。解压 `WriterDesk-0.3.4-linux-x64.tar.gz`，运行目录里的 `writer-desk`。可选运行 `install-linux.sh` 添加当前用户的应用菜单入口；注册脚本需要系统 Python 3。入口默认显示“作家工作台”，英语环境显示“Writer's Desk”，可用中英文名称或写作关键词搜索。不要移动已注册的发行目录；移动后重新运行注册脚本。
+当前 Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。解压 `WriterDesk-0.3.5-linux-x64.tar.gz`，运行目录里的 `writer-desk`。可选运行 `install-linux.sh` 添加当前用户的应用菜单入口；注册脚本需要系统 Python 3。入口默认显示“作家工作台”，英语环境显示“Writer's Desk”，可用中英文名称或写作关键词搜索。不要移动已注册的发行目录；移动后重新运行注册脚本。
 
 程序始终启用 Chromium 沙箱。有些 Linux 发行版限制非特权 user namespace，此时请管理员按本机发行版的 Electron/Chromium 沙箱策略配置系统。不要用 `--no-sandbox` 规避。
 
@@ -13,7 +13,7 @@
 - Linux: `~/.config/writer-desk/data/writer.sqlite3`，或系统配置的 XDG appData 位置。
 - Windows: `%APPDATA%\writer-desk\data\writer.sqlite3`。
 - macOS: `~/Library/Application Support/writer-desk/data/writer.sqlite3`。
-- 菜单“文件 → 打开作品数据文件夹”可查到实际目录。卸载程序不应移除这个目录。完整 JSON 备份最适合跨机器迁移。
+- 左下角“设置 → 本机数据目录 → 打开文件夹”可查到实际目录。卸载程序不应移除这个目录。完整 JSON 备份最适合跨机器迁移。
 - 第一次启动开发版时，发现源代码目录 `data/` 或相邻旧 `yejian/data/` 会用 SQLite backup 安全复制数据库（包括 WAL 中的已提交内容），源文件保持原样。目标库已存在时绝不覆盖。发行包不包含你的个人作品库；用户可通过“导入备份”迁移。
 - 草稿和界面偏好另存于用户目录 `client-storage.json`，不受每次启动端口变化影响。每次修改采用临时文件重命名写入；不依赖安装目录可写。
 
@@ -36,6 +36,8 @@ Windows 请在 Windows 本机用 `.venv-build\Scripts\python.exe` 设置 `WRITER
 
 渲染进程启用 `sandbox`、`contextIsolation`，关闭 `nodeIntegration`、WebView 和拖拽导航。只有随机端口的 `127.0.0.1` 服务可以被窗口访问；主进程为该 origin 注入每次启动的随机认证 header，网页不持有秘密。网络请求、IPC sender/frame、下载来源、外部协议均有显式限制。外部 HTTP(S) 链接交给系统浏览器。
 
-关闭窗口前由前端回调确认自动保存完成，失败时默认回到工作台，可以重试或导出备份。退出会停止子服务。服务启动超时或异常退出会给出明确提示。
+桌面窗口隐藏系统标题栏和传统菜单栏。顶部应用栏空白区域可拖动窗口，右上角提供最小化、最大化或还原、关闭按钮。语言、编辑命令、缩放、全屏、关于、数据目录和退出入口集中在左下角“设置”内；回收站与导出入口保持独立。
+
+关闭窗口或“设置 → 退出”前由前端回调确认自动保存完成，失败时默认回到工作台，可以重试或导出备份。退出会停止子服务。服务启动超时或异常退出会给出明确提示。
 
 官方 API 依据：[Electron 安全建议](https://www.electronjs.org/docs/latest/tutorial/security)、[BrowserWindow](https://www.electronjs.org/docs/latest/api/browser-window)、[ContextBridge](https://www.electronjs.org/docs/latest/api/context-bridge)、[Session downloads](https://www.electronjs.org/docs/latest/api/session)、[PyInstaller](https://pyinstaller.org/en/stable/operating-mode.html)。

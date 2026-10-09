@@ -25,8 +25,8 @@ function saveDraft(){if(!state.book)return;try{clientStorage.setItem('yejian.dra
 function removeDraft(id,key){try{clientStorage.removeItem(key||'yejian.draft.'+id+'.'+draftOwner);}catch{}}
 async function transition(task){
   if(state.transitioning)return false;if(state.composing){toast(T('请先完成当前输入。'));return false;}
-  state.transitioning=true;$('workspace').inert=true;$('dialog').inert=true;$('workspace').setAttribute('aria-busy','true');
-  try{return await task();}finally{state.transitioning=false;$('workspace').inert=false;$('dialog').inert=false;$('workspace').setAttribute('aria-busy','false');}
+  state.transitioning=true;$('workspace').inert=true;$('dialog').inert=true;const settingsDialog=$('settings-dialog');if(settingsDialog)settingsDialog.inert=true;$('workspace').setAttribute('aria-busy','true');
+  try{return await task();}finally{state.transitioning=false;$('workspace').inert=false;$('dialog').inert=false;if(settingsDialog)settingsDialog.inert=false;$('workspace').setAttribute('aria-busy','false');}
 }
 async function api(path,method='GET',data){
   let r;try{r=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Writer-Client':'1'},body:data===undefined?undefined:JSON.stringify(data)});}catch{throw new Error(T('无法连接本机保存服务。请重新启动作家工作台，或先下载本页备份。'));}
@@ -154,6 +154,86 @@ async function importBackup(file){
 async function rescueCopy(){if(!state.book)return;await transition(async()=>{try{const oldId=state.book.id,r=await api('/api/import','POST',backupData());removeDraft(oldId);setBook(r);state.view='write';await refreshBooks();renderShell();toast(T('本页内容已另存为新作品。'));}catch(e){showError(e);}});}
 function setFont(delta){state.fontSize=Math.max(16,Math.min(26,state.fontSize+delta));document.documentElement.style.setProperty('--font-size',state.fontSize+'px');preference('yejian.font-size',String(state.fontSize));resizeEditor();}
 function exitFocus(){$('workspace').classList.remove('focus');$('exit-focus').hidden=true;resizeEditor();}
+const settingsEditCommands=new Set(['undo','redo','cut','copy','paste','selectAll']);
+let lastSettingsEditor=null,settingsEditor=null,settingsFocusRestored=false,settingsRequest=0,settingsActionPending=false,settingsEventsBound=false;
+const appSettingsState={version:'',dataPath:'',zoomFactor:1,fullscreen:false,maximized:false};
+function hasDesktopSettings(){return typeof window.WriterDesktop?.getAppSettings==='function'&&typeof window.WriterDesktop?.performAppAction==='function';}
+function isSettingsEditor(target){return !!target&&!target.disabled&&!target.closest('#settings-dialog')&&(target.tagName==='TEXTAREA'||target.tagName==='INPUT'&&['text','search','url','tel','email','password'].includes(target.type||'text'))&&typeof target.selectionStart==='number';}
+function rememberSettingsEditor(target=document.activeElement){
+  if(!isSettingsEditor(target))return;
+  lastSettingsEditor={target,start:target.selectionStart,end:target.selectionEnd,direction:target.selectionDirection,scrollTop:target.scrollTop,scrollLeft:target.scrollLeft,bookId:state.book?.id,chapterId:state.chapterId};
+}
+function currentSettingsEditor(){
+  const saved=settingsEditor,target=saved?.target;
+  if(!target?.isConnected||!isSettingsEditor(target)||target.closest('[hidden]')||saved.bookId!==state.book?.id||saved.chapterId!==state.chapterId)return null;
+  return saved;
+}
+function restoreSettingsEditor(){
+  const saved=currentSettingsEditor();if(!saved)return false;
+  saved.target.focus({preventScroll:true});saved.target.setSelectionRange(saved.start,saved.end,saved.direction||'none');saved.target.scrollTop=saved.scrollTop;saved.target.scrollLeft=saved.scrollLeft;return true;
+}
+function updateAppSettings(info={}){
+  for(const key of ['version','dataPath'])if(typeof info[key]==='string')appSettingsState[key]=info[key];
+  if(Number.isFinite(info.zoomFactor))appSettingsState.zoomFactor=info.zoomFactor;
+  for(const key of ['fullscreen','maximized'])if(typeof info[key]==='boolean')appSettingsState[key]=info[key];
+  $('settings-version').textContent=appSettingsState.version?T('版本 {0}',appSettingsState.version):'—';
+  $('settings-data-path').value=appSettingsState.dataPath;
+  $('settings-zoom-value').textContent=Math.round(appSettingsState.zoomFactor*100)+'%';
+  $('settings-zoom-out').disabled=appSettingsState.zoomFactor<=.5;
+  $('settings-zoom-in').disabled=appSettingsState.zoomFactor>=2;
+  $('settings-fullscreen').textContent=T(appSettingsState.fullscreen?'退出全屏':'进入全屏');
+  $('settings-fullscreen').setAttribute('aria-pressed',String(appSettingsState.fullscreen));
+  const maximize=$('window-maximize'),label=T(appSettingsState.maximized?'还原窗口':'最大化');maximize.title=label;maximize.setAttribute('aria-label',label);maximize.querySelector('[data-icon]').innerHTML=svgIcon(appSettingsState.maximized?'restore':'maximize');
+}
+async function showAppSettings(){
+  if(state.composing){toast(T('请先完成当前输入。'));return;}if(state.transitioning||$('dialog').open||$('settings-dialog').open)return;
+  rememberSettingsEditor();settingsEditor=lastSettingsEditor?{...lastSettingsEditor}:null;settingsFocusRestored=false;
+  $('settings-edit-actions').querySelectorAll('[data-settings-edit]').forEach(button=>{const saved=currentSettingsEditor();button.disabled=!saved||(saved.target.readOnly&&!['copy','selectAll'].includes(button.dataset.settingsEdit));});
+  closeNav();updateAppSettings();$('settings-dialog').showModal();const request=++settingsRequest;
+  if(hasDesktopSettings())try{const info=await window.WriterDesktop.getAppSettings();if(request===settingsRequest&&$('settings-dialog').open)updateAppSettings(info);}catch(error){if(request===settingsRequest)toast(error.message||T('无法读取设置。'));}
+}
+function closeAppSettings(){
+  if(state.transitioning)return false;
+  settingsFocusRestored=true;++settingsRequest;if($('settings-dialog').open)$('settings-dialog').close();restoreSettingsEditor();
+}
+async function performSettingsAction(command){
+  if(settingsActionPending||state.transitioning)return false;
+  if(settingsEditCommands.has(command)){
+    if(state.composing){toast(T('请先完成当前输入。'));return false;}
+    const saved=currentSettingsEditor();if(!saved){toast(T('请先选择要编辑的文字。'));return false;}
+    closeAppSettings();
+    try{
+      if(hasDesktopSettings())await window.WriterDesktop.performAppAction(command);
+      else if(command==='selectAll')saved.target.setSelectionRange(0,saved.target.value.length);
+      else if(!document.execCommand(command)){toast(T('请使用键盘快捷键完成此操作。'));return false;}
+      return true;
+    }catch(error){toast(error.message||T('暂时无法完成操作'));return false;}
+  }
+  settingsActionPending=true;
+  try{
+    if(hasDesktopSettings())updateAppSettings(await window.WriterDesktop.performAppAction(command));
+    else if(command==='toggleFullscreen'){
+      if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();
+      updateAppSettings({fullscreen:!!document.fullscreenElement});
+    }else return false;
+    return true;
+  }catch(error){toast(error.message||T('暂时无法完成操作'));return false;}finally{settingsActionPending=false;}
+}
+function bindAppSettingsEvents(){
+  if(settingsEventsBound)return;settingsEventsBound=true;
+  const native=hasDesktopSettings();document.body.classList.toggle('desktop-app',native);$('window-controls').hidden=!native;
+  document.querySelectorAll('[data-desktop-only]').forEach(element=>{element.hidden=!native;});
+  if(!native&&!document.fullscreenEnabled)$('settings-display').hidden=true;
+  document.addEventListener('focusin',event=>rememberSettingsEditor(event.target));document.addEventListener('selectionchange',()=>rememberSettingsEditor());document.addEventListener('input',event=>rememberSettingsEditor(event.target));
+  $('open-settings').addEventListener('pointerdown',()=>rememberSettingsEditor());$('open-settings').addEventListener('click',showAppSettings);$('close-settings').addEventListener('click',closeAppSettings);
+  $('settings-dialog').addEventListener('cancel',event=>{event.preventDefault();closeAppSettings();});
+  $('settings-dialog').addEventListener('close',()=>{if(!settingsFocusRestored){settingsFocusRestored=true;++settingsRequest;restoreSettingsEditor();}});
+  $('settings-edit-actions').querySelectorAll('[data-settings-edit]').forEach(button=>button.addEventListener('click',()=>performSettingsAction(button.dataset.settingsEdit)));
+  $('settings-dialog').querySelectorAll('[data-settings-action]').forEach(button=>button.addEventListener('click',()=>performSettingsAction(button.dataset.settingsAction)));
+  for(const [id,command]of [['window-minimize','minimize'],['window-maximize','toggleMaximize'],['window-close','close']])$(id).addEventListener('click',()=>performSettingsAction(command));
+  if(native){const unsubscribe=window.WriterDesktop.onWindowState?.(updateAppSettings);if(typeof unsubscribe==='function')window.addEventListener('pagehide',unsubscribe,{once:true});window.WriterDesktop.getAppSettings().then(updateAppSettings).catch(()=>{});}
+  else document.addEventListener('fullscreenchange',()=>updateAppSettings({fullscreen:!!document.fullscreenElement}));
+}
 function bindEvents(){
   $('editor').addEventListener('input',()=>{if(!currentChapter())return;currentChapter().body=$('editor').value;markDirty();resizeEditor();});
   document.addEventListener('compositionstart',()=>{state.composing=true;clearTimeout(state.timer);});
@@ -170,7 +250,7 @@ function bindEvents(){
   $('toggle-focus').addEventListener('click',()=>{if(state.view!=='write'||!state.book)return;$('workspace').classList.add('focus');$('exit-focus').hidden=false;resizeEditor();$('editor').focus();});$('exit-focus').addEventListener('click',exitFocus);
   $('font-smaller').addEventListener('click',()=>setFont(-1));$('font-larger').addEventListener('click',()=>setFont(1));$('close-dialog').addEventListener('click',closeDialog);
   $('import-file').addEventListener('change',e=>importBackup(e.target.files[0]));$('retry-save').addEventListener('click',async()=>{if(state.book)await saveNow();else location.reload();});$('emergency-backup').addEventListener('click',downloadBackup);$('rescue-copy').addEventListener('click',rescueCopy);
-  window.addEventListener('keydown',e=>{if(e.isComposing)return;if(e.key==='Escape'&&!$('dialog').open){exitFocus();closeSidebar();closeNav();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();saveNow();}});
+  window.addEventListener('keydown',e=>{if(e.isComposing)return;if(e.key==='Escape'&&!$('dialog').open&&!$('settings-dialog').open){exitFocus();closeSidebar();closeNav();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();saveNow();}});
   window.addEventListener('beforeunload',e=>{if(state.dirty){saveDraft();e.preventDefault();e.returnValue='';}});
   window.addEventListener('resize',resizeEditor);document.addEventListener('visibilitychange',()=>{if(document.hidden&&state.dirty){saveDraft();saveNow();}});bindPlanningEvents();
 }
@@ -179,12 +259,12 @@ async function registerTools(){
   const context=document.modelContext;if(!context?.registerTool)return;const lifecycle=new AbortController();window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
   try{
     await context.registerTool({name:'get_manuscript_outline',title:T('查看当前作品大纲'),description:T('读取当前作品的章节标题、顺序和字数，不返回正文，不修改作品。'),inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute(input){if(!input||typeof input!=='object'||Object.keys(input).length)throw new Error(T('不接受额外参数'));if(!state.book)throw new Error(T('作品尚未打开'));return{title:state.book.title,kind:state.book.kind,outline:activeOutline().map(o=>({id:o.id,title:o.title,parentId:o.parentId,chapterIds:o.chapterIds})),chapters:activeChapters().map(c=>({id:c.id,title:c.title,characters:count(c.body)}))};}},{signal:lifecycle.signal});
-    await context.registerTool({name:'create_chapter',title:T('新建章节'),description:T('在当前章节之后新建空白章节，打开并保存到本机。'),inputSchema:{type:'object',properties:{title:{type:'string',minLength:1,maxLength:200}},required:['title'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},async execute(input){if(!input||typeof input.title!=='string'||!input.title.trim()||input.title.length>200||Object.keys(input).some(k=>k!=='title'))throw new Error(T('请输入 1–200 字的章节标题'));if(!state.book||state.composing||state.transitioning||$('dialog').open)throw new Error(T('请先打开作品、完成输入并关闭当前对话框'));if(!await requireSaved())throw new Error(T('当前内容未保存'));const c=addChapter(input.title.trim());if(!c)throw new Error(T('正在切换作品，请稍后重试'));if(!await saveNow())throw new Error(T('章节尚未保存，请重试或下载备份'));return{id:c.id,title:c.title,saved:true};}},{signal:lifecycle.signal});
+    await context.registerTool({name:'create_chapter',title:T('新建章节'),description:T('在当前章节之后新建空白章节，打开并保存到本机。'),inputSchema:{type:'object',properties:{title:{type:'string',minLength:1,maxLength:200}},required:['title'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},async execute(input){if(!input||typeof input.title!=='string'||!input.title.trim()||input.title.length>200||Object.keys(input).some(k=>k!=='title'))throw new Error(T('请输入 1–200 字的章节标题'));if(!state.book||state.composing||state.transitioning||$('dialog').open||$('settings-dialog').open)throw new Error(T('请先打开作品、完成输入并关闭当前对话框'));if(!await requireSaved())throw new Error(T('当前内容未保存'));const c=addChapter(input.title.trim());if(!c)throw new Error(T('正在切换作品，请稍后重试'));if(!await saveNow())throw new Error(T('章节尚未保存，请重试或下载备份'));return{id:c.id,title:c.title,saved:true};}},{signal:lifecycle.signal});
   }catch{console.info(T('当前浏览器未启用写作工具接口。'));}
 }
 async function initialize(){
   state.kind=preference('yejian.kind')==='short'?'short':'long';const oldView=preference('yejian.view');if(['shelf','write','outline','people'].includes(oldView))state.view=oldView;state.collection=null;
-  bindEvents();bindWorkspaceEvents();bindLanguageEvents();installIcons();const font=Number(preference('yejian.font-size'));if(font>=16&&font<=26)state.fontSize=font;setFont(0);
+  bindEvents();bindWorkspaceEvents();bindLanguageEvents();bindAppSettingsEvents();installIcons();const font=Number(preference('yejian.font-size'));if(font>=16&&font<=26)state.fontSize=font;setFont(0);
   try{await refreshBooks();await loadKind(state.kind);renderShell();if(state.book)await recoverDraft();await registerTools();}catch(e){saveStatus(T('无法打开作品'),true);showError(e);}
 }
 
@@ -194,7 +274,7 @@ const activeOutline=()=>state.book?.outline.filter(o=>!o.deletedAt)||[];
 const people=()=>state.book?.notes.filter(n=>n.type==='人物'&&!n.deletedAt)||[];
 const currentOutline=()=>activeOutline().find(o=>o.id===state.outlineId);
 const currentPerson=()=>people().find(n=>n.id===state.personId);
-function svgIcon(name){const paths={folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
+function svgIcon(name){const paths={settings:'M9 3h6l1 4 4 1v6l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0',minimize:'M5 12h14',maximize:'M5 5h14v14H5z',restore:'M8 8h11v11H8zM5 16V5h11',close:'M6 6l12 12M18 6 6 18',folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
 async function refreshBooks(){state.books=(await api('/api/books')).books.map(b=>({...b,kind:b.kind||'long'}));}
 function clearBook(){clearTimeout(state.timer);state.book=null;state.chapterId=null;state.outlineId=null;state.personId=null;state.noteId=null;state.dirty=false;state.conflict=false;state.error=null;state.trail=null;$('error-banner').hidden=true;$('editor').disabled=true;$('chapter-title').disabled=true;$('book-name').textContent='';$('book-name').hidden=true;$('chapter-list').replaceChildren();$('trash-count').textContent='';saveStatus(T('本机保存'));document.title=T('作家工作台 · {0}书架',kindName());}
 async function loadKind(kind){

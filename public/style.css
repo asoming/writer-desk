@@ -319,8 +319,6 @@ dialog::backdrop{background:#27354b45;backdrop-filter:blur(2px)}
 
 /* Writer’s Desk: language controls and longer translated labels. */
 .brand-name{font-size:17px;letter-spacing:-.4px;white-space:normal;line-height:1.25}
-.language-control{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 7px 5px;font-size:12px;color:var(--muted)}
-.language-control select{max-width:94px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:5px 8px;color:var(--text);font:inherit}
 html[lang=en] .nav-item{font-size:13px}html[lang=en] .cover-foot{font-size:7px}
 html[lang=en] .heading-actions{flex-wrap:wrap}
 html[lang=en] .shelf-book-actions{min-width:140px}
@@ -348,3 +346,36 @@ html[lang=en] .shelf-book-bottom{flex-wrap:wrap}
 .shelf-book-tools .text-button{width:auto;margin:0;gap:5px;white-space:nowrap}
 .book-folder-path{width:100%;font-family:ui-monospace,monospace;font-size:.8125rem}
 @media(min-width:761px) and (max-width:1100px){.shelf-book-tools{justify-content:center;gap:4px 12px}}
+
+/* App preferences and window controls share the existing workspace shell. */
+.settings-dialog{max-width:480px;padding:24px 26px}
+.settings-dialog .dialog-heading{margin-bottom:8px}
+.settings-section{padding:12px 0;border-bottom:1px solid var(--line)}
+.settings-section h3{font-size:.75rem;font-weight:600;line-height:1.5;color:var(--muted);margin:0 0 10px}
+.settings-row{display:flex;align-items:center;justify-content:space-between;gap:18px;font-size:.8125rem;min-height:34px}
+.settings-row+.settings-row{margin-top:8px}
+.settings-row>h3{margin:0}
+.settings-row>select{width:132px;min-height:34px;padding:6px 10px}
+.settings-row .secondary-button{min-height:32px;padding:6px 11px;font-size:.8125rem}
+.settings-edit-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px}
+.settings-command{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-radius:5px;font-size:.8125rem;text-align:left}
+.settings-command:hover{background:#f3f6fb}
+.settings-command kbd{font-family:inherit;font-size:.6875rem;color:#8a96a7;white-space:nowrap}
+.settings-zoom{display:flex;align-items:center;gap:5px}
+.settings-zoom .text-button{min-width:60px;justify-content:center;font-variant-numeric:tabular-nums}
+.settings-version{font-size:.75rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.settings-data-path{margin-top:8px;width:100%;font-family:ui-monospace,monospace;font-size:.6875rem;color:var(--muted);background:#fafbfd;padding:9px 10px}
+.settings-footer{padding-top:15px;display:flex;justify-content:flex-end}
+.settings-footer .text-button{color:var(--muted)}
+.window-controls{display:flex;align-items:center;gap:3px;margin-left:8px;flex-shrink:0}
+.window-button{display:grid;place-items:center;width:34px;height:32px;border-radius:5px;color:#68768a}
+.window-button svg{width:15px;height:15px;stroke-width:1.5}
+.window-button:hover{background:#f0f3f8;color:var(--ink)}
+.window-close:hover{background:#e65b64;color:#fff}
+.desktop-app .topbar,.desktop-app .brand{-webkit-app-region:drag}
+.desktop-app :is(.topbar,.brand) :is(button,input,select,textarea,a){-webkit-app-region:no-drag}
+.desktop-app .topbar{padding-right:8px;user-select:none}
+.desktop-app .brand{user-select:none}
+.desktop-app .focus .topbar{display:flex!important;height:36px;min-height:36px;border-bottom:0;justify-content:flex-end}
+.desktop-app .focus .topbar-left,.desktop-app .focus .topbar-right>:not(.window-controls){display:none!important}
+@media(max-width:540px){.settings-dialog{padding:20px}.settings-edit-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-command{padding:8px 4px}.settings-command kbd{font-size:.625rem}.desktop-app .topbar-right{gap:4px}.window-controls{margin-left:0;gap:0}.window-button{width:28px}}

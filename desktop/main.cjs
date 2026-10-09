@@ -111,17 +111,44 @@ async function openBookFolder(bookId) {
   catch { throw folderError('open-folder-failed', '无法打开系统文件管理器，请检查桌面环境后重试。', 'Could not open the system file manager. Check your desktop environment and try again.'); }
   return { folder, revision: prepared.revision };
 }
-function createMenu() {
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    ...(process.platform === 'darwin' ? [{ label: title(), submenu: [{ role: 'about' }, { type: 'separator' }, { label: text('退出', 'Quit'), accelerator: 'Cmd+Q', click: () => app.quit() }] }] : []),
-    { label: text('文件', 'File'), submenu: [
-      { label: text('打开作品数据文件夹', 'Open data folder'), click: () => shell.openPath(path.join(userData, 'data')).catch(() => {}) },
-      { type: 'separator' }, { label: text('退出', 'Quit'), accelerator: 'Alt+F4', click: () => app.quit() }
-    ] },
-    { label: text('编辑', 'Edit'), submenu: [{ role: 'undo', label: text('撤销', 'Undo') }, { role: 'redo', label: text('重做', 'Redo') }, { type: 'separator' }, { role: 'cut', label: text('剪切', 'Cut') }, { role: 'copy', label: text('复制', 'Copy') }, { role: 'paste', label: text('粘贴', 'Paste') }, { role: 'selectAll', label: text('全选', 'Select all') }] },
-    { label: text('视图', 'View'), submenu: [{ role: 'resetZoom', label: text('实际大小', 'Actual size') }, { role: 'zoomIn', label: text('放大', 'Zoom in') }, { role: 'zoomOut', label: text('缩小', 'Zoom out') }, { type: 'separator' }, { role: 'togglefullscreen', label: text('全屏', 'Full screen') }] },
-    { label: text('帮助', 'Help'), submenu: [{ label: text('关于作家工作台', "About Writer's Desk"), click: () => dialog.showMessageBox(window, { type: 'info', title: title(), message: `${title()} ${app.getVersion()}`, detail: text('作品保存在本机。请定期导出完整备份。\n\n数据目录：', 'Your work stays on this computer. Export full backups regularly.\n\nData folder: ') + path.join(userData, 'data') }) }] }
-  ]));
+const appActions = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll', 'zoomIn', 'zoomOut', 'resetZoom', 'toggleFullscreen', 'openDataFolder', 'quit', 'minimize', 'toggleMaximize', 'close']);
+const editActions = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']);
+function windowState() {
+  if (!window || window.isDestroyed()) return {};
+  return { zoomFactor: window.webContents.getZoomFactor(), fullscreen: window.isFullScreen(), maximized: window.isMaximized() };
+}
+function publishWindowState() {
+  if (window && !window.isDestroyed()) window.webContents.send('writer:window-state', { fullscreen: window.isFullScreen(), maximized: window.isMaximized() });
+}
+async function performAppAction(action) {
+  if (editActions.has(action)) window.webContents[action]();
+  else if (action === 'zoomIn' || action === 'zoomOut' || action === 'resetZoom') {
+    const factor = action === 'resetZoom' ? 1 : Math.round((window.webContents.getZoomFactor() + (action === 'zoomIn' ? 0.1 : -0.1)) * 10) / 10;
+    window.webContents.setZoomFactor(Math.max(0.5, Math.min(2, factor)));
+  } else if (action === 'toggleFullscreen') window.setFullScreen(!window.isFullScreen());
+  else if (action === 'toggleMaximize') { if (window.isMaximized()) window.unmaximize(); else window.maximize(); }
+  else if (action === 'minimize') window.minimize();
+  else if (action === 'quit' || action === 'close') await requestClose();
+  else if (action === 'openDataFolder') {
+    try { if (await shell.openPath(path.join(userData, 'data'))) throw new Error('File manager rejected the folder'); }
+    catch { throw folderError('open-folder-failed', '无法打开系统文件管理器，请检查桌面环境后重试。', 'Could not open the system file manager. Check your desktop environment and try again.'); }
+  }
+  return windowState();
+}
+function keyboardAction(input) {
+  if (input.type !== 'keyDown' || input.isComposing) return null;
+  const key = input.key.toLowerCase();
+  if (key === 'f11' && !input.control && !input.meta && !input.alt) return 'toggleFullscreen';
+  if (key === 'f4' && input.alt && !input.control && !input.meta) return 'close';
+  if (!(input.control || input.meta) || input.alt) return null;
+  if (key === 'z') return input.shift ? 'redo' : 'undo';
+  if (key === 'y' && !input.shift) return 'redo';
+  if (key === 'q' && process.platform === 'darwin' && input.meta) return 'quit';
+  if (key === '+' || key === '=' || input.code === 'NumpadAdd') return 'zoomIn';
+  if (key === '-' || key === '_' || input.code === 'NumpadSubtract') return 'zoomOut';
+  if (key === '0' || input.code === 'Numpad0') return 'resetZoom';
+  if (!input.shift) return { x: 'cut', c: 'copy', v: 'paste', a: 'selectAll' }[key] || null;
+  return null;
 }
 
 ipcMain.on('writer:bootstrap', event => { event.returnValue = trusted(event) ? { language, version: app.getVersion() } : {}; });
@@ -129,7 +156,17 @@ ipcMain.handle('writer:language', (event, value) => {
   if (!trusted(event) || !['zh', 'en'].includes(value)) return false;
   language = value;
   try { atomicWrite(settingsPath, { ...settings, language }); } catch { /* The UI also retains its preference. */ }
-  createMenu(); return true;
+  return true;
+});
+ipcMain.handle('writer:app-settings', event => {
+  if (!trusted(event)) return { error: text('当前窗口无权读取应用设置。', 'This window is not authorized to read app settings.'), code: 'untrusted-sender' };
+  return { version: app.getVersion(), dataPath: path.join(userData, 'data'), ...windowState() };
+});
+ipcMain.handle('writer:app-action', async (event, action) => {
+  if (!trusted(event)) return { error: text('当前窗口无权执行应用操作。', 'This window is not authorized to perform app actions.'), code: 'untrusted-sender' };
+  if (typeof action !== 'string' || !appActions.has(action)) return { error: text('不支持此应用操作。', 'This app action is not supported.'), code: 'invalid-app-action' };
+  try { return await performAppAction(action); }
+  catch (error) { return { error: error.code === 'open-folder-failed' ? error.message : text('无法完成此操作，请重试。', 'Could not complete this action. Try again.'), code: error.code === 'open-folder-failed' ? error.code : 'app-action-failed' }; }
 });
 ipcMain.handle('writer:open-book-folder', async (event, bookId) => {
   if (!trusted(event)) return { error: text('当前窗口无权打开作品文件夹。', 'This window is not authorized to open book folders.'), code: 'untrusted-sender' };
@@ -250,10 +287,12 @@ function createWindow() {
     callback({ requestHeaders: headers });
   });
   window = new BrowserWindow({
-    title: title(), width: 1440, height: 960, minWidth: 780, minHeight: 600, show: false, backgroundColor: '#ffffff',
+    title: title(), width: 1440, height: 960, minWidth: 780, minHeight: 600, show: false, frame: false, backgroundColor: '#ffffff',
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, nodeIntegrationInWorker: false, webSecurity: true, navigateOnDragDrop: false, webviewTag: false, session: appSession }
   });
+  window.setMenu(null);
+  window.setMenuBarVisibility(false);
   window.webContents.setWindowOpenHandler(({ url }) => { openExternal(url); return { action: 'deny' }; });
   window.webContents.on('will-navigate', (event, url) => {
     let isDocument = false;
@@ -261,6 +300,12 @@ function createWindow() {
     if (!isDocument) { event.preventDefault(); if (!localURL(url)) openExternal(url); }
   });
   window.webContents.on('will-attach-webview', event => event.preventDefault());
+  window.webContents.on('before-input-event', (event, input) => {
+    const action = keyboardAction(input);
+    if (!action) return;
+    event.preventDefault();
+    performAppAction(action).catch(() => {});
+  });
   window.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => { if (mainFrame) saveReady = false; });
   appSession.on('will-download', (event, item, contents) => {
     if (contents !== window?.webContents || !(localURL(item.getURL()) || item.getURL().startsWith(`blob:${origin}/`))) { event.preventDefault(); return; }
@@ -270,7 +315,7 @@ function createWindow() {
   window.once('ready-to-show', () => window.show());
   window.on('close', event => { if (!allowQuit) { event.preventDefault(); requestClose(); } });
   window.on('closed', () => { window = null; });
-  createMenu();
+  for (const event of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) window.on(event, publishWindowState);
   return window.loadURL(origin + '/').then(() => console.info('[writer-desk] Desktop window loaded; local storage service is ready.'));
 }
 
@@ -282,6 +327,7 @@ else {
   app.on('quit', () => { if (service && service.exitCode === null) service.kill(); });
   app.whenReady().then(async () => {
     try {
+      Menu.setApplicationMenu(null);
       await startService(); await createWindow();
       const folderArgument = process.argv.indexOf('--open-book-folder');
       if (folderArgument !== -1) {

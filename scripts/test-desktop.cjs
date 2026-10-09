@@ -74,8 +74,8 @@ async function testMainContract() {
   app.setPath = () => {}; app.setName = () => {}; app.getVersion = () => 'test';
   app.requestSingleInstanceLock = () => true; app.whenReady = () => Promise.resolve();
   app.quit = () => { app.quitCalled = true; }; app.isPackaged = false;
-  let win, child, headersHandler, requestHandler, lastSent, folderReply, shellError = '';
-  const folderRequests = [], openedFolders = [];
+  let win, child, headersHandler, requestHandler, lastSent, folderReply, shellError = '', shellThrows = false;
+  const folderRequests = [], openedFolders = [], sentEvents = [], edits = [], dialogs = [];
   const httpFake = { request: (url, options, callback) => {
     const request = new EventEmitter();
     request.destroy = error => queueMicrotask(() => request.emit('error', error));
@@ -93,19 +93,31 @@ async function testMainContract() {
   class FakeWindow extends EventEmitter {
     constructor(options) {
       super(); win = this; this.options = options;
+      this.zoom = 1; this.fullscreen = false; this.maximized = false; this.minimized = false;
       this.webContents = new EventEmitter(); this.webContents.mainFrame = { url: '' };
       this.webContents.setWindowOpenHandler = callback => { this.popup = callback; };
-      this.webContents.send = (channel, token) => { lastSent = { channel, token }; };
+      this.webContents.send = (channel, token) => { lastSent = { channel, token }; sentEvents.push(lastSent); };
+      this.webContents.getZoomFactor = () => this.zoom;
+      this.webContents.setZoomFactor = value => { this.zoom = value; };
+      for (const action of ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']) this.webContents[action] = () => edits.push(action);
     }
     isDestroyed() { return !!this.destroyed; }
     loadURL(url) { this.url = url; this.webContents.mainFrame.url = url; return Promise.resolve(); }
     destroy() { this.destroyed = true; this.emit('closed'); }
-    show() {} focus() {} isMinimized() { return false; }
+    show() {} focus() {} isMinimized() { return this.minimized; }
+    minimize() { this.minimized = true; }
+    isMaximized() { return this.maximized; }
+    maximize() { this.maximized = true; this.emit('maximize'); }
+    unmaximize() { this.maximized = false; this.emit('unmaximize'); }
+    isFullScreen() { return this.fullscreen; }
+    setFullScreen(value) { this.fullscreen = value; this.emit(value ? 'enter-full-screen' : 'leave-full-screen'); }
+    setMenu(value) { this.menu = value; }
+    setMenuBarVisibility(value) { this.menuBarVisible = value; }
   }
   const fakeSession = new EventEmitter();
   fakeSession.webRequest = { onBeforeRequest: callback => { requestHandler = callback; }, onBeforeSendHeaders: callback => { headersHandler = callback; } };
   fakeSession.setPermissionRequestHandler = () => {}; fakeSession.setPermissionCheckHandler = () => {};
-  const electron = { app, ipcMain, BrowserWindow: FakeWindow, session: { fromPartition: () => fakeSession }, Menu: { buildFromTemplate: value => value, setApplicationMenu: value => { app.menu = value; } }, dialog: { showErrorBox: () => assert.fail('unexpected startup failure'), showMessageBox: async () => ({ response: 0 }) }, shell: { openExternal: async () => {}, openPath: async folder => { openedFolders.push(folder); return shellError; } } };
+  const electron = { app, ipcMain, BrowserWindow: FakeWindow, session: { fromPartition: () => fakeSession }, Menu: { buildFromTemplate: () => assert.fail('Native menus must not be rebuilt'), setApplicationMenu: value => { app.menu = value; } }, dialog: { showErrorBox: () => assert.fail('unexpected startup failure'), showMessageBox: async (_window, options) => { dialogs.push(options); return { response: 0 }; } }, shell: { openExternal: async () => {}, openPath: async folder => { openedFolders.push(folder); if (shellThrows) throw new Error('private OS failure'); return shellError; } } };
   const spawnFake = () => {
     child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.exitCode = null;
     child.kill = () => { child.exitCode = 0; queueMicrotask(() => child.emit('exit', 0)); };
@@ -119,6 +131,8 @@ async function testMainContract() {
   assert.equal(win.options.webPreferences.contextIsolation, true);
   assert.equal(win.options.webPreferences.nodeIntegration, false);
   assert.equal(win.options.webPreferences.webviewTag, false);
+  assert.equal(win.options.frame, false);
+  assert.equal(app.menu, null); assert.equal(win.menu, null); assert.equal(win.menuBarVisible, false);
   let result;
   requestHandler({ url: 'https://example.org/' }, value => { result = value; }); assert.equal(result.cancel, true);
   requestHandler({ url: win.url + 'api/books' }, value => { result = value; }); assert.equal(result.cancel, false);
@@ -201,19 +215,88 @@ async function testMainContract() {
   assert.equal(win.popup({ url: 'file:///etc/passwd' }).action, 'deny');
   const navigate = { preventDefault() { this.prevented = true; } };
   win.webContents.emit('will-navigate', navigate, 'file:///etc/passwd'); assert.equal(navigate.prevented, true);
+  const appSettings = sender => ipcMain['writer:app-settings'](sender || event());
+  const action = (name, sender) => ipcMain['writer:app-action'](sender || event(), name);
+  const initialSettings = appSettings();
+  assert.equal(initialSettings.version, 'test'); assert.equal(initialSettings.dataPath, path.join(userData, 'data'));
+  assert.equal(initialSettings.zoomFactor, 1); assert.equal(initialSettings.fullscreen, false); assert.equal(initialSettings.maximized, false);
+  const initialOpened = openedFolders.length;
+  for (const sender of [{ sender: {}, senderFrame: {} }, { sender: win.webContents, senderFrame: { url: win.url } }]) {
+    assert.equal(appSettings(sender).code, 'untrusted-sender');
+    for (const name of ['openDataFolder', 'quit', 'close', 'copy', 'toggleMaximize', 'minimize', 'zoomIn']) assert.equal((await action(name, sender)).code, 'untrusted-sender');
+  }
+  const localFrameURL = win.webContents.mainFrame.url;
+  win.webContents.mainFrame.url = 'https://example.org/';
+  assert.equal(appSettings().code, 'untrusted-sender'); assert.equal((await action('openDataFolder')).code, 'untrusted-sender');
+  win.webContents.mainFrame.url = localFrameURL;
+  assert.equal(openedFolders.length, initialOpened); assert.equal(edits.length, 0); assert.equal(win.minimized, false); assert.equal(app.quitCalled, undefined);
+  for (const value of [undefined, null, {}, [], 7, 'constructor', '__proto__', 'destroy', 'openExternal', '/tmp']) assert.equal((await action(value)).code, 'invalid-app-action');
+  for (const name of ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']) await action(name);
+  assert.deepEqual(edits, ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']);
+  await action('zoomIn'); assert.equal(win.zoom, 1.1);
+  for (let i = 0; i < 20; i++) await action('zoomIn'); assert.equal(win.zoom, 2);
+  for (let i = 0; i < 30; i++) await action('zoomOut'); assert.equal(win.zoom, 0.5);
+  assert.equal((await action('resetZoom')).zoomFactor, 1);
+  assert.equal((await action('toggleMaximize')).maximized, true); assert.equal((await action('toggleMaximize')).maximized, false);
+  assert.equal((await action('toggleFullscreen')).fullscreen, true); assert.equal((await action('toggleFullscreen')).fullscreen, false);
+  assert.deepEqual(sentEvents.filter(value => value.channel === 'writer:window-state').map(value => JSON.parse(JSON.stringify(value.token))), [
+    { fullscreen: false, maximized: true }, { fullscreen: false, maximized: false }, { fullscreen: true, maximized: false }, { fullscreen: false, maximized: false }
+  ]);
+  await action('minimize'); assert.equal(win.minimized, true);
+  await action('openDataFolder'); assert.equal(openedFolders.at(-1), path.join(userData, 'data'));
+  shellError = 'Private OS command details';
+  assert.match((await action('openDataFolder')).error, /system file manager/);
+  assert.doesNotMatch((await action('openDataFolder')).error, /Private OS/);
+  await ipcMain['writer:language'](event(), 'zh');
+  assert.match((await action('openDataFolder')).error, /文件管理器/);
+  shellError = ''; shellThrows = true;
+  assert.equal((await action('openDataFolder')).code, 'open-folder-failed'); shellThrows = false;
+  assert.equal(app.menu, null); assert.equal(dialogs.length, 0);
+  const keyboard = input => {
+    const keyboardEvent = { preventDefault() { this.prevented = true; } };
+    win.webContents.emit('before-input-event', keyboardEvent, { type: 'keyDown', key: '', control: false, meta: false, alt: false, shift: false, ...input });
+    return keyboardEvent;
+  };
+  for (const [input, expected] of [
+    [{ key: 'z', control: true }, 'undo'], [{ key: 'z', meta: true, shift: true }, 'redo'], [{ key: 'y', control: true }, 'redo'],
+    [{ key: 'x', control: true }, 'cut'], [{ key: 'c', meta: true }, 'copy'], [{ key: 'v', control: true }, 'paste'], [{ key: 'a', meta: true }, 'selectAll']
+  ]) { assert.equal(keyboard(input).prevented, true); assert.equal(edits.at(-1), expected); }
+  assert.equal(keyboard({ key: '=', control: true }).prevented, true); assert.equal(win.zoom, 1.1);
+  assert.equal(keyboard({ key: '-', meta: true }).prevented, true); assert.equal(win.zoom, 1);
+  keyboard({ key: '+', control: true }); keyboard({ key: '0', control: true }); assert.equal(win.zoom, 1);
+  assert.equal(keyboard({ key: 'F11' }).prevented, true); assert.equal(win.fullscreen, true);
+  keyboard({ key: 'F11' }); assert.equal(win.fullscreen, false);
+  const editsBeforeComposition = edits.length;
+  for (const input of [{ key: 'Alt', alt: true }, { key: 'c' }, { key: 's', control: true }, { key: 'z', control: true, type: 'keyUp' }, { key: 'x', control: true, alt: true }, { key: 'z', control: true, isComposing: true }, { key: 'v', meta: true, isComposing: true }]) assert.equal(keyboard(input).prevented, undefined);
+  assert.equal(edits.length, editsBeforeComposition);
+  assert.equal(app.menu, null); assert.equal(win.menuBarVisible, false);
   ipcMain.emit('writer:save-ready', event());
   const close = { preventDefault() { this.prevented = true; } };
   win.emit('close', close); assert.equal(close.prevented, true); assert.equal(lastSent.channel, 'writer:before-close'); assert.equal(win.destroyed, undefined);
   ipcMain.emit('writer:save-result', event(), { token: lastSent.token, saved: false });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(win.destroyed, undefined); assert.equal(child.exitCode, null);
-  win.emit('close', { preventDefault() {} });
+  for (const name of ['quit', 'close']) {
+    const pending = action(name);
+    assert.equal(lastSent.channel, 'writer:before-close'); assert.equal(win.destroyed, undefined);
+    ipcMain.emit('writer:save-result', { sender: {}, senderFrame: {} }, { token: lastSent.token, saved: true });
+    assert.equal(win.destroyed, undefined);
+    ipcMain.emit('writer:save-result', event(), { token: lastSent.token, saved: false });
+    const retainedState = await pending;
+    assert.equal(retainedState.zoomFactor, 1); assert.equal(retainedState.fullscreen, false); assert.equal(retainedState.maximized, false);
+    assert.equal(win.destroyed, undefined); assert.equal(child.exitCode, null); assert.equal(app.quitCalled, undefined);
+  }
+  assert.equal(keyboard({ key: 'F4', alt: true }).prevented, true);
+  ipcMain.emit('writer:save-result', event(), { token: lastSent.token, saved: false });
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(win.destroyed, undefined);
+  const finalClose = action('close');
   ipcMain.emit('writer:save-result', event(), { token: 'wrong', saved: true }); assert.equal(win.destroyed, undefined);
   ipcMain.emit('writer:save-result', event(), { token: lastSent.token, saved: true });
-  await new Promise(resolve => setImmediate(resolve));
+  const closedState = await finalClose; assert.equal(Object.keys(closedState).length, 0);
   assert.equal(win.destroyed, true); assert.equal(child.exitCode, 0); assert.equal(app.quitCalled, true);
   console.log('PASS: authenticated book-folder bridge, trusted frame/ID checks, path and symlink isolation, localized file-manager errors');
   console.log('PASS: sandbox, constrained IPC/storage/network/navigation, close-save handshake and child cleanup');
+  console.log('PASS: frameless/menu-free window, trusted settings/action whitelist, edit/zoom/window shortcuts and state, localized data-folder failures, protected settings/window exit');
 }
 
 async function testPreloadContract() {
@@ -226,7 +309,37 @@ async function testPreloadContract() {
   assert.deepEqual(invoked, { channel: 'writer:open-book-folder', value: 'book-fixture' });
   ipcRenderer.invoke = async () => ({ error: '无法打开作品文件夹', code: 'open-folder-failed' });
   await assert.rejects(bridge.openBookFolder('book-fixture'), error => error.message === '无法打开作品文件夹' && error.code === 'open-folder-failed');
+  const settings = { version: '0.3.5', dataPath: '/fixture/data', zoomFactor: 1, fullscreen: false, maximized: true };
+  ipcRenderer.invoke = async (channel, value) => { invoked = { channel, value }; return settings; };
+  assert.deepEqual(JSON.parse(JSON.stringify(await bridge.getAppSettings())), settings);
+  assert.equal(invoked.channel, 'writer:app-settings'); assert.equal(invoked.value, undefined);
+  assert.deepEqual(JSON.parse(JSON.stringify(await bridge.performAppAction('zoomIn'))), { zoomFactor: 1, fullscreen: false, maximized: true });
+  assert.deepEqual(invoked, { channel: 'writer:app-action', value: 'zoomIn' });
+  ipcRenderer.invoke = async () => ({});
+  assert.equal(Object.keys(await bridge.performAppAction('close')).length, 0);
+  await assert.rejects(bridge.getAppSettings(), error => error.code === 'invalid-response');
+  for (const malformed of [undefined, null, [], { zoomFactor: NaN }, { fullscreen: 'yes' }, { maximized: 1 }]) {
+    ipcRenderer.invoke = async () => malformed;
+    await assert.rejects(bridge.performAppAction('toggleMaximize'), error => error.code === 'invalid-response');
+  }
+  ipcRenderer.invoke = async () => ({ error: '当前窗口无权执行应用操作。', code: 'untrusted-sender' });
+  await assert.rejects(bridge.performAppAction('quit'), error => error.code === 'untrusted-sender' && /无权/.test(error.message));
+  assert.throws(() => bridge.onWindowState(null), /callback/);
+  const observed = [];
+  const beforeListeners = ipcRenderer.listenerCount('writer:window-state');
+  const unsubscribe = bridge.onWindowState(state => observed.push(state));
+  assert.equal(ipcRenderer.listenerCount('writer:window-state'), beforeListeners + 1);
+  for (const malformed of [null, [], {}, { fullscreen: true }, { fullscreen: 'false', maximized: true }, { fullscreen: false, maximized: 0 }]) ipcRenderer.emit('writer:window-state', { dangerous: true }, malformed);
+  assert.equal(observed.length, 0);
+  ipcRenderer.emit('writer:window-state', { dangerous: true }, { fullscreen: true, maximized: false, secret: 'not exposed' });
+  assert.deepEqual(JSON.parse(JSON.stringify(observed)), [{ fullscreen: true, maximized: false }]);
+  unsubscribe(); unsubscribe();
+  assert.equal(ipcRenderer.listenerCount('writer:window-state'), beforeListeners);
+  ipcRenderer.emit('writer:window-state', {}, { fullscreen: false, maximized: false });
+  assert.equal(observed.length, 1);
+  assert.equal(bridge.readClipboard, undefined); assert.equal(bridge.openPath, undefined);
   console.log('PASS: preload exposes only a book-ID operation and propagates localized failures');
+  console.log('PASS: settings/action preload responses, narrow state subscription validation, event isolation and unsubscribe');
 }
 
 async function testMigration() {
