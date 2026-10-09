@@ -23,7 +23,7 @@ class Element {
   constructor(tag = 'div') {
     this.tagName = tag.toUpperCase(); this.children = []; this.value = ''; this.textContent = '';
     this.hidden = false; this.attributes = {}; this.listeners = {}; this.dataset = {};
-    this.style = { setProperty() {} }; this.clientWidth = 1000; this.clientHeight = 500;
+    this.style = { setProperty() {} }; this.clientWidth = 1000; this.clientHeight = 500; this.clientTop = 0; this.scrollTop = 0;
     const update = (name, enabled) => {
       const names = new Set((this.className || '').split(/\s+/).filter(Boolean));
       if (enabled) names.add(name); else names.delete(name);
@@ -55,7 +55,11 @@ class Element {
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   focus() { this.focused = true; }
-  scrollIntoView(options) { this.scrolled = options; }
+  getBoundingClientRect() { return this.rect || { top: 0, bottom: this.clientHeight }; }
+  scrollIntoView(options) {
+    this.scrolled = options;
+    for (let ancestor = this; ancestor; ancestor = ancestor.parentElement) ancestor.onScrollIntoView?.(this, options);
+  }
 }
 
 function harness() {
@@ -164,7 +168,7 @@ check('volume filtering inherits the parent chain and combines with topic, level
   h.run('renderOutlineReading()'); assert.deepEqual(readingIds(h), []);
 });
 
-check('reader groups preserve authored paragraphs and literal markup; linked chapter IDs survive renaming', () => {
+check('continuous reader preserves paragraphs and literal markup; text links retain stable chapter IDs', () => {
   const h = harness(); load(h); h.run('renderOutlineReading()');
   const section = h.get('read-scene-one'),body = section.querySelector('.outline-read-body');
   assert.equal(body.textContent, h.state.book.outline.find(item => item.id === 'scene-one').body);
@@ -172,9 +176,62 @@ check('reader groups preserve authored paragraphs and literal markup; linked cha
   const original = h.state.book.chapters.find(item => item.id === 'manuscript-scene-one');
   original.title = '重新命名后的正文'; h.state.book.chapters.reverse(); h.context.opened = [];
   h.run('jumpToChapter=id=>opened.push(id);renderOutlineReading()');
-  const links = h.get('read-scene-one').querySelectorAll('.chapter-link');
-  assert.equal(links.length, 1); links[0].listeners.click();
+  const links = h.get('read-scene-one').querySelectorAll('.outline-manuscript-link');
+  assert.equal(links.length, 1); assert.equal(links[0].tagName, 'A'); assert.equal(links[0].href, '#manuscript');
+  assert.equal(links[0].textContent, original.title); assert.equal(links[0].dataset.chapter, original.id); links[0].listeners.click();
   assert.deepEqual(h.context.opened, ['manuscript-scene-one']);
+  assert.equal(h.state.outlineId, 'scene-one', 'Returning from the linked manuscript must preserve its actual outline source');
+});
+
+check('reading is a continuous document without overview cards, duplicate category headings or per-section controls', () => {
+  const h = harness(); load(h); h.state.outlineMode = 'read'; const before = JSON.stringify(h.state.book);
+  h.run('renderOutlineWorkspace()'); const reader = h.get('outline-reading');
+  assert.equal(reader.children[0].tagName, 'HEADER'); assert.equal(reader.children[0].children.length, 1);
+  assert.equal(reader.children[0].children[0].tagName, 'H1'); assert.equal(reader.children[0].children[0].textContent, h.state.book.title);
+  assert.ok(reader.children.slice(1).every(element => (element.className || '').includes('outline-read-section')), 'The authored sections follow each other directly');
+  for (const selector of ['.outline-volume-card', '.outline-volume-overview', '.outline-reader-category', '.outline-reader-category-heading', '.outline-read-section-top', '.outline-read-kind', '.chapter-link']) assert.equal(reader.querySelectorAll(selector).length, 0, selector);
+  assert.deepEqual(readingIds(h).filter(id => expectedTopics[id] === '分卷剧情'), ['volume-one', 'chapter-one', 'scene-one', 'volume-two', 'chapter-two']);
+  assert.equal(h.get('read-volume-one').children[0].tagName, 'H2'); assert.equal(h.get('read-chapter-one').children[0].tagName, 'H3');
+  assert.equal(JSON.stringify(h.state.book), before);
+});
+
+check('reading contents use real text anchors and expose all sections without edit-tree subtitles or folds', () => {
+  const h = harness(); load(h); h.state.outlineMode = 'read'; h.state.outlineCollapsed = new Set(['volume-one', 'chapter-one']);
+  h.run('renderOutlineWorkspace()'); const tree = h.get('outline-tree'), links = tree.querySelectorAll('.outline-node');
+  sameIds(navigationIds(h), readingIds(h), 'Every document section has exactly one contents link, even if its editing tree is folded');
+  for (const link of links) {
+    assert.equal(link.tagName, 'A'); assert.equal(link.href, '#read-' + link.dataset.outline);
+    assert.ok(h.get(link.href.slice(1))); assert.equal(link.querySelectorAll('small').length, 0); assert.equal(link.children.length, 1);
+  }
+  assert.equal(tree.querySelectorAll('.outline-fold').length, 0); assert.equal(h.get('outline-tree-tools').children.length, 0);
+  assert.ok(tree.querySelectorAll('.outline-toc-group-heading').every(heading => heading.children.length === 1), 'Theme headings have no counts');
+  let prevented = false; links.find(link => link.dataset.outline === 'scene-one').listeners.click({ preventDefault() { prevented = true; } });
+  assert.ok(prevented); assert.equal(h.state.outlineId, 'scene-one'); assert.ok(h.get('read-scene-one').scrolled);
+});
+
+check('filtered reading contents never link to contextual ancestors that are absent from the document', () => {
+  const h = harness(); load(h); h.state.outlineMode = 'read'; h.state.outlineCategory = '分卷剧情'; h.state.outlineKindFilter = 'scene'; h.state.outlineVolumeFilter = 'v1';
+  h.run('renderOutlineWorkspace()'); assert.deepEqual(navigationIds(h), ['scene-one']); assert.deepEqual(readingIds(h), ['scene-one']);
+  const link = h.get('outline-tree').querySelector('.outline-node'); assert.equal(link.href, '#read-scene-one');
+  h.get('outline-search').value = '没有匹配内容'; h.run('filterOutlineTree()'); assert.deepEqual(navigationIds(h), []); assert.deepEqual(readingIds(h), []);
+});
+
+check('reading classification, structural level and volume filters are available in a closed disclosure', () => {
+  const h = harness(); load(h); h.state.outlineMode = 'read'; h.run('renderOutlineWorkspace()');
+  const details = h.get('outline-filter-controls').querySelector('details'); assert.equal(details.open, false);
+  assert.ok(h.get('outline-filter-topic')); assert.ok(h.get('outline-filter-kind')); assert.ok(h.get('outline-filter-volume'));
+  details.open = true; details.listeners.toggle(); const topic = h.get('outline-filter-topic'); topic.value = '我的分类'; topic.listeners.change();
+  assert.equal(h.state.outlineCategory, '我的分类'); assert.equal(h.get('outline-filter-controls').querySelector('details').open, true);
+  assert.deepEqual(readingIds(h), ['custom']); assert.ok(h.get('outline-filter-controls').querySelector('summary').textContent.includes('我的分类'));
+});
+
+check('clicking a document heading edits that section and reveals only its ancestor path', () => {
+  const h = harness(); load(h); h.state.outlineMode = 'read'; h.state.outlineCollapsed = new Set(['volume-one', 'chapter-one', 'volume-two']);
+  const before = JSON.stringify(h.state.book); h.run('renderOutlineWorkspace()');
+  const title = h.get('read-scene-one').querySelector('.outline-heading-link'); assert.equal(title.textContent, '对峙'); title.listeners.click();
+  assert.equal(h.state.outlineMode, 'edit'); assert.equal(h.state.outlineId, 'scene-one'); assert.equal(h.get('outline-title').value, '对峙');
+  assert.ok(!h.state.outlineCollapsed.has('volume-one')); assert.ok(!h.state.outlineCollapsed.has('chapter-one')); assert.ok(h.state.outlineCollapsed.has('volume-two'));
+  assert.equal(JSON.stringify(h.state.book), before, 'Opening the editor must not rewrite authored sections');
 });
 
 check('folds hide descendants, but search reveals matched paths without deleting fold preferences', () => {
@@ -218,6 +275,39 @@ check('real outline backlinks clear restrictive filters, reveal the folded targe
   assert.ok(h.state.outlineCollapsed.has('volume-two'), 'Backlinks should not unfold unrelated volumes');
   assert.ok(h.get('read-scene-one')?.scrolled, 'Reading mode must scroll to the selected section, not just change the state ID');
   assert.equal(h.get('workspace').inert, false); assert.equal(h.get('dialog').inert, false);
+});
+
+for (const reducedMotion of [true, false]) {
+  for (const position of ['above', 'below']) {
+    check(`reading scroll keeps the document position while revealing the contents locally: reduce=${reducedMotion}, link=${position}`, () => {
+      const h = harness(); load(h); h.state.outlineMode = 'read'; h.run('renderOutlineWorkspace()');
+      const outer = h.get('outline-layout'), nav = new Element('nav'), tree = h.get('outline-tree'), reader = h.get('outline-reading');
+      nav.className = 'outline-tree'; nav.rect = { top: -650, bottom: -418 }; nav.clientTop = 2; nav.clientHeight = 230; nav.scrollTop = 200;
+      nav.append(tree); outer.append(nav, reader);
+      // On mobile the nav and document share this outer scroller. A descendant
+      // scrollIntoView in the nav would undo the manuscript's requested position.
+      nav.onScrollIntoView = () => { outer.scrollTop = 0; };
+      const target = h.get('read-scene-one'); target.onScrollIntoView = () => { outer.scrollTop = 1234; };
+      h.context.matchMedia = () => ({ matches: reducedMotion });
+      let selected;
+      h.context.requestAnimationFrame = callback => {
+        selected = tree.querySelector('.outline-node.active');
+        selected.rect = position === 'above' ? { top: -700, bottom: -670 } : { top: -300, bottom: -260 };
+        callback();
+      };
+      const before = JSON.stringify(h.state.book); h.run("selectOutlineNode('scene-one')");
+      assert.equal(target.scrolled.behavior, reducedMotion ? 'instant' : 'smooth'); assert.equal(target.scrolled.block, 'start');
+      assert.equal(outer.scrollTop, 1234, 'Revealing the selected contents link cannot pull the shared mobile scroller back to the nav');
+      assert.equal(selected.scrolled, undefined, 'Reading contents must never use scrollIntoView on their ancestors');
+      assert.equal(nav.scrollTop, position === 'above' ? 148 : 358, 'Only the nav scrollTop changes, in the direction needed to reveal its selected link');
+      assert.equal(JSON.stringify(h.state.book), before);
+    });
+  }
+}
+
+check('editing selection can still reveal its active tree node', () => {
+  const h = harness(); load(h); h.run("selectOutlineNode('scene-one')");
+  assert.equal(h.get('outline-tree').querySelector('.outline-node.active').scrolled.block, 'nearest');
 });
 
 (async () => {

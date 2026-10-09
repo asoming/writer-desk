@@ -61,9 +61,7 @@ function renderAtlasNavigation(){
   });
   const view=atlasViews().find(v=>v.id===state.atlasView)||atlasViews()[0];
   $('atlas-view-title').textContent=state.graphGroup||view.title;
-  $('atlas-description').textContent=state.graphGroup?T('高亮当前分组，并保留跨组直接关系。'):view.description;
-  $('atlas-book-title').textContent=state.book.title;
-  $('atlas-book-stats').textContent=T('{0} 位人物 · {1} 条手动关系 · {2} 个主题分图',people().length,activeRelations().length,state.book.atlasViews.length);
+  $('atlas-description').textContent=view.id.startsWith('view:')?view.description||'':'';$('atlas-description').hidden=!$('atlas-description').textContent;
   $('atlas-edit-view').hidden=!state.atlasView.startsWith('view:');
   $('graph-type').value=state.graphRelationType||'';
   $('atlas-map-button').classList.toggle('active',state.atlasMode!=='index');$('atlas-index-button').classList.toggle('active',state.atlasMode==='index');
@@ -114,7 +112,7 @@ function renderAtlas(){
   const layout=state.atlasLayout;state.graphWidth=Math.max(400,layout.width);state.graphHeight=Math.max(300,layout.height);
   graph.setAttribute('viewBox',`0 0 ${state.graphWidth} ${state.graphHeight}`);graph.setAttribute('width',state.graphWidth);graph.setAttribute('height',state.graphHeight);
   $('graph-empty').hidden=!!list.length;$('graph-empty').textContent=people().length?T('这个视图还没有人物，可调整分组或卷的筛选。'):T('先建立人物档案，或从正文识别人名。');
-  $('graph-count').textContent=T('{0} 位人物 · {1} 条关系 · {2} 条同章提及',list.length,manual.length,relations.length-manual.length);
+  $('graph-count').textContent=T('{0} 人 · {1} 条关系',list.length,manual.length)+(relations.length> manual.length?T(' · {0} 条同章提及',relations.length-manual.length):'');$('atlas-clear-focus').hidden=!state.atlasFocusId;
   const positions=new Map(layout.nodes.map(n=>[n.id,n])),routes=new Map(layout.edges.map(e=>[e.id,e]));
   const focus=state.atlasFocusId,neighbors=new Set([focus]);relations.filter(r=>r.fromId===focus||r.toId===focus).forEach(r=>{neighbors.add(r.fromId);neighbors.add(r.toId);});
   const defs=svgElement('defs');Object.entries(atlasEdgeColors).forEach(([type,color])=>{const marker=svgElement('marker',{id:'atlas-arrow-'+type,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto-start-reverse'});marker.append(svgElement('path',{d:'M 0 1 L 9 5 L 0 9 z',fill:color}));defs.append(marker);});graph.append(defs);

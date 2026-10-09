@@ -4,6 +4,12 @@ const clientStorage=window.WriterDesktop?.storage||window.localStorage;
 let uiLanguage='zh';
 try{uiLanguage=clientStorage.getItem('writer-desk.language')==='en'?'en':'zh';}catch{}
 const englishMessages={
+  "构思中": "Planning",
+  "已保存": "Saved",
+  "尚无章节": "No chapters yet",
+  "查看大纲": "View outline",
+  "{0} 人 · {1} 条关系": "{0} characters · {1} relationships",
+  " · {0} 条同章提及": " · {0} shared-chapter mentions",
   "搜索大纲标题或内容": "Search outline titles or content",
   "大纲导航": "Outline navigation",
   "另一个窗口修改了这部作品。本页内容已保留，请另存为新作品。": "This book changed in another window. Your edits are retained; save them as a new book.",

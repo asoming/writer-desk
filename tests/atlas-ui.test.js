@@ -28,11 +28,14 @@ class Element {
   focus() { this.focused = true; }
   select() {}
   scrollIntoView() {}
+  close() { this.open = false; }
 }
 
-function harness() {
+function harness({ strictIds = false } = {}) {
   const elements = new Map();
   const get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
+  const htmlIds = new Set([...fs.readFileSync(path.join(root, 'public/index.html'), 'utf8').matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
+  const documentGet = id => !strictIds || htmlIds.has(id) ? get(id) : null;
   const graphPanel = new Element(); get('people-graph').parentElement = graphPanel;
   const storage = { getItem: () => null, setItem() {}, removeItem() {}, length: 0 };
   function T(value, ...args) {
@@ -40,7 +43,7 @@ function harness() {
     return String(value).replace(/\{(\d+)\}/g, (_, index) => args[index] ?? '');
   }
   const context = vm.createContext({
-    document: { getElementById: get, createElement: tag => new Element(tag), createElementNS: (_, tag) => new Element(tag), addEventListener() {}, title: '' },
+    document: { getElementById: documentGet, createElement: tag => new Element(tag), createElementNS: (_, tag) => new Element(tag), addEventListener() {}, title: '' },
     addEventListener() {},
     crypto: { randomUUID }, sessionStorage: storage, clientStorage: storage, T,
     setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: callback => callback(), structuredClone,
@@ -54,7 +57,7 @@ function harness() {
   }
   vm.runInContext("markDirty=()=>{state.dirty=true;state.seq++;};renderNotes=()=>{};", context);
   const state = vm.runInContext('state', context);
-  return { context, state, get, run: expression => vm.runInContext(expression, context) };
+  return { context, state, get, htmlIds, run: expression => vm.runInContext(expression, context) };
 }
 
 function person(id, group = '', chapterIds = []) {
@@ -174,4 +177,70 @@ check('the real note-type change listener protects theme references and archived
   }
 });
 
-if (failed) process.exitCode = 1;
+async function checkAsync(name, test) {
+  try { await test(); console.log('PASS:', name); } catch (error) { failed += 1; console.error('FAIL:', name, '\n ', error.message); }
+}
+
+function navigationHarness() {
+  const h = harness({ strictIds: true }); load(h);
+  h.context.navRequests = [];
+  h.context.navBooks = [{ id: 'book-one', title: 'Book one', kind: 'long' }, { id: 'book-short', title: 'A short story', kind: 'short' }];
+  h.run("api=async path=>{navRequests.push(path);if(path==='/api/books')return{books:navBooks};throw new Error('Unexpected implicit book load: '+path);};renderShell=()=>{};bindEvents();bindWorkspaceEvents();");
+  return h;
+}
+
+(async () => {
+  await checkAsync('removed book switcher IDs are absent and all navigation listeners bind against the real HTML IDs', async () => {
+    const h = navigationHarness();
+    for (const id of ['open-library', 'book-context', 'context-book', 'context-outline', 'context-people', 'context-write', 'context-count', 'book-kind', 'book-meta', 'breadcrumb', 'mobile-context', 'page-kicker']) {
+      assert.equal(h.htmlIds.has(id), false, `Removed switcher/header element ${id} must not remain in the real UI`);
+    }
+    assert.ok(h.htmlIds.has('book-name'));
+    assert.ok(h.htmlIds.has('outline-breadcrumbs'), 'Outline node navigation is independent of the removed book switcher');
+    h.run("renderOutline=()=>{};renderPeople=()=>{};renderShelf=()=>{};selectChapter=()=>{};renderBacklinks=()=>{};state.view='outline';renderWorkspaceShell();state.view='shelf';renderWorkspaceShell();");
+  });
+
+  await checkAsync('left workspace navigation keeps the current book; shelf and legacy library action share one book selection surface', async () => {
+    const h = navigationHarness(); h.state.view = 'write';
+    for (const [id, view] of [['nav-outline', 'outline'], ['nav-people', 'people'], ['nav-write-long', 'write'], ['nav-shelf', 'shelf']]) {
+      await h.get(id).listeners.click();
+      assert.equal(h.state.view, view, id); assert.equal(h.state.book.id, 'book-one', `${id} must not open another book`);
+    }
+    assert.equal(h.state.collection, null);
+    h.state.view = 'people'; await h.run('showLibrary()');
+    assert.equal(h.state.view, 'shelf'); assert.equal(h.state.collection, null);
+    assert.ok(h.context.navRequests.every(request => request === '/api/books'), 'Navigation may refresh shelf summaries but must not fetch an implicit book');
+  });
+
+  await checkAsync('cross-kind writing and shelf tabs wait for explicit cover selection even when another kind already has books', async () => {
+    const h = navigationHarness(); h.state.view = 'write';
+    await h.get('nav-write-short').listeners.click();
+    assert.equal(h.state.kind, 'short'); assert.equal(h.state.view, 'shelf'); assert.equal(h.state.book, null);
+    assert.equal(h.state.collection, null);
+    await h.get('nav-people').listeners.click();
+    assert.equal(h.state.view, 'shelf'); assert.equal(h.state.kind, 'short'); assert.equal(h.state.book, null);
+    await h.get('shelf-long').listeners.click();
+    assert.equal(h.state.kind, 'long'); assert.equal(h.state.view, 'shelf'); assert.equal(h.state.book, null);
+    assert.ok(h.context.navRequests.every(request => request === '/api/books'), 'Available last/first books cannot be opened by a kind tab');
+  });
+
+  await checkAsync('empty-kind navigation and a failed save never silently switch or discard the current work', async () => {
+    const h = navigationHarness(); h.state.view = 'write'; h.context.navBooks = h.context.navBooks.filter(item => item.kind === 'long');
+    h.run('requireSaved=async()=>false');
+    await h.get('nav-write-short').listeners.click();
+    assert.equal(h.state.book.id, 'book-one'); assert.equal(h.state.kind, 'long'); assert.equal(h.state.view, 'write');
+    assert.equal(h.context.navRequests.length, 0, 'A failed save must stop navigation before any state changes');
+    h.run('requireSaved=async()=>true'); await h.get('nav-write-short').listeners.click();
+    assert.equal(h.state.kind, 'short'); assert.equal(h.state.view, 'shelf'); assert.equal(h.state.book, null);
+  });
+
+  await checkAsync('startup recovery with a missing last book opens the shelf instead of another book', async () => {
+    const h = navigationHarness(); h.state.book = null; h.state.view = 'write'; h.state.kind = 'short';
+    h.state.books = h.context.navBooks;
+    h.run("preference=key=>key==='yejian.last-book.short'?'removed-book':null");
+    await h.run("loadKind('short')");
+    assert.equal(h.state.book, null); assert.equal(h.state.kind, 'short'); assert.equal(h.state.view, 'shelf');
+    assert.equal(h.context.navRequests.length, 0, 'Missing recovery targets must not fall back to the first available book');
+  });
+  if (failed) process.exitCode = 1;
+})().catch(error => { console.error(error); process.exitCode = 1; });

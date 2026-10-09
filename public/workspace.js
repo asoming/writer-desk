@@ -27,51 +27,45 @@ function addField(form,title,control){const label=el('label','field-label',title
 function buildBookCover(book,size=''){
   const cover=el('div','shelf-cover '+size);cover.setAttribute('aria-label',book.title+T('的封面'));
   if(book.cover){const image=el('img');image.src=book.cover;image.alt=book.title+T('封面');cover.append(image);}
-  else{let hash=0;for(const ch of book.title)hash=(hash*31+ch.charCodeAt(0))>>>0;cover.classList.add('cover-tone-'+hash%5);cover.append(el('span','cover-category',kindName(book.kind)),el('strong','cover-book-title',book.title),el('span','cover-foot',T('作家工作台 · ')+(book.kind==='short'?T('短篇故事'):T('长篇小说'))));}
+  else{let hash=0;for(const ch of book.title)hash=(hash*31+ch.charCodeAt(0))>>>0;cover.classList.add('cover-tone-'+hash%5);cover.append(el('span','cover-category',kindName(book.kind)),el('strong','cover-book-title',book.title));}
   return cover;
 }
 async function showCollection(target='shelf',kind=state.kind){
-  await transition(async()=>{if(!await requireSaved())return;try{await refreshBooks();await loadKind(kind);state.view='shelf';state.collection=target;state.trail=null;closeDialog();closeNav();exitFocus();renderShell();}catch(e){toast(e.message);}});
+  return transition(async()=>{if(!await requireSaved())return false;try{await refreshBooks();if(state.book&&state.book.kind!==kind)clearBook();state.kind=kind;preference('yejian.kind',kind);state.view='shelf';state.collection=null;state.trail=null;closeDialog();closeNav();exitFocus();renderShell();return true;}catch(e){toast(e.message);return false;}});
 }
 function renderWorkspaceShell(){
   const missing=!state.book&&state.view!=='shelf';
   ['shelf','outline','people','write'].forEach(view=>{$(view+'-view').hidden=missing||state.view!==view;});
   $('no-book').hidden=!missing;$('no-book-title').textContent=T('还没有{0}作品',kindName());$('empty-new-book').textContent=T('＋ 新建{0}',kindName());
-  const collection=state.collection||'shelf',titles={shelf:T('书架'),outline:T('大纲库'),people:T('人物档案库'),write:T('{0}写作',kindName())},names={shelf:titles[collection],outline:T('故事大纲'),people:T('人物脉络'),write:T('{0}写作台',kindName())};
-  $('page-title').textContent=names[state.view];$('mobile-context').textContent=state.view==='shelf'?T('{0}作品',kindName()):state.book?.title||'';
-  $('breadcrumb').textContent=state.view==='shelf'?'':state.book?kindName()+' / '+state.book.title:'';$('book-kind').textContent=kindName();
-  if(state.book){$('book-name').textContent=state.book.title;document.title=state.book.title+T(' · 作家工作台');renderStats();}
-  ['shelf','outline','people'].forEach(view=>{const active=(state.view==='shelf'?collection:state.view)===view;$('nav-'+view).classList.toggle('active',active);$('nav-'+view).setAttribute('aria-current',active?'page':'false');});
-  ['long','short'].forEach(kind=>{const active=(state.view==='write'||state.view==='shelf'&&collection==='write')&&state.kind===kind;$('nav-write-'+kind).classList.toggle('active',active);$('nav-write-'+kind).setAttribute('aria-current',active?'page':'false');});
+  const names={shelf:T('书架'),outline:T('故事大纲'),people:T('人物脉络'),write:T('{0}写作台',kindName())};
+  $('page-title').textContent=names[state.view];$('book-name').textContent=state.book?.title||'';$('book-name').hidden=state.view==='shelf'||!state.book;
+  document.title=state.view==='shelf'?T('作家工作台 · {0}书架',kindName()):(state.book?.title||'')+T(' · 作家工作台');
+  if(state.book)renderStats();
+  ['shelf','outline','people'].forEach(view=>{const active=state.view===view;$('nav-'+view).classList.toggle('active',active);$('nav-'+view).setAttribute('aria-current',active?'page':'false');});
+  ['long','short'].forEach(kind=>{const active=state.view==='write'&&state.kind===kind;$('nav-write-'+kind).classList.toggle('active',active);$('nav-write-'+kind).setAttribute('aria-current',active?'page':'false');});
   $('link-current-chapter').disabled=!currentChapter();$('backlinks-edit').disabled=!currentChapter();$('toggle-notes').hidden=state.view!=='write'||missing;$('toggle-focus').hidden=state.view!=='write'||missing||!currentChapter();$('open-trash').disabled=!state.book;$('open-backup').disabled=!state.book;
-  $('chapter-panel-kind').textContent=T('{0}写作',kindName());$('chapter-list-label').textContent=state.kind==='short'?T('篇章'):T('卷与章节');$('add-volume').hidden=state.kind==='short';
+  $('chapter-list-label').textContent=state.kind==='short'?T('篇章'):T('卷与章节');$('add-volume').hidden=state.kind==='short';
   $('return-source').hidden=!state.trail;$('return-source').textContent=state.trail?.view==='outline'?T('返回大纲'):T('返回人物脉络');
-  $('book-context').hidden=state.view==='shelf'||missing;
-  if(state.book&&state.view!=='shelf'){
-    const contextBooks=state.books.some(b=>b.id===state.book.id)?state.books:[{id:state.book.id,title:state.book.title},...state.books];populateSelect($('context-book'),contextBooks,null,state.book.id);
-    $('context-count').textContent=state.kind==='long'?T`${activeVolumes().length} 卷 · ${activeChapters().length} 章`:T`${activeChapters().length} 篇章`;
-    ['outline','people','write'].forEach(view=>{$('context-'+view).classList.toggle('active',state.view===view);$('context-'+view).setAttribute('aria-current',state.view===view?'page':'false');});
-  }
-  preference('yejian.view',state.view);preference('yejian.collection',state.collection||'');
+  preference('yejian.view',state.view);preference('yejian.collection','');
   if(state.view==='shelf')renderShelf();
   if(state.book&&state.view==='outline')renderOutline();
   if(state.book&&state.view==='people')renderPeople();
   if(state.book&&state.view==='write'){selectChapter(state.chapterId||activeChapters()[0]?.id);renderBacklinks();requestAnimationFrame(resizeEditor);}
 }
 function renderCollection(){
-  const target=state.collection||'shelf',books=state.books.filter(b=>b.kind===state.kind),suffix={shelf:T('书架'),outline:T('大纲'),people:T('人物档案'),write:T('写作')}[target];
-  $('shelf-title').textContent=target==='shelf'?(state.kind==='long'?T('长篇书架'):T('短篇书架')):T('{0} · {1}',kindName(),suffix);$('shelf-meta').textContent=target==='shelf'?T`${books.length} 部作品 · ${books.reduce((sum,b)=>sum+b.charCount,0).toLocaleString()} 字`:T('选择一本书，打开它独立的{0}。',suffix);$('new-book').textContent=T('＋ 新建{0}',kindName());
+  const books=state.books.filter(b=>b.kind===state.kind);
+  $('shelf-title').textContent=state.kind==='long'?T('长篇书架'):T('短篇书架');$('new-book').textContent=T('＋ 新建{0}',kindName());
   ['long','short'].forEach(kind=>{$('shelf-'+kind).classList.toggle('active',state.kind===kind);$('shelf-'+kind).setAttribute('aria-pressed',String(state.kind===kind));$(kind+'-count').textContent=state.books.filter(b=>b.kind===kind).length;});
   const grid=$('shelf-grid');grid.replaceChildren();
   books.forEach(book=>{
-    const card=el('article','shelf-book'),coverButton=action('','cover-open',()=>openBook(book.id,target==='shelf'?'outline':target));coverButton.setAttribute('aria-label',T('打开')+book.title);coverButton.append(buildBookCover(book));
-    const info=el('div','shelf-book-info'),titleButton=action(book.title,'shelf-book-title',()=>openBook(book.id,target==='shelf'?'outline':target));
+    const card=el('article','shelf-book'),coverButton=action('','cover-open',()=>openBook(book.id,'outline'));coverButton.setAttribute('aria-label',T('打开')+book.title);coverButton.append(buildBookCover(book));
+    const info=el('div','shelf-book-info'),titleButton=action(book.title,'shelf-book-title',()=>openBook(book.id,'outline'));
     const meta=(book.kind==='long'?T`${book.volumeCount||0} 卷 · `:'')+T`${book.chapterCount} ${book.kind==='short'?T('篇章'):T('章')} · ${book.charCount.toLocaleString()} 字`;
-    info.append(titleButton,el('p','shelf-book-progress',book.latestChapterTitle?T('最近章节：')+book.latestChapterTitle:T('构思中 · 先写大纲，再开始正文')),el('p','shelf-book-excerpt',book.excerpt?.replace(/\n+/g,' ').slice(0,95)||T('把故事的想法放在这里，慢慢写成一本书。')));
-    const bottom=el('div','shelf-book-bottom');bottom.append(el('span',null,meta),el('span','shelf-book-plan',T`${book.outlineCount||0} 条大纲 · ${book.personCount||0} 位人物`));
+    info.append(titleButton,el('p','shelf-book-progress',book.latestChapterTitle?T('最近章节：')+book.latestChapterTitle:T('构思中')));
+    const bottom=el('div','shelf-book-bottom');bottom.append(el('span',null,meta));
     info.append(bottom,el('p','shelf-book-updated',T('最近编辑 ')+new Date(book.updatedAt).toLocaleString(uiLanguage==='en'?'en-GB':'zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})));
     const actions=el('div','shelf-book-actions');
-    [[T('大纲'),'outline'],[T('人物脉络'),'people'],[book.chapterCount?T('继续写作'):T('开始正文'),'write']].forEach(([label,view])=>actions.append(action(label,(target===view||target==='shelf'&&view==='write')?'primary-button':'secondary-button',()=>openBook(book.id,view))));
+    [[T('大纲'),'outline'],[T('人物脉络'),'people'],[book.chapterCount?T('继续写作'):T('开始正文'),'write']].forEach(([label,view])=>actions.append(action(label,view==='write'?'primary-button':'secondary-button',()=>openBook(book.id,view))));
     actions.append(action(T('封面与书名'),'text-button',async()=>{if(await openBook(book.id,'outline')&&state.book?.id===book.id)showBookSettings(true);}));card.append(coverButton,info,actions);grid.append(card);
   });
   if(!books.length){const empty=el('div','shelf-empty');empty.append(el('span',null,T('还没有{0}作品',kindName())),action(T('新建作品，从大纲开始'),'primary-button',()=>showBookName(false)));grid.append(empty);}
@@ -165,41 +159,54 @@ function selectOutlineNode(id){
   if(state.outlineMode==='read'){
     document.getElementById('read-'+id)?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
     $('outline-tree').querySelectorAll('.outline-node').forEach(button=>{const selected=button.dataset.outline===id;button.classList.toggle('active',selected);button.setAttribute('aria-current',String(selected));});
-  }else renderOutline();
-  requestAnimationFrame(()=>$('outline-tree').querySelector('.outline-node.active')?.scrollIntoView({block:'nearest'}));
+    requestAnimationFrame(()=>{
+      if(state.outlineMode!=='read')return;const tree=$('outline-tree'),node=tree.querySelector('.outline-node.active'),nav=tree.parentElement;if(!node||!nav)return;
+      const bounds=nav.getBoundingClientRect(),target=node.getBoundingClientRect(),top=bounds.top+nav.clientTop,bottom=top+nav.clientHeight;
+      if(target.top<top)nav.scrollTop+=target.top-top;else if(target.bottom>bottom)nav.scrollTop+=target.bottom-bottom;
+    });
+  }else{
+    renderOutline();requestAnimationFrame(()=>{if(state.outlineMode!=='read')$('outline-tree').querySelector('.outline-node.active')?.scrollIntoView({block:'nearest'});});
+  }
+}
+function outlineTextLink(text,className,href,handler){
+  const link=el('a',className,text);link.href=href;link.addEventListener('click',event=>{if(event?.ctrlKey||event?.metaKey||event?.shiftKey||event?.altKey)return;event?.preventDefault();handler();});return link;
 }
 function renderOutlineNavigation(){
-  const rows=outlineRows(),filtered=outlineFilteredRows(rows),matchIds=new Set(filtered.matches.map(({o})=>o.id)),map=new Map(rows.map(({o})=>[o.id,o])),parents=new Map(rows.map(({o})=>[o.id,o.parentId])),branches=new Set(rows.filter(({o})=>map.has(o.parentId)&&outlineTopic(o)===outlineTopic(map.get(o.parentId))).map(({o})=>o.parentId)),tree=$('outline-tree');
+  const rows=outlineRows(),filtered=outlineFilteredRows(rows),reading=state.outlineMode==='read',matchIds=new Set(filtered.matches.map(({o})=>o.id)),map=new Map(rows.map(({o})=>[o.id,o])),parents=new Map(rows.map(({o})=>[o.id,o.parentId])),branches=new Set(rows.filter(({o})=>map.has(o.parentId)&&outlineTopic(o)===outlineTopic(map.get(o.parentId))).map(({o})=>o.parentId)),tree=$('outline-tree');
   state.outlineCollapsed??=new Set();tree.replaceChildren();
   outlineTopicGroups(rows).forEach(topic=>{
-    const topicMatches=filtered.matches.filter(({o})=>outlineTopic(o)===topic);if(!topicMatches.length)return;const section=el('section','outline-toc-group'),heading=el('div','outline-toc-group-heading');heading.append(el('strong',null,outlineTopicLabel(topic)),el('span',null,String(topicMatches.length)));section.append(heading);
-    rows.filter(({o})=>filtered.visible.has(o.id)&&outlineTopic(o)===topic).forEach(({o})=>{
+    const topicMatches=filtered.matches.filter(({o})=>outlineTopic(o)===topic);if(!topicMatches.length)return;const section=el('section','outline-toc-group'),heading=el('div','outline-toc-group-heading');heading.append(el('strong',null,outlineTopicLabel(topic)));if(!reading)heading.append(el('span',null,String(topicMatches.length)));section.append(heading);
+    rows.filter(({o})=>(reading?matchIds:filtered.visible).has(o.id)&&outlineTopic(o)===topic).forEach(({o})=>{
     let parentId=o.parentId,hidden=false,remaining=parents.size,depth=0;
-    while(parentId&&remaining--){if(outlineTopic(map.get(parentId))===topic){depth++;if(!filtered.query&&state.outlineCollapsed.has(parentId)){hidden=true;break;}}parentId=parents.get(parentId);}
+    while(parentId&&remaining--){if(outlineTopic(map.get(parentId))===topic){depth++;if(!reading&&!filtered.query&&state.outlineCollapsed.has(parentId)){hidden=true;break;}}parentId=parents.get(parentId);}
     if(hidden)return;
     const context=!matchIds.has(o.id),row=el('div','outline-tree-row'+(context?' outline-context-row':''));row.style.setProperty('--outline-depth',Math.min(depth,6));
-    if(branches.has(o.id)){
+    if(!reading&&branches.has(o.id)){
       const collapsed=!filtered.query&&state.outlineCollapsed.has(o.id),fold=action(collapsed?'▸':'▾','outline-fold',()=>{if(state.outlineCollapsed.has(o.id))state.outlineCollapsed.delete(o.id);else state.outlineCollapsed.add(o.id);renderOutlineNavigation();});
       fold.setAttribute('aria-label',T('展开或收起大纲')+' '+(o.title||T('未命名节点')));fold.setAttribute('aria-expanded',String(!collapsed));row.append(fold);
-    }else row.append(el('span','outline-fold-spacer'));
-    const button=action('','outline-node'+(o.id===state.outlineId?' active':''),()=>{
+    }else if(!reading)row.append(el('span','outline-fold-spacer'));
+    const onSelect=()=>{
       if(context){state.outlineCategory='all';state.outlineKindFilter='';state.outlineVolumeFilter='';$('outline-search').value='';state.outlineId=o.id;renderOutline();if(state.outlineMode==='read')selectOutlineNode(o.id);}
       else selectOutlineNode(o.id);
-    });button.dataset.outline=o.id;button.dataset.kind=o.kind;button.setAttribute('aria-current',String(o.id===state.outlineId));
-    button.append(el('span','outline-node-title',o.title||T('未命名节点')),el('small',null,outlineKinds[o.kind]+(o.chapterIds.length?' · '+o.chapterIds.length+T(' 章'):'')));row.append(button);section.append(row);
+    },className='outline-node'+(o.id===state.outlineId?' active':''),button=reading?outlineTextLink('',className,'#read-'+o.id,onSelect):action('',className,onSelect);button.dataset.outline=o.id;button.dataset.kind=o.kind;button.setAttribute('aria-current',String(o.id===state.outlineId));
+    button.append(el('span','outline-node-title',o.title||T('未命名节点')));if(!reading)button.append(el('small',null,outlineKinds[o.kind]+(o.chapterIds.length?' · '+o.chapterIds.length+T(' 章'):'')));row.append(button);section.append(row);
     });tree.append(section);
   });
   $('outline-filter-count').textContent=T('{0} 个大纲节点',filtered.matches.length);$('outline-tree-empty').hidden=!!filtered.matches.length;
-  const tools=$('outline-tree-tools');tools.replaceChildren();const allCollapsed=branches.size>0&&[...branches].every(id=>state.outlineCollapsed.has(id)),foldAll=action(allCollapsed?T('全部展开'):T('全部收起'),'text-button',()=>{state.outlineCollapsed=allCollapsed?new Set():new Set(branches);renderOutlineNavigation();});foldAll.disabled=!branches.size||!!filtered.query;tools.append(foldAll);
+  const tools=$('outline-tree-tools');tools.replaceChildren();if(reading)return;const allCollapsed=branches.size>0&&[...branches].every(id=>state.outlineCollapsed.has(id)),foldAll=action(allCollapsed?T('全部展开'):T('全部收起'),'text-button',()=>{state.outlineCollapsed=allCollapsed?new Set():new Set(branches);renderOutlineNavigation();});foldAll.disabled=!branches.size||!!filtered.query;tools.append(foldAll);
 }
 function renderOutlineCategories(){
-  const rows=outlineRows(),container=$('outline-categories');container.replaceChildren();
+  const rows=outlineRows(),reading=state.outlineMode==='read',container=$('outline-categories');container.replaceChildren();
   const topics=outlineTopicGroups(rows);[['all',T('全部大纲')],...topics.map(topic=>[topic,outlineTopicLabel(topic)])].forEach(([topic,label],index)=>{
     const amount=topic==='all'?rows.length:rows.filter(({o})=>outlineTopic(o)===topic).length,button=action('','outline-category'+((state.outlineCategory||'all')===topic?' active':''),()=>{state.outlineCategory=topic;state.outlineId=outlineFilteredRows().matches[0]?.o.id||null;renderOutline();});
     button.dataset.topic=topic;button.dataset.tone=String(index%5);button.setAttribute('aria-pressed',String((state.outlineCategory||'all')===topic));button.append(el('span',null,label),el('strong',null,String(amount)));container.append(button);
   });
   const options=$('outline-topic-options');options.replaceChildren();topics.forEach(topic=>{const option=el('option');option.value=outlineTopicLabel(topic);options.append(option);});
-  const host=$('outline-filter-controls');host.replaceChildren();
+  const controls=$('outline-filter-controls');controls.replaceChildren();let host=controls;
+  if(reading){
+    const details=el('details','outline-filter-disclosure'),selected=[state.outlineCategory&&state.outlineCategory!=='all'?outlineTopicLabel(state.outlineCategory):'',outlineKinds[state.outlineKindFilter]||'',activeVolumes().find(v=>v.id===state.outlineVolumeFilter)?.title||''].filter(Boolean);details.open=!!state.outlineFilterOpen;details.append(el('summary',null,T('大纲分类')+(selected.length?' · '+selected.join(' / '):'')));details.addEventListener('toggle',()=>{state.outlineFilterOpen=details.open;});host=el('div','outline-filter-fields');details.append(host);controls.append(details);
+    const label=el('label','field-label',T('主题分类')),topic=el('select','text-field');topic.id='outline-filter-topic';label.htmlFor=topic.id;populateSelect(topic,topics.map(value=>({id:value,title:outlineTopicLabel(value)})),T('全部大纲'),state.outlineCategory==='all'?'':state.outlineCategory||'');topic.addEventListener('change',()=>{state.outlineCategory=topic.value||'all';state.outlineId=outlineFilteredRows().matches[0]?.o.id||null;renderOutline();});host.append(label,topic);
+  }
   const kindLabel=el('label','field-label',T('大纲层级')),kind=el('select','text-field');kind.id='outline-filter-kind';kindLabel.htmlFor=kind.id;populateSelect(kind,Object.entries(outlineKinds).map(([id,title])=>({id,title})),T('全部层级'),state.outlineKindFilter||'');kind.addEventListener('change',()=>{state.outlineKindFilter=kind.value;state.outlineId=outlineFilteredRows().matches[0]?.o.id||null;renderOutline();});host.append(kindLabel,kind);
   if(state.kind==='long'){
     const label=el('label','field-label',T('按卷查看')),select=el('select','text-field');select.id='outline-filter-volume';label.htmlFor=select.id;populateSelect(select,activeVolumes(),T('全部卷'),state.outlineVolumeFilter||'');state.outlineVolumeFilter=select.value;
@@ -208,9 +215,9 @@ function renderOutlineCategories(){
 }
 function renderOutlineWorkspace(){
   if(!state.book)return;
-  if(state.outlineFilterBook!==state.book.id){state.outlineFilterBook=state.book.id;state.outlineCategory='all';state.outlineKindFilter='';state.outlineVolumeFilter='';state.outlineCollapsed=new Set();$('outline-search').value='';}
+  if(state.outlineFilterBook!==state.book.id){state.outlineFilterBook=state.book.id;state.outlineCategory='all';state.outlineKindFilter='';state.outlineVolumeFilter='';state.outlineCollapsed=new Set();state.outlineFilterOpen=false;$('outline-search').value='';}
   const rows=outlineRows(),reading=state.outlineMode==='read';if(!rows.some(({o})=>o.id===state.outlineId))state.outlineId=outlineFilteredRows(rows).matches[0]?.o.id||null;
-  $('outline-book-title').textContent=state.book.title;$('outline-workspace-summary').textContent=T('按分类整理构思，按目录阅读整本故事。');$('outline-read-toggle').textContent=reading?T('返回编辑'):T('完整阅读');$('outline-build').hidden=state.kind==='short';$('outline-view').classList.toggle('outline-reading-mode',reading);
+  $('outline-read-toggle').textContent=reading?T('返回编辑'):T('完整阅读');$('outline-build').hidden=state.kind==='short';$('outline-view').classList.toggle('outline-reading-mode',reading);
   renderOutlineCategories();renderOutlineNavigation();const item=currentOutline();$('outline-empty').hidden=reading?!!rows.length:!!item;$('outline-template').hidden=!!rows.length;$('outline-empty-description').textContent=rows.length?T('这个分类还没有大纲，可以新建一个节点。'):T('先建立总纲、分卷与章节构思，再开始正文。');$('outline-detail').hidden=!item||reading;$('outline-reading').hidden=!reading||!rows.length;
   if(reading&&rows.length){renderOutlineReading();return;}if(!item)return;
   $('outline-title').value=item.title;$('outline-body').value=item.body;$('outline-path').textContent=outlineTopicLabel(outlineTopic(item))+' · '+outlineKinds[item.kind];$('outline-path').dataset.kind=item.kind;$('outline-kind').value=item.kind;
@@ -224,30 +231,22 @@ function renderOutlineWorkspace(){
 function filterOutlineTree(){renderOutlineNavigation();if(state.outlineMode==='read')renderOutlineReading();}
 function renderOutlineReading(){
   const rows=outlineRows(),filtered=outlineFilteredRows(rows),parents=new Map(rows.map(({o})=>[o.id,o])),reader=$('outline-reading'),header=el('header','outline-reader-header');reader.replaceChildren();
-  header.append(el('span','outline-reader-kicker',T('完整大纲阅读版')),el('h1',null,state.book.title),el('p',null,T('{0} 个大纲节点 · {1} 卷 · {2} 个关联章节',filtered.matches.length,activeVolumes().length,new Set(filtered.matches.flatMap(({o})=>o.chapterIds)).size)));reader.append(header);
+  header.append(el('h1',null,state.book.title));reader.append(header);
   if(!filtered.matches.length){reader.append(el('p','outline-reader-empty',T('没有符合筛选条件的大纲。')));return;}
-  outlineTopicGroups(rows).forEach((topic,index)=>{
-    const topicRows=filtered.matches.filter(({o})=>outlineTopic(o)===topic);if(!topicRows.length)return;const visibleIds=new Set(topicRows.map(({o})=>o.id)),group=el('section','outline-reader-category');group.dataset.topic=topic;group.dataset.tone=String(index%5);const heading=el('div','outline-reader-category-heading');heading.append(el('span','outline-category-marker'),el('h2',null,outlineTopicLabel(topic)),el('span',null,String(topicRows.length)));group.append(heading);
-    if(topic==='分卷剧情'&&state.kind==='long'&&!filtered.query&&!state.outlineKindFilter)group.append(renderOutlineVolumeOverview(rows));
+  outlineTopicGroups(rows).forEach(topic=>{
+    const topicRows=filtered.matches.filter(({o})=>outlineTopic(o)===topic);if(!topicRows.length)return;const visibleIds=new Set(topicRows.map(({o})=>o.id));
     const groupRows=topicRows.filter(({o})=>o.kind==='volume'||!outlineHasVisibleVolumeAncestor(o,visibleIds,parents));
-    groupRows.forEach(entry=>{group.append(outlineReadingSection(entry));if(entry.o.kind==='volume')topicRows.filter(({o})=>o.kind!=='volume'&&outlineHasVisibleVolumeAncestor(o,visibleIds,parents)===entry.o.id).forEach(child=>group.append(outlineReadingSection(child,true)));});
-    reader.append(group);
+    groupRows.forEach(entry=>{reader.append(outlineReadingSection(entry));if(entry.o.kind==='volume')topicRows.filter(({o})=>o.kind!=='volume'&&outlineHasVisibleVolumeAncestor(o,visibleIds,parents)===entry.o.id).forEach(child=>reader.append(outlineReadingSection(child,true)));});
   });
-}
-function renderOutlineVolumeOverview(rows){
-  const overview=el('section','outline-volume-overview'),volumes=activeVolumes().filter(v=>!state.outlineVolumeFilter||v.id===state.outlineVolumeFilter);if(!volumes.length)return overview;
-  overview.append(el('h3',null,T('分卷总览')));const grid=el('div','outline-volume-cards');volumes.forEach((volume,index)=>{
-    const owned=rows.filter(({o})=>outlineVolume(o)?.id===volume.id),target=owned.find(({o})=>o.kind==='volume')?.o||owned[0]?.o,card=action('','outline-volume-card',()=>{if(target){state.outlineCategory='all';state.outlineKindFilter='';$('outline-search').value='';renderOutline();selectOutlineNode(target.id);}else showNewOutline(null,{kind:'volume',volumeId:volume.id,title:volume.title,category:'分卷剧情'});});
-    card.append(el('span','outline-volume-number',String(index+1).padStart(2,'0')),el('strong',null,volume.title),el('p',null,volume.summary||T('分卷构思尚未填写')),el('small',null,T('{0} 个大纲 · {1} 章',owned.length,activeChapters().filter(c=>c.volumeId===volume.id).length)));grid.append(card);
-  });overview.append(grid);return overview;
 }
 function outlineHasVisibleVolumeAncestor(item,visibleIds,parentMap=null){
   const map=parentMap||new Map(activeOutline().map(o=>[o.id,o]));let cursor=map.get(item.parentId),remaining=map.size;while(cursor&&remaining--){if(cursor.kind==='volume'&&visibleIds.has(cursor.id))return cursor.id;cursor=map.get(cursor.parentId);}return null;
 }
 function outlineReadingSection({o,depth},nested=false){
-  const section=el('section','outline-read-section'+(nested?' outline-read-nested':''));section.id='read-'+o.id;section.dataset.kind=o.kind;const top=el('div','outline-read-section-top'),volume=outlineVolume(o);top.append(el('span','outline-read-kind',outlineKinds[o.kind]));if(volume&&o.kind!=='volume')top.append(el('span','outline-read-volume',volume.title));top.append(action(T('编辑这一节'),'text-button',()=>{state.outlineMode='edit';state.outlineId=o.id;revealOutlinePath(o.id);state.outlineCategory='all';state.outlineKindFilter='';state.outlineVolumeFilter='';$('outline-search').value='';renderOutline();}));
-  section.append(top,el(nested||depth?'h3':'h2',null,o.title||T('未命名节点')),el('div','outline-read-body',o.body||T('这一部分还没有填写。')));
-  if(o.chapterIds.length){const links=el('div','outline-reader-links');renderChapterLinks(links,o);section.append(links);}return section;
+  const section=el('section','outline-read-section'+(nested?' outline-read-nested':''));section.id='read-'+o.id;section.dataset.kind=o.kind;
+  const heading=el(o.kind==='volume'||!nested&&!depth?'h2':'h3'),edit=action(o.title||T('未命名节点'),'outline-heading-link',()=>{state.outlineMode='edit';state.outlineId=o.id;revealOutlinePath(o.id);state.outlineCategory='all';state.outlineKindFilter='';state.outlineVolumeFilter='';$('outline-search').value='';renderOutline();});heading.append(edit);
+  section.append(heading,el('div','outline-read-body',o.body||T('这一部分还没有填写。')));
+  if(o.chapterIds.length){const links=el('p','outline-reader-links');links.append(el('span','outline-links-label',T('关联正文')+' '));o.chapterIds.forEach(id=>{const chapter=state.book.chapters.find(c=>c.id===id);if(!chapter)return;const link=outlineTextLink((chapter.title||T('未命名章节'))+(chapter.deletedAt?' ('+T('已在回收站')+')':''),'outline-manuscript-link'+(chapter.deletedAt?' archived':''),'#manuscript',()=>{state.outlineId=o.id;jumpToChapter(id);});link.dataset.chapter=id;links.append(link);});section.append(links);}return section;
 }
 function outlineVolume(item){let cursor=item,limit=state.book.outline.length;while(cursor&&limit--){const volume=activeVolumes().find(v=>v.id===cursor.volumeId);if(volume)return volume;cursor=state.book.outline.find(o=>o.id===cursor.parentId);}return null;}
 function syncOutlineVolume(item){
@@ -287,7 +286,6 @@ function showCandidatePeople(){
 }
 function bindWorkspaceEvents(){
   $('outline-search').addEventListener('input',filterOutlineTree);$('chapter-search').addEventListener('input',renderChapters);$('graph-auto').addEventListener('change',()=>{state.showAutomatic=$('graph-auto').checked;renderPeople();});$('relation-index').addEventListener('toggle',renderRelationIndex);$('load-example').addEventListener('click',showExampleLibrary);
-  $('context-book').addEventListener('change',async event=>{const target=event.target.value;if(!await openBook(target,state.view))$('context-book').value=state.book?.id||'';});['outline','people','write'].forEach(view=>$('context-'+view).addEventListener('click',async()=>{if(!await requireSaved())return;state.view=view;state.trail=null;renderShell();}));
   $('add-volume').addEventListener('click',()=>showVolumeEditor());$('chapter-volume').addEventListener('change',()=>{const chapter=currentChapter();if(!chapter)return;chapter.volumeId=$('chapter-volume').value||null;state.volumeId=chapter.volumeId;markDirty();selectChapter(chapter.id);});
   $('empty-open-outline').addEventListener('click',()=>{state.view='outline';renderShell();});$('empty-add-chapter').addEventListener('click',()=>addChapter());
   $('outline-template').addEventListener('click',()=>{createOutlineTemplate();markDirty();renderOutline();});$('outline-read-toggle').addEventListener('click',()=>{state.outlineMode=state.outlineMode==='read'?'edit':'read';renderOutline();});$('outline-build').addEventListener('click',buildOutlineStructure);
