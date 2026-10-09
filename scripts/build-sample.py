@@ -159,7 +159,7 @@ def assemble():
         for c in chapters:
             if c["volumeId"] == volume["id"]:
                 manuscript += c["title"] + "\n\n" + c["body"] + "\n\n"
-    (ROOT / "examples" / "潮汐档案馆.txt").write_text(manuscript, "utf-8")
+    (ROOT / "examples" / "潮汐档案馆.txt").write_text(manuscript.rstrip() + "\n", "utf-8")
     print(json.dumps({"characters": count, "chapters": 36, "people": 32, "relations": len(relationships)}, ensure_ascii=False))
 
 
