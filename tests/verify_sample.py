@@ -59,6 +59,13 @@ with tempfile.TemporaryDirectory(prefix="writer-desk-sample-") as temporary:
 
         manifest = request("/api/examples")["examples"]
         assert manifest[0]["charCount"] == sum(counts)
+        defaults = request("/api/books")["books"]
+        default_demo = next(item for item in defaults if item["title"] == book["title"])
+        default_book = request("/api/books/" + default_demo["id"])["book"]
+        assert len(defaults) == 3
+        assert [c["body"] for c in default_book["chapters"]] == [c["body"] for c in chapters]
+        assert len(default_book["volumes"]) == 6 and len([p for p in default_book["notes"] if p["type"] == "人物"]) == 32
+        print("PASS: new app bookshelf includes the complete default novel alongside the two small examples")
         first = request("/api/examples/tide-archive", "POST", {})
         second = request("/api/examples/tide-archive", "POST", {})
         assert first["book"]["id"] != second["book"]["id"]

@@ -15,7 +15,7 @@ import sys
 root, output = Path(sys.argv[1]), Path(sys.argv[2])
 def quote(value):
     return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$').replace('%', '%%') + '"'
-output.write_text('[Desktop Entry]\nType=Application\nName=Writer\'s Desk\nName[zh_CN]=作家工作台\nComment=Local writing studio\nExec=' + quote(root / 'writer-desk') + '\nIcon=' + str(root / 'writer-desk.png') + '\nTerminal=false\nCategories=Office;TextEditor;\nStartupWMClass=writer-desk\n', encoding='utf-8')
+output.write_text('[Desktop Entry]\nType=Application\nName=作家工作台\nName[en]=Writer\'s Desk\nName[zh]=作家工作台\nName[zh_CN]=作家工作台\nComment=本地小说写作与策划工作台\nComment[en]=Local writing studio\nKeywords=作家工作台;作家;写作;小说;Writer\'s Desk;writer;desk;writing;novel;\nExec=' + quote(root / 'writer-desk') + '\nIcon=' + str(root / 'writer-desk.png') + '\nTerminal=false\nCategories=Office;\nStartupWMClass=writer-desk\n', encoding='utf-8')
 PY
 chmod 644 -- "$writer_desktop_dir/writer-desk.desktop"
 printf '%s\n' '已添加应用菜单入口。 / Added to the application menu.'

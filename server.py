@@ -11,6 +11,7 @@ import hmac
 import sqlite3
 import sys
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,6 +25,7 @@ MAX_REQUEST = 64 * 1024 * 1024
 MAX_BOOK = 25 * 1024 * 1024
 MAX_COVER = 2 * 1024 * 1024
 DESKTOP_TOKEN = os.environ.get("WRITER_DESKTOP_TOKEN", "")
+DEFAULT_EXAMPLE_MIGRATION = "default-tide-archive-v1"
 
 
 def now():
@@ -135,13 +137,60 @@ def insert_book(conn, book):
 
 def initialize():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with connect() as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("CREATE TABLE IF NOT EXISTS books(id TEXT PRIMARY KEY,title TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)")
-        conn.execute("CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
-        if not conn.execute("SELECT 1 FROM books LIMIT 1").fetchone():
-            insert_book(conn, sample_book())
-            insert_book(conn, sample_short())
+    deadline = time.monotonic() + 30
+    with DB_LOCK:
+        while True:
+            try:
+                with connect() as conn:
+                    conn.execute("PRAGMA journal_mode=WAL")
+                    # Serialize both fresh seeding and upgrades across processes.
+                    conn.execute("BEGIN IMMEDIATE")
+                    conn.execute("CREATE TABLE IF NOT EXISTS books(id TEXT PRIMARY KEY,title TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)")
+                    conn.execute("CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
+                    conn.execute("CREATE TABLE IF NOT EXISTS app_migrations(name TEXT PRIMARY KEY,applied_at TEXT NOT NULL)")
+                    if not conn.execute("SELECT 1 FROM books LIMIT 1").fetchone():
+                        insert_book(conn, sample_book())
+                        insert_book(conn, sample_short())
+                    install_default_example(conn)
+                return
+            except sqlite3.OperationalError as exc:
+                # Concurrent first connections can race while enabling WAL,
+                # before BEGIN IMMEDIATE's regular busy timeout takes effect.
+                code = getattr(exc, "sqlite_errorcode", None)
+                # sqlite_errorcode and named codes are unavailable on Python 3.9/3.10.
+                busy = ((code & 255) in (5, 6) if isinstance(code, int)
+                        else any(message in str(exc).lower() for message in ("locked", "busy")))
+                if not busy or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
+
+
+def install_default_example(conn):
+    """Add the complete demo once, preserving all existing works and edits."""
+    if conn.execute("SELECT 1 FROM app_migrations WHERE name=?", (DEFAULT_EXAMPLE_MIGRATION,)).fetchone():
+        return
+    source = ROOT / "examples" / "tide-archive.yejian.json"
+    if not source.is_file():
+        return  # A later installation that includes the asset can still apply it.
+    example = validate_book(json.loads(source.read_text("utf-8"))["book"])
+    chapter_ids = {item["id"] for item in example["chapters"]}
+    present = False
+    for row in conn.execute("SELECT id,payload FROM books"):
+        if row["id"] == example["id"]:
+            present = True
+            break
+        try:
+            existing = json.loads(row["payload"])
+        except (ValueError, TypeError):
+            continue  # A damaged existing row must remain untouched.
+        if isinstance(existing, dict) and isinstance(existing.get("chapters"), list) and any(
+                isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"] in chapter_ids for item in existing["chapters"]):
+            present = True
+            break
+    if not present:
+        insert_book(conn, restore_book(example))
+    # This also records an existing editable copy, so later removal is respected.
+    conn.execute("INSERT INTO app_migrations(name,applied_at) VALUES(?,?)", (DEFAULT_EXAMPLE_MIGRATION, now()))
 
 
 def checked_string(value, label, max_length, allow_empty=True):

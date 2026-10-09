@@ -1,6 +1,6 @@
 {
   "name": "writer-desk",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "作家工作台 — Writer's Desk. A local-first writing studio.",
   "author": "Writer's Desk contributors",
@@ -29,7 +29,7 @@
       "target": ["tar.gz"],
       "icon": "desktop/assets/icon.png",
       "category": "Office",
-      "desktop": {"entry": {"Name": "Writer's Desk", "Name[zh_CN]": "作家工作台", "Comment": "Local writing studio", "Comment[zh_CN]": "本地小说写作与策划工作台"}},
+      "desktop": {"entry": {"Name": "作家工作台", "Name[en]": "Writer's Desk", "Name[zh]": "作家工作台", "Name[zh_CN]": "作家工作台", "Comment": "本地小说写作与策划工作台", "Comment[en]": "Local writing studio", "Keywords": "作家工作台;作家;写作;小说;Writer's Desk;writer;desk;writing;novel;"}},
       "artifactName": "WriterDesk-${version}-linux-${arch}.${ext}"
     },
     "win": {"target": ["nsis"], "artifactName": "WriterDesk-${version}-windows-${arch}.${ext}"},
