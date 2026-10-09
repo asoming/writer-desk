@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld('WriterDesktop', {
   version: boot?.version || '',
   storage,
   setLanguage: language => ipcRenderer.invoke('writer:language', language),
+  openBookFolder: async bookId => {
+    const result = await ipcRenderer.invoke('writer:open-book-folder', bookId);
+    if (result?.error) throw Object.assign(new Error(result.error), { code: result.code });
+    return result;
+  },
   onBeforeClose: callback => {
     if (typeof callback !== 'function') throw new TypeError('A save callback is required');
     beforeClose = callback;

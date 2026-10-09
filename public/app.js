@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const state={book:null,revision:0,chapterId:null,noteId:null,dirty:false,seq:0,saving:null,timer:null,error:null,conflict:false,composing:false,transitioning:false,fontSize:19,kind:"long",view:"shelf",books:[],outlineId:null,personId:null,trail:null};
+const state={book:null,revision:0,chapterId:null,noteId:null,dirty:false,seq:0,saving:null,timer:null,error:null,conflict:false,composing:false,transitioning:false,fontSize:19,kind:"long",view:"shelf",books:[],outlineId:null,personId:null,trail:null,folderWarning:null};
 const activeChapters=()=>state.book?.chapters.filter(c=>!c.deletedAt)||[];
 const currentChapter=()=>state.book?.chapters.find(c=>c.id===state.chapterId);
 const currentNote=()=>state.book?.notes.find(n=>n.id===state.noteId&&!n.deletedAt);
@@ -43,7 +43,7 @@ async function saveNow(){
   state.saving=(async()=>{try{
     const r=await api('/api/books/'+payload.id,'PUT',{book:payload,revision:state.revision});state.revision=r.revision;
     if(state.seq===seq){state.dirty=false;removeDraft(payload.id);}else saveDraft();
-    state.error=null;$('error-banner').hidden=true;saveStatus(state.dirty?T('待保存'):T('已保存'));return true;
+    state.error=null;$('error-banner').hidden=true;saveStatus(state.dirty?T('待保存'):T('已保存'));if(r.folderWarning&&r.folderWarning!==state.folderWarning)toast(T(r.folderWarning));state.folderWarning=r.folderWarning||null;return true;
   }catch(error){state.error=error;state.conflict=!!error.conflict;saveDraft();saveStatus(T('保存未完成'),true);showError(error);return false;}})();
   const result=await state.saving;state.saving=null;if(result&&state.dirty)return saveNow();if(result&&state.view==='write')renderBacklinks();return result;
 }
@@ -74,7 +74,7 @@ function selectChapter(id){
 }
 
 function setBook(r){
-  clearTimeout(state.timer);state.book=r.book;normalizeWorkspaceBook(state.book);state.kind=state.book.kind;state.revision=r.revision;state.seq=0;state.dirty=false;state.error=null;state.conflict=false;state.noteId=null;state.trail=null;state.collection=null;state.analysis=null;state.analysisSeq=-1;state.graphZoom=null;state.graphVolume='';state.graphGroup='';state.graphScope='all';state.atlasView='core';state.atlasMode='graph';state.atlasFocusId=null;state.personEditing=false;state.graphRelationType='';state.atlasLayoutKey=null;state.outlineCategory='all';state.outlineVolumeFilter='';state.outlineKindFilter='';state.showAutomatic=false;state.collapsedVolumes=new Set(activeVolumes().map(v=>v.id));$('chapter-search').value='';$('outline-search').value='';$('person-search').value='';$('relation-search').value='';$('relation-type-filter').value='manual';
+  clearTimeout(state.timer);state.book=r.book;normalizeWorkspaceBook(state.book);state.kind=state.book.kind;state.revision=r.revision;state.seq=0;state.dirty=false;state.error=null;state.conflict=false;state.noteId=null;state.trail=null;state.collection=null;state.analysis=null;state.analysisSeq=-1;state.folderWarning=null;state.graphZoom=null;state.graphVolume='';state.graphGroup='';state.graphScope='all';state.atlasView='core';state.atlasMode='graph';state.atlasFocusId=null;state.personEditing=false;state.graphRelationType='';state.atlasLayoutKey=null;state.outlineCategory='all';state.outlineVolumeFilter='';state.outlineKindFilter='';state.showAutomatic=false;state.collapsedVolumes=new Set(activeVolumes().map(v=>v.id));$('chapter-search').value='';$('outline-search').value='';$('person-search').value='';$('relation-search').value='';$('relation-type-filter').value='manual';
   state.outlineId=activeOutline()[0]?.id||null;state.personId=people()[0]?.id||null;state.volumeId=activeVolumes()[0]?.id||null;
   $('error-banner').hidden=true;$('book-name').textContent=state.book.title;
   preference('yejian.last-book',state.book.id);preference('yejian.last-book.'+state.kind,state.book.id);preference('yejian.kind',state.kind);
@@ -194,7 +194,7 @@ const activeOutline=()=>state.book?.outline.filter(o=>!o.deletedAt)||[];
 const people=()=>state.book?.notes.filter(n=>n.type==='人物'&&!n.deletedAt)||[];
 const currentOutline=()=>activeOutline().find(o=>o.id===state.outlineId);
 const currentPerson=()=>people().find(n=>n.id===state.personId);
-function svgIcon(name){const paths={brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
+function svgIcon(name){const paths={folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
 async function refreshBooks(){state.books=(await api('/api/books')).books.map(b=>({...b,kind:b.kind||'long'}));}
 function clearBook(){clearTimeout(state.timer);state.book=null;state.chapterId=null;state.outlineId=null;state.personId=null;state.noteId=null;state.dirty=false;state.conflict=false;state.error=null;state.trail=null;$('error-banner').hidden=true;$('editor').disabled=true;$('chapter-title').disabled=true;$('book-name').textContent='';$('book-name').hidden=true;$('chapter-list').replaceChildren();$('trash-count').textContent='';saveStatus(T('本机保存'));document.title=T('作家工作台 · {0}书架',kindName());}
 async function loadKind(kind){

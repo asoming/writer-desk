@@ -33,6 +33,23 @@ function buildBookCover(book,size=''){
 async function showCollection(target='shelf',kind=state.kind){
   return transition(async()=>{if(!await requireSaved())return false;try{await refreshBooks();if(state.book&&state.book.kind!==kind)clearBook();state.kind=kind;preference('yejian.kind',kind);state.view='shelf';state.collection=null;state.trail=null;closeDialog();closeNav();exitFocus();renderShell();return true;}catch(e){toast(e.message);return false;}});
 }
+async function openBookFolder(bookId){
+  return transition(async()=>{
+    if(!await requireSaved())return false;
+    try{
+      if(typeof window.WriterDesktop?.openBookFolder==='function')await window.WriterDesktop.openBookFolder(bookId);
+      else{
+        const result=await api('/api/books/'+encodeURIComponent(bookId)+'/folder','POST',{}),input=el('input','text-field book-folder-path');
+        input.value=result.folder;input.readOnly=true;input.setAttribute('aria-label',T('作品文件夹路径'));
+        const buttons=el('div','dialog-actions');
+        buttons.append(action(T('复制路径'),'secondary-button',async()=>{try{await navigator.clipboard.writeText(input.value);toast(T('路径已复制。'));}catch{input.focus();input.select();toast(T('请按 Ctrl+C 复制选中的路径。'));}}),action(T('关闭'),'primary-button',closeDialog));
+        showDialog(T('作品文件夹'),el('p','dialog-description',T('浏览器中请复制路径，在文件管理器中打开。')),input,buttons);
+      }
+      if(state.book?.id===bookId)state.folderWarning=null;
+      return true;
+    }catch(error){toast(T(error.message||'无法打开作品文件夹。'));return false;}
+  });
+}
 function renderWorkspaceShell(){
   const missing=!state.book&&state.view!=='shelf';
   ['shelf','outline','people','write'].forEach(view=>{$(view+'-view').hidden=missing||state.view!==view;});
@@ -66,7 +83,10 @@ function renderCollection(){
     info.append(bottom,el('p','shelf-book-updated',T('最近编辑 ')+new Date(book.updatedAt).toLocaleString(uiLanguage==='en'?'en-GB':'zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})));
     const actions=el('div','shelf-book-actions');
     [[T('大纲'),'outline'],[T('人物脉络'),'people'],[book.chapterCount?T('继续写作'):T('开始正文'),'write']].forEach(([label,view])=>actions.append(action(label,view==='write'?'primary-button':'secondary-button',()=>openBook(book.id,view))));
-    actions.append(action(T('封面与书名'),'text-button',async()=>{if(await openBook(book.id,'outline')&&state.book?.id===book.id)showBookSettings(true);}));card.append(coverButton,info,actions);grid.append(card);
+    const tools=el('div','shelf-book-tools'),folder=action('','text-button book-folder-button',()=>openBookFolder(book.id));
+    folder.innerHTML=svgIcon('folder');folder.append(el('span',null,T('打开文件夹')));folder.setAttribute('aria-label',T('打开{0}的文件夹',book.title));
+    tools.append(action(T('封面与书名'),'text-button',async()=>{if(await openBook(book.id,'outline')&&state.book?.id===book.id)showBookSettings(true);}),folder);
+    actions.append(tools);card.append(coverButton,info,actions);grid.append(card);
   });
   if(!books.length){const empty=el('div','shelf-empty');empty.append(el('span',null,T('还没有{0}作品',kindName())),action(T('新建作品，从大纲开始'),'primary-button',()=>showBookName(false)));grid.append(empty);}
 }

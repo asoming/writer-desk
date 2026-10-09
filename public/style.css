@@ -342,3 +342,9 @@ html[lang=en] .shelf-book-bottom{flex-wrap:wrap}
 .chapter-panel-foot{justify-content:flex-end}
 @media(max-width:760px){.workspace-heading{display:block;min-width:0}.workspace-book-name{display:block;font-size:11px;max-width:190px;margin-top:3px}}
 @media(max-width:540px){.workspace-book-name{max-width:155px}.planning-view>.page-heading{min-height:62px}}
+
+/* Per-book actions stay together without adding another toolbar. */
+.shelf-book-tools{display:flex;width:100%;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap}
+.shelf-book-tools .text-button{width:auto;margin:0;gap:5px;white-space:nowrap}
+.book-folder-path{width:100%;font-family:ui-monospace,monospace;font-size:.8125rem}
+@media(min-width:761px) and (max-width:1100px){.shelf-book-tools{justify-content:center;gap:4px 12px}}

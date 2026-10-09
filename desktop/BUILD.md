@@ -4,7 +4,7 @@
 
 ## Run a Linux release
 
-当前 Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。解压 `WriterDesk-0.3.2-linux-x64.tar.gz`，运行目录里的 `writer-desk`。可选运行 `install-linux.sh` 添加当前用户的应用菜单入口；注册脚本需要系统 Python 3。入口默认显示“作家工作台”，英语环境显示“Writer's Desk”，可用中英文名称或写作关键词搜索。不要移动已注册的发行目录；移动后重新运行注册脚本。
+当前 Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。解压 `WriterDesk-0.3.3-linux-x64.tar.gz`，运行目录里的 `writer-desk`。可选运行 `install-linux.sh` 添加当前用户的应用菜单入口；注册脚本需要系统 Python 3。入口默认显示“作家工作台”，英语环境显示“Writer's Desk”，可用中英文名称或写作关键词搜索。不要移动已注册的发行目录；移动后重新运行注册脚本。
 
 程序始终启用 Chromium 沙箱。有些 Linux 发行版限制非特权 user namespace，此时请管理员按本机发行版的 Electron/Chromium 沙箱策略配置系统。不要用 `--no-sandbox` 规避。
 

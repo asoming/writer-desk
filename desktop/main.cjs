@@ -1,7 +1,8 @@
 'use strict';
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain, session } = require('electron');
 const { spawn } = require('node:child_process');
-const { randomBytes } = require('node:crypto');
+const { createHash, randomBytes } = require('node:crypto');
+const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -36,6 +37,80 @@ function trusted(event) {
 const localURL = value => { try { return new URL(value).origin === origin; } catch { return false; } };
 const externalURL = value => { try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password; } catch { return false; } };
 function openExternal(value) { if (externalURL(value)) shell.openExternal(value).catch(() => {}); }
+function folderError(code, zh, en) { return Object.assign(new Error(text(zh, en)), { code }); }
+function serviceFolderError(status, body) {
+  switch (body?.code) {
+    case 'FOLDER_CONFLICT': return folderError('folder-conflict', '作品文件夹中的导出文件已被修改或存在同名文件，未覆盖这些文件。请移走或改名后重试。', 'Exported files were modified outside the app or files with the same names already exist. Nothing was overwritten. Move or rename those files and try again.');
+    case 'FOLDER_UNSAFE': return folderError('unsafe-folder', '作品文件夹路径异常，无法安全同步。请检查目录是否为符号链接。', 'The book folder path cannot be safely synchronized. Check whether the directory is a symbolic link.');
+    case 'FOLDER_FAILURE': return folderError('folder-sync-failed', '无法同步作品文件夹，请检查磁盘空间和目录权限。作品仍已保存在本机。', 'Could not synchronize the book folder. Check disk space and folder permissions. Your book is still saved locally.');
+    case 'FOLDER_REQUEST': return folderError('invalid-book-id', '打开作品文件夹只接受作品编号，不接受文件路径。', 'Opening a book folder accepts only a book ID, not a file path.');
+    case 'FOLDER_UNSUPPORTED': return folderError('folder-unsupported', '当前系统不支持安全打开作品文件夹。作品仍已保存在本机。', 'This system does not support safely opening book folders. Your book is still saved locally.');
+    default: return status === 404
+      ? folderError('book-unavailable', '找不到这部作品，请返回书架后重试。', 'This book is unavailable. Return to the bookshelf and try again.')
+      : folderError('folder-prepare-failed', '无法准备作品文件夹，请检查保存状态后重试。', 'Could not prepare the book folder. Check that the book is saved and try again.');
+  }
+}
+function validBookId(value) {
+  if (typeof value !== 'string' || !value.trim() || ['.', '..'].includes(value) || [...value].length > 100 || /[\u0000-\u001f\u007f]/.test(value)) return false;
+  try { encodeURIComponent(value); return true; } catch { return false; }
+}
+function prepareBookFolder(bookId) {
+  if (!origin || !service || service.exitCode !== null) return Promise.reject(folderError('service-unavailable', '本机保存服务尚未就绪，请稍后重试。', 'The local save service is not ready. Try again shortly.'));
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    const finish = (error, result) => { if (completed) return; completed = true; clearTimeout(timer); error ? reject(error) : resolve(result); };
+    const timer = setTimeout(() => request.destroy(folderError('service-timeout', '准备作品文件夹超时，请重试。', 'Preparing the book folder timed out. Try again.')), 10000);
+    const request = http.request(new URL(`/api/books/${encodeURIComponent(bookId)}/folder`, origin), {
+      method: 'POST', headers: { 'X-Writer-Desktop': serviceToken, 'X-Writer-Client': '1', Origin: origin, 'Content-Type': 'application/json', 'Content-Length': 2 }
+    }, response => {
+      let size = 0, chunks = [];
+      response.on('data', chunk => {
+        size += chunk.length;
+        if (size > 64 * 1024) { request.destroy(folderError('invalid-response', '保存服务返回的文件夹信息不正确。', 'The save service returned invalid folder information.')); return; }
+        chunks.push(chunk);
+      });
+      response.on('error', () => finish(folderError('service-unavailable', '无法连接本机保存服务，请稍后重试。', 'Could not connect to the local save service. Try again shortly.')));
+      response.on('end', () => {
+        let body;
+        try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { }
+        if (response.statusCode !== 200) {
+          finish(serviceFolderError(response.statusCode, body));
+          return;
+        }
+        if (body === undefined) finish(folderError('invalid-response', '保存服务返回的文件夹信息不正确。', 'The save service returned invalid folder information.'));
+        else finish(null, body);
+      });
+    });
+    request.on('error', error => finish(['service-timeout', 'invalid-response'].includes(error.code) ? error : folderError('service-unavailable', '无法连接本机保存服务，请稍后重试。', 'Could not connect to the local save service. Try again shortly.')));
+    request.end('{}');
+  });
+}
+function checkedBookFolder(bookId, folder) {
+  const unsafe = () => folderError('unsafe-folder', '作品文件夹位置不正确，或包含符号链接，无法打开。', 'The book folder has an invalid location or contains a symbolic link and cannot be opened.');
+  if (typeof folder !== 'string' || folder.includes('\0') || !path.isAbsolute(folder)) throw unsafe();
+  const root = fs.realpathSync(userData);
+  const name = 'book-' + createHash('sha256').update(bookId, 'utf8').digest('hex');
+  const expected = path.join(root, 'data', 'books', name);
+  if (path.relative(expected, folder) !== '' || path.normalize(folder) !== folder) throw unsafe();
+  let current = root;
+  for (const part of ['data', 'books', name]) {
+    current = path.join(current, part);
+    const stat = fs.lstatSync(current);
+    if (stat.isSymbolicLink() || !stat.isDirectory() || path.relative(current, fs.realpathSync(current)) !== '') throw unsafe();
+  }
+  return expected;
+}
+async function openBookFolder(bookId) {
+  if (!validBookId(bookId)) throw folderError('invalid-book-id', '作品编号不正确，请返回书架后重试。', 'The book ID is invalid. Return to the bookshelf and try again.');
+  const prepared = await prepareBookFolder(bookId);
+  if (!Number.isSafeInteger(prepared?.revision) || prepared.revision < 1) throw folderError('invalid-response', '保存服务返回的文件夹信息不正确。', 'The save service returned invalid folder information.');
+  let folder;
+  try { folder = checkedBookFolder(bookId, prepared.folder); }
+  catch (error) { throw error.code === 'unsafe-folder' ? error : folderError('folder-unavailable', '作品文件夹不存在或无法读取，请重试。', 'The book folder is missing or cannot be read. Try again.'); }
+  try { if (await shell.openPath(folder)) throw new Error('File manager rejected the folder'); }
+  catch { throw folderError('open-folder-failed', '无法打开系统文件管理器，请检查桌面环境后重试。', 'Could not open the system file manager. Check your desktop environment and try again.'); }
+  return { folder, revision: prepared.revision };
+}
 function createMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ label: title(), submenu: [{ role: 'about' }, { type: 'separator' }, { label: text('退出', 'Quit'), accelerator: 'Cmd+Q', click: () => app.quit() }] }] : []),
@@ -55,6 +130,11 @@ ipcMain.handle('writer:language', (event, value) => {
   language = value;
   try { atomicWrite(settingsPath, { ...settings, language }); } catch { /* The UI also retains its preference. */ }
   createMenu(); return true;
+});
+ipcMain.handle('writer:open-book-folder', async (event, bookId) => {
+  if (!trusted(event)) return { error: text('当前窗口无权打开作品文件夹。', 'This window is not authorized to open book folders.'), code: 'untrusted-sender' };
+  try { return await openBookFolder(bookId); }
+  catch (error) { return { error: error.message, code: error.code || 'open-folder-failed' }; }
 });
 ipcMain.on('writer:storage', (event, request) => {
   event.returnValue = { error: 'Storage unavailable' };
@@ -201,7 +281,14 @@ else {
   app.on('window-all-closed', () => { if (allowQuit) app.quit(); });
   app.on('quit', () => { if (service && service.exitCode === null) service.kill(); });
   app.whenReady().then(async () => {
-    try { await startService(); await createWindow(); }
+    try {
+      await startService(); await createWindow();
+      const folderArgument = process.argv.indexOf('--open-book-folder');
+      if (folderArgument !== -1) {
+        try { await openBookFolder(process.argv[folderArgument + 1]); console.info('[writer-desk] Requested book folder opened.'); }
+        catch (error) { dialog.showMessageBox(window, { type: 'error', title: title(), message: error.message }); }
+      }
+    }
     catch (error) { allowQuit = true; await stopService(); dialog.showErrorBox(title(), text('无法启动本机写作服务。原作品库仍保留。\n\n', 'Could not start the local writing service. Existing work is preserved.\n\n') + error.message); app.quit(); }
   });
 }

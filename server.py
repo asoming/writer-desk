@@ -3,12 +3,15 @@
 import argparse
 import base64
 import binascii
+from contextlib import contextmanager
+import errno
 import hashlib
 import json
 import mimetypes
 import os
 import hmac
 import sqlite3
+import stat
 import sys
 import threading
 import time
@@ -26,6 +29,14 @@ MAX_BOOK = 25 * 1024 * 1024
 MAX_COVER = 2 * 1024 * 1024
 DESKTOP_TOKEN = os.environ.get("WRITER_DESKTOP_TOKEN", "")
 DEFAULT_EXAMPLE_MIGRATION = "default-tide-archive-v1"
+FOLDER_MANIFEST = ".writer-desk-folder.json"
+FOLDER_FILES = ("正文.txt", "作品.yejian.json")
+FOLDER_WARNING = "作品已保存，但作品文件夹暂未同步。请重新打开文件夹后重试。"
+FOLDER_CONFLICT = "作品文件夹中的导出文件已被修改或存在同名文件，未覆盖这些文件。请移走或改名后重试。"
+FOLDER_UNSAFE = "作品文件夹路径异常，无法安全同步。请检查目录是否为符号链接。"
+FOLDER_FAILURE = "无法同步作品文件夹，请检查磁盘空间和目录权限。作品仍已保存在本机。"
+FOLDER_REQUEST = "打开作品文件夹只接受作品编号，不接受文件路径。"
+FOLDER_UNSUPPORTED = "当前系统不支持安全打开作品文件夹。作品仍已保存在本机。"
 
 
 def now():
@@ -424,6 +435,197 @@ def restore_book(data):
     return validate_book(book)
 
 
+class FolderExportError(Exception):
+    def __init__(self, message, status=409):
+        super().__init__(message)
+        self.status = status
+        self.code = {FOLDER_CONFLICT: "FOLDER_CONFLICT", FOLDER_UNSAFE: "FOLDER_UNSAFE",
+                     FOLDER_UNSUPPORTED: "FOLDER_UNSUPPORTED"}.get(message, "FOLDER_FAILURE")
+
+
+def manuscript_text(book):
+    """Follow authored volume/chapter order, excluding every recycled item."""
+    volumes = [item for item in book["volumes"] if not item["deletedAt"]]
+    deleted_volumes = {item["id"] for item in book["volumes"] if item["deletedAt"]}
+    chapters = [item for item in book["chapters"] if not item["deletedAt"] and item["volumeId"] not in deleted_volumes]
+    parts = [book["title"]]
+    if book["kind"] == "long":
+        volume_ids = {item["id"] for item in volumes}
+        groups = [(volume["title"], [item for item in chapters if item["volumeId"] == volume["id"]]) for volume in volumes]
+        groups.append(("未分卷", [item for item in chapters if item["volumeId"] not in volume_ids]))
+    else:
+        groups = [("", chapters)]
+    for title, items in groups:
+        if not items:
+            continue
+        if title:
+            parts.append(title)
+        parts.extend((item["title"] or "未命名章节") + "\n\n" + item["body"] for item in items)
+    return "\ufeff" + "\n\n".join(parts) + "\n"
+
+
+@contextmanager
+def book_folder_directory(book_id, create):
+    """Walk directory descriptors without following links, including ancestors."""
+    folder = book_folder_path(book_id)
+    root, name = folder.parent.parent, folder.name
+    if not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
+        raise FolderExportError(FOLDER_UNSUPPORTED)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptors = []
+    try:
+        current = os.open(root.anchor, flags)
+        descriptors.append(current)
+        for part in root.parts[1:]:
+            current = os.open(part, flags, dir_fd=current)
+            descriptors.append(current)
+        for part in ("books", name):
+            if create:
+                try:
+                    os.mkdir(part, mode=0o700, dir_fd=current)
+                except FileExistsError:
+                    pass
+            try:
+                current = os.open(part, flags, dir_fd=current)
+            except FileNotFoundError:
+                if not create:
+                    yield None, folder
+                    return
+                raise
+            descriptors.append(current)
+        yield current, folder
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def folder_file(folder_fd, name, digest_only=False):
+    try:
+        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder_fd)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(descriptor, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > (MAX_REQUEST if digest_only else 65536):
+            raise FolderExportError(FOLDER_CONFLICT)
+        if not digest_only:
+            return stream.read(65537)
+        digest = hashlib.sha256()
+        size = 0
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            size += len(chunk)
+            if size > MAX_REQUEST:
+                raise FolderExportError(FOLDER_CONFLICT)
+            digest.update(chunk)
+        return digest.hexdigest()
+
+
+def write_folder_temp(folder_fd, content, temporary):
+    name = ".writer-desk-" + uid() + ".tmp"
+    descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=folder_fd)
+    temporary.add(name)
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(content)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return name
+
+
+def sync_folder_files(folder_fd, book_id, book, revision, updated_at, create):
+    raw_manifest = folder_file(folder_fd, FOLDER_MANIFEST)
+    if raw_manifest is None:
+        if not create:
+            return False
+        manifest = {"format": "writer-desk-folder", "bookId": book_id, "revision": 0,
+                    "files": {name: None for name in FOLDER_FILES}}
+    else:
+        try:
+            manifest = json.loads(raw_manifest)
+            valid = (isinstance(manifest, dict) and manifest.get("format") == "writer-desk-folder" and manifest.get("bookId") == book_id
+                     and isinstance(manifest.get("files"), dict) and set(manifest["files"]) == set(FOLDER_FILES)
+                     and ("pending" not in manifest or isinstance(manifest["pending"], dict) and set(manifest["pending"]) == set(FOLDER_FILES)))
+            if not valid:
+                raise ValueError("invalid manifest")
+            for values in (manifest["files"], manifest.get("pending", {})):
+                if not all(value is None or isinstance(value, str) and len(value) == 64 and all(ch in "0123456789abcdef" for ch in value) for value in values.values()):
+                    raise ValueError("invalid file digest")
+        except (ValueError, TypeError):
+            raise FolderExportError(FOLDER_CONFLICT) from None
+    allowed = {name: {manifest["files"][name], manifest.get("pending", {}).get(name)} for name in FOLDER_FILES}
+
+    def check_owned(name):
+        digest = folder_file(folder_fd, name, digest_only=True)
+        if digest is not None and digest not in allowed[name]:
+            raise FolderExportError(FOLDER_CONFLICT)
+        return digest
+
+    previous = {name: check_owned(name) for name in FOLDER_FILES}
+    backup = {"format": "yejian-backup", "version": 3, "exportedAt": updated_at, "book": book}
+    contents = {FOLDER_FILES[0]: manuscript_text(book).encode("utf-8"),
+                FOLDER_FILES[1]: json.dumps(backup, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"}
+    hashes = {name: hashlib.sha256(content).hexdigest() for name, content in contents.items()}
+    completed = {"format": "writer-desk-folder", "bookId": book_id, "revision": revision, "files": hashes}
+    if "pending" not in manifest and manifest == completed and previous == hashes:
+        return True
+    pending = {**manifest, "files": previous, "pending": hashes}
+    temporary = set()
+    try:
+        staged = {name: write_folder_temp(folder_fd, content, temporary) for name, content in contents.items() if previous[name] != hashes[name]}
+        pending_temp = write_folder_temp(folder_fd, json.dumps(pending, ensure_ascii=False).encode("utf-8"), temporary)
+        completed_temp = write_folder_temp(folder_fd, json.dumps(completed, ensure_ascii=False).encode("utf-8"), temporary)
+        # Recheck after staging, then record both allowed generations before any
+        # replacement. Interrupted multi-file updates can safely resume later.
+        for name in FOLDER_FILES:
+            check_owned(name)
+        if folder_file(folder_fd, FOLDER_MANIFEST) != raw_manifest:
+            raise FolderExportError(FOLDER_CONFLICT)
+        os.replace(pending_temp, FOLDER_MANIFEST, src_dir_fd=folder_fd, dst_dir_fd=folder_fd)
+        os.fsync(folder_fd)
+        for name, temporary_name in staged.items():
+            check_owned(name)
+            os.replace(temporary_name, name, src_dir_fd=folder_fd, dst_dir_fd=folder_fd)
+        os.fsync(folder_fd)
+        os.replace(completed_temp, FOLDER_MANIFEST, src_dir_fd=folder_fd, dst_dir_fd=folder_fd)
+        os.fsync(folder_fd)
+        return True
+    finally:
+        for name in temporary:
+            try:
+                os.unlink(name, dir_fd=folder_fd)
+            except FileNotFoundError:
+                pass
+
+
+def book_folder_path(book_id):
+    return Path(os.path.abspath(DB_PATH.parent)) / "books" / ("book-" + hashlib.sha256(book_id.encode("utf-8")).hexdigest())
+
+
+def sync_book_folder(book_id, create=False):
+    """Read the latest committed revision under a cross-process SQLite lock."""
+    if not create and not os.path.lexists(book_folder_path(book_id)):
+        return None  # Ordinary saving does not opt in to filesystem exports.
+    try:
+        with DB_LOCK, connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM books WHERE id=?", (book_id,)).fetchone()
+            if row is None:
+                return None
+            with book_folder_directory(book_id, create) as (folder_fd, folder):
+                if folder_fd is None:
+                    return None
+                book = upgrade_book(json.loads(row["payload"]))
+                if not sync_folder_files(folder_fd, book_id, book, row["revision"], row["updated_at"], create):
+                    return None
+                return {"folder": str(folder), "revision": row["revision"]}
+    except FolderExportError:
+        raise
+    except OSError as exc:
+        raise FolderExportError(FOLDER_UNSAFE if exc.errno in (errno.ELOOP, errno.ENOTDIR) else FOLDER_FAILURE,
+                                409 if exc.errno in (errno.ELOOP, errno.ENOTDIR) else 500) from exc
+    except Exception as exc:
+        raise FolderExportError(FOLDER_FAILURE, 500) from exc
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WritersDesk/0.2"
 
@@ -514,7 +716,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             data = self.read_json()
-            path = urlparse(self.path).path
+            path = unquote(urlparse(self.path).path)
+            if path.startswith("/api/books/") and path.endswith("/folder"):
+                if not isinstance(data, dict) or data:
+                    self.send_json({"error": FOLDER_REQUEST, "code": "FOLDER_REQUEST"}, 400)
+                    return
+                book_id = path[len("/api/books/"):-len("/folder")]
+                result = sync_book_folder(book_id, create=True)
+                self.send_json(result if result else {"error": "找不到这部作品"}, 200 if result else 404)
+                return
             if path == "/api/books":
                 title = checked_string(data.get("title", "未命名作品"), "作品名称", 200, False)
                 kind = data.get("kind", "long")
@@ -544,6 +754,8 @@ class Handler(BaseHTTPRequestHandler):
                         number += 1
                 insert_book(conn, book)
             self.send_json({"book": book, "revision": 1, "updatedAt": now()}, 201)
+        except FolderExportError as exc:
+            self.send_json({"error": str(exc), "code": exc.code}, exc.status)
         except (ValueError, TypeError, AttributeError) as exc:
             self.send_json({"error": str(exc)}, 400)
         except PermissionError as exc:
@@ -555,7 +767,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_PUT(self):
         try:
             data = self.read_json()
-            path = urlparse(self.path).path
+            path = unquote(urlparse(self.path).path)
             if not path.startswith("/api/books/"):
                 self.send_json({"error": "找不到这个操作"}, 404)
                 return
@@ -576,7 +788,16 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("INSERT INTO history(book_id,revision,payload,saved_at) VALUES(?,?,?,?)", (book_id, row["revision"], row["payload"], stamp))
                 conn.execute("DELETE FROM history WHERE book_id=? AND id NOT IN (SELECT id FROM history WHERE book_id=? ORDER BY id DESC LIMIT 30)", (book_id, book_id))
                 conn.execute("UPDATE books SET title=?,payload=?,revision=revision+1,updated_at=? WHERE id=?", (book["title"], json.dumps(book, ensure_ascii=False), stamp, book_id))
-            self.send_json({"revision": row["revision"] + 1, "updatedAt": stamp})
+            result = {"revision": row["revision"] + 1, "updatedAt": stamp}
+            try:
+                sync_book_folder(book_id)
+            except Exception as exc:
+                result["folderWarning"] = FOLDER_WARNING
+                try:
+                    print(f"作品文件夹同步失败: {exc}", file=sys.stderr)
+                except (OSError, ValueError):
+                    pass  # Logging cannot invalidate an already committed save.
+            self.send_json(result)
         except (ValueError, TypeError, AttributeError) as exc:
             self.send_json({"error": str(exc)}, 400)
         except PermissionError as exc:

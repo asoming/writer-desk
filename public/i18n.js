@@ -4,6 +4,21 @@ const clientStorage=window.WriterDesktop?.storage||window.localStorage;
 let uiLanguage='zh';
 try{uiLanguage=clientStorage.getItem('writer-desk.language')==='en'?'en':'zh';}catch{}
 const englishMessages={
+  "打开文件夹": "Open folder",
+  "打开{0}的文件夹": "Open folder for {0}",
+  "作品文件夹": "Book folder",
+  "作品文件夹路径": "Book folder path",
+  "复制路径": "Copy path",
+  "路径已复制。": "Path copied.",
+  "请按 Ctrl+C 复制选中的路径。": "Press Ctrl+C to copy the selected path.",
+  "浏览器中请复制路径，在文件管理器中打开。": "Copy this path and open it in your file manager.",
+  "无法打开作品文件夹。": "Could not open the book folder.",
+  "作品已保存，但作品文件夹暂未同步。请重新打开文件夹后重试。": "Your book is saved, but its folder could not be updated. Try opening the folder again.",
+  "作品文件夹中的导出文件已被修改或存在同名文件，未覆盖这些文件。请移走或改名后重试。": "Exported files were modified or files with the same names already exist. Move or rename them and try again; they have been kept.",
+  "作品文件夹路径异常，无法安全同步。请检查目录是否为符号链接。": "The book folder cannot be updated safely. Check whether the folder is a symbolic link.",
+  "无法同步作品文件夹，请检查磁盘空间和目录权限。作品仍已保存在本机。": "Could not update the book folder. Check disk space and folder permissions. Your book is still saved locally.",
+  "打开作品文件夹只接受作品编号，不接受文件路径。": "Opening a book folder requires a book ID, not a file path.",
+  "当前系统不支持安全打开作品文件夹。作品仍已保存在本机。": "This system does not support safely opening book folders. Your book is still saved locally.",
   "构思中": "Planning",
   "已保存": "Saved",
   "尚无章节": "No chapters yet",
