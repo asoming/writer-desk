@@ -4,6 +4,29 @@ const clientStorage=window.WriterDesktop?.storage||window.localStorage;
 let uiLanguage='zh';
 try{uiLanguage=clientStorage.getItem('writer-desk.language')==='en'?'en':'zh';}catch{}
 const englishMessages={
+  "搜索大纲标题或内容": "Search outline titles or content",
+  "大纲导航": "Outline navigation",
+  "另一个窗口修改了这部作品。本页内容已保留，请另存为新作品。": "This book changed in another window. Your edits are retained; save them as a new book.",
+  "暂时无法保存，编辑内容仍留在本页。请重试或下载备份。": "Saving is temporarily unavailable. Your edits remain on this page. Retry or download a backup.",
+  "无法写入本机，请检查磁盘空间后重试": "Cannot write to this device. Check available disk space and retry.",
+  "读取失败，原有文件仍保留在本机": "Could not read the data. Existing files remain on this device.",
+  "找不到这部作品": "This book could not be found",
+  "示例小说尚未安装": "The sample novel is not installed",
+  "请选择作家工作台导出的完整备份文件（v1、v2 或 v3）": "Choose a full Writer’s Desk backup (v1, v2 or v3)",
+  "封面仅支持 PNG、JPEG 或 WebP 图片": "Covers support PNG, JPEG or WebP images",
+  "封面图片编码不正确": "The cover image is not encoded correctly",
+  "封面内容与图片格式不符或图片已损坏": "The cover does not match its format or is damaged",
+  "单部作品超过 25 MB，请拆分为多部作品": "This book exceeds 25 MB. Split it into separate books.",
+  "作品编号或保存版本不正确": "The book ID or save revision is invalid",
+  "请使用本机地址访问": "Use the local address to access this app",
+  "人物关系需要连接本作品中两个不同的人物": "A relationship must connect two different characters in this book",
+  "关联正文必须指向本作品的章节": "Manuscript links must refer to chapters in this book",
+  "大纲层级不能循环或指向其他作品": "Outline sections cannot form a cycle or refer to another book",
+  "活动章节不能归入已回收的卷": "Active chapters cannot belong to a volume in Trash",
+  "短篇作品不能设置分卷": "Short stories do not use volumes",
+  "所属卷必须指向本作品的卷": "The assigned volume must belong to this book",
+  "查找卷或章节": "Find volume or chapter",
+  "查找大纲、人物或关系": "Find outline, character or relationship",
   " · 同章提及": " · Shared-chapter mentions",
   " · 大纲": " · Outline",
   " · 作家工作台": " · Writer’s Desk",
@@ -169,7 +192,7 @@ const englishMessages={
   "未命名章节": "Untitled chapter",
   "未命名节点": "Untitled section",
   "未命名资料": "Untitled note",
-  "本地规则会找出部分“姓名＋动作”的写法，可能遗漏或误认。确认后建立人物档案，正文提及与同章提及会自动更新；人物关系含义仍由你填写。": "Local rules suggest names from narrative actions and may miss or misidentify them. Confirm suggestions to create profiles. Mentions update automatically; relationship meanings are written by you.",
+  "本地规则会找出部分“姓名＋说／问”等对白写法，可能遗漏或误认。确认后建立人物档案，正文提及与同章提及会自动更新；人物关系含义仍由你填写。": "Local rules suggest names from dialogue cues such as a name followed by said or asked, and may miss or misidentify them. Confirm suggestions to create profiles. Mentions update automatically; relationship meanings are written by you.",
   "本机保存": "Local storage",
   "本章关联 · ": "Chapter links · ",
   "本章的大纲与人物关联已更新。": "This chapter’s outline and character links were updated.",
@@ -452,11 +475,14 @@ localizeStaticInterface();
 function bindLanguageEvents(){
   $('language-select').addEventListener('change',async event=>{
     const next=event.target.value==='en'?'en':'zh';
-    if(!await requireSaved()){event.target.value=uiLanguage;return;}
-    try{clientStorage.setItem('writer-desk.language',next);await window.WriterDesktop?.setLanguage(next);location.reload();}
-    catch(error){event.target.value=uiLanguage;toast(error.message);}
+    const changed=await transition(async()=>{
+      if(!await requireSaved())return false;
+      try{clientStorage.setItem('writer-desk.language',next);await window.WriterDesktop?.setLanguage(next);location.reload();return true;}
+      catch(error){try{clientStorage.setItem('writer-desk.language',uiLanguage);}catch{}toast(error.message);return false;}
+    });
+    if(!changed)event.target.value=uiLanguage;
   });
-  window.WriterDesktop?.setLanguage(uiLanguage);
+  window.WriterDesktop?.setLanguage(uiLanguage)?.catch(()=>{});
   window.WriterDesktop?.onBeforeClose(async()=>{
     if(state.composing){saveDraft();return false;}
     return await requireSaved();

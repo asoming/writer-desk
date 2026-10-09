@@ -102,7 +102,7 @@ function renderVolumeChapters(){
     }
     if(!query&&state.collapsedVolumes?.has(volume.id)){container.append(group);return;}
     list.forEach((chapter,index)=>{const button=action('','chapter-item'+(chapter.id===state.chapterId?' active':''),()=>selectChapter(chapter.id));button.dataset.chapter=chapter.id;button.setAttribute('aria-current',String(chapter.id===state.chapterId));const top=el('span','chapter-item-top');top.append(el('span','chapter-index',String(all.indexOf(chapter)+1)),el('span','chapter-item-title',chapter.title||T('未命名章节')));button.append(top,el('span','chapter-item-count',chapter.body?T`${count(chapter.body).toLocaleString()} 字`:T('尚未动笔')));group.append(button);});
-    if(!list.length){group.append(action(T('＋ 在此卷新建章节'),'volume-new-chapter',()=>{state.volumeId=volume.id;addChapter();}));}container.append(group);
+    if(!list.length){group.append(action(state.kind==='short'?T('＋ 新建章节'):T('＋ 在此卷新建章节'),'volume-new-chapter',()=>{state.volumeId=volume.id;addChapter();}));}container.append(group);
   });
   if(!container.children.length)container.append(el('p','empty-hint',query?T('没有匹配的章节。'):T('先建立卷，再添加章节。')));
 }
@@ -125,7 +125,7 @@ function renderOutlineWorkspace(){
   if(!state.book)return;const rows=outlineRows(),reading=state.outlineMode==='read';if(!rows.some(({o})=>o.id===state.outlineId))state.outlineId=rows[0]?.o.id||null;
   $('outline-book-title').textContent=state.book.title+T(' · 大纲');$('outline-read-toggle').textContent=reading?T('返回编辑'):T('完整阅读');$('outline-build').hidden=state.kind==='short';
   const tree=$('outline-tree');tree.replaceChildren();rows.forEach(({o,depth})=>{const button=action('','outline-node'+(o.id===state.outlineId?' active':''),()=>{state.outlineId=o.id;if(state.outlineMode==='read'){document.getElementById('read-'+o.id)?.scrollIntoView({behavior:'smooth',block:'start'});tree.querySelectorAll('.outline-node').forEach(b=>b.classList.toggle('active',b.dataset.outline===o.id));}else renderOutline();});button.dataset.outline=o.id;button.style.paddingLeft=12+Math.min(depth,5)*15+'px';button.append(el('span','outline-node-title',o.title||T('未命名节点')),el('small',null,outlineKinds[o.kind]+(o.chapterIds.length?' · '+o.chapterIds.length+T(' 章'):'')));tree.append(button);});
-  const item=currentOutline();$('outline-empty').hidden=!!item;$('outline-detail').hidden=!item||reading;$('outline-reading').hidden=!item||!reading;
+  filterOutlineTree();const item=currentOutline();$('outline-empty').hidden=!!item;$('outline-detail').hidden=!item||reading;$('outline-reading').hidden=!item||!reading;
   if(!item)return;if(reading){renderOutlineReading();return;}
   $('outline-title').value=item.title;$('outline-body').value=item.body;$('outline-path').textContent=outlineKinds[item.kind]+' · '+state.book.title;$('outline-kind').value=item.kind;
   $('outline-volume-field').hidden=state.kind==='short';populateSelect($('outline-volume'),activeVolumes(),T('全书 / 未指定卷'),item.volumeId||'');
@@ -133,6 +133,7 @@ function renderOutlineWorkspace(){
   const siblings=rows.filter(({o})=>o.parentId===item.parentId).map(({o})=>o),index=siblings.indexOf(item);$('outline-up').disabled=index<=0;$('outline-down').disabled=index>=siblings.length-1;
   $('outline-create-chapter').textContent=item.kind==='volume'?T('建立对应卷'):item.kind==='story'?T('生成卷章目录'):item.chapterIds.length?T('打开关联章节'):T('按此大纲创建章节');renderChapterLinks($('outline-links'),item);
 }
+function filterOutlineTree(){const query=$('outline-search').value.trim().toLocaleLowerCase(),items=activeOutline(),visible=new Set();if(query)items.filter(o=>(o.title+' '+o.body).toLocaleLowerCase().includes(query)).forEach(o=>{let cursor=o;while(cursor&&!visible.has(cursor.id)){visible.add(cursor.id);cursor=items.find(p=>p.id===cursor.parentId);}});$('outline-tree').querySelectorAll('[data-outline]').forEach(row=>row.hidden=!!query&&!visible.has(row.dataset.outline));}
 function renderOutlineReading(){
   const reader=$('outline-reading');reader.replaceChildren(el('h1',null,state.book.title),el('p','subtle',T('完整大纲 · ')+activeOutline().length+T(' 个节点')));
   outlineRows().forEach(({o,depth})=>{const section=el('section','outline-read-section');section.id='read-'+o.id;section.append(el('span','outline-read-kind',outlineKinds[o.kind]),el(depth?'h3':'h2',null,o.title||T('未命名节点')),el('div','outline-read-body',o.body||T('这一部分还没有填写。')));const links=el('div');if(o.chapterIds.length)renderChapterLinks(links,o);section.append(links,action(T('编辑这一节'),'text-button',()=>{state.outlineMode='edit';state.outlineId=o.id;renderOutline();}));reader.append(section);});
@@ -214,14 +215,14 @@ function renderRelationIndex(){
   relations.forEach(r=>{const row=action('','relation-index-row',()=>r.automatic?showAutomaticRelation(r):showRelation(r));row.append(el('span',null,personName(r.fromId)+' ↔ '+personName(r.toId)),el('strong',null,r.label||T('未命名关系')),el('small',null,(relationTypes[r.type]||T('其他'))+(r.stage?' · '+r.stage:'')));container.append(row);});if(!relations.length)container.append(el('p','empty-hint',T('没有符合条件的关系。')));
 }
 function showCandidatePeople(){
-  const analysis=analyzeWorkspace(),content=el('div'),checks=[];content.append(el('p','dialog-description',T('本地规则会找出部分“姓名＋动作”的写法，可能遗漏或误认。确认后建立人物档案，正文提及与同章提及会自动更新；人物关系含义仍由你填写。')));
+  const analysis=analyzeWorkspace(),content=el('div'),checks=[];content.append(el('p','dialog-description',T('本地规则会找出部分“姓名＋说／问”等对白写法，可能遗漏或误认。确认后建立人物档案，正文提及与同章提及会自动更新；人物关系含义仍由你填写。')));
   if(analysis.ambiguous.length)content.append(el('p','analysis-warning',T('以下称呼对应多位人物，未自动归属：')+analysis.ambiguous.map(a=>a.name).join('、')+T('。请在人物档案中调整别名。')));
   analysis.candidates.forEach(candidate=>{const row=el('div','candidate-person'),label=el('label','checkbox-row'),box=el('input'),name=el('input','text-field');box.type='checkbox';box.checked=true;name.value=candidate.name;name.maxLength=200;name.setAttribute('aria-label',T('确认人名 ')+candidate.name);label.append(box,el('span',null,T('登记为人物')));row.append(label,name);candidate.excerpts.slice(0,2).forEach(excerpt=>row.append(el('p','subtle',excerpt.text)));content.append(row);checks.push({box,name});});
   if(!analysis.candidates.length)content.append(el('p','empty-hint',T('没有新的待确认人名。也可以先手动建立人物，填写姓名与别名；正文会自动按这些称呼索引。')));
   const buttons=el('div','dialog-actions');buttons.append(action(T('关闭'),'secondary-button',closeDialog));if(checks.length)buttons.append(action(T('确认并建立人物'),'primary-button',async()=>{let added=0;checks.filter(c=>c.box.checked).forEach(({name})=>{const title=name.value.trim();if(!title||people().some(p=>p.title===title))return;state.book.notes.push({id:uid(),type:'人物',title,body:'',aliases:[],profile:emptyProfile(),chapterIds:[],deletedAt:null});added++;});if(added){markDirty();await saveNow();}closeDialog();renderPeople();toast(T('已建立 ')+added+T(' 位人物，正文提及已更新。'));}));content.append(buttons);showDialog(T('从正文识别人名'),content);
 }
 function bindWorkspaceEvents(){
-  $('chapter-search').addEventListener('input',renderChapters);$('graph-auto').addEventListener('change',()=>{state.showAutomatic=$('graph-auto').checked;renderGraph();});$('relation-index').addEventListener('toggle',renderRelationIndex);$('load-example').addEventListener('click',showExampleLibrary);
+  $('outline-search').addEventListener('input',filterOutlineTree);$('chapter-search').addEventListener('input',renderChapters);$('graph-auto').addEventListener('change',()=>{state.showAutomatic=$('graph-auto').checked;renderGraph();});$('relation-index').addEventListener('toggle',renderRelationIndex);$('load-example').addEventListener('click',showExampleLibrary);
   $('context-book').addEventListener('change',async event=>{const target=event.target.value;if(!await openBook(target,state.view))$('context-book').value=state.book?.id||'';});['outline','people','write'].forEach(view=>$('context-'+view).addEventListener('click',async()=>{if(!await requireSaved())return;state.view=view;state.trail=null;renderShell();}));
   $('add-volume').addEventListener('click',()=>showVolumeEditor());$('chapter-volume').addEventListener('change',()=>{const chapter=currentChapter();if(!chapter)return;chapter.volumeId=$('chapter-volume').value||null;state.volumeId=chapter.volumeId;markDirty();selectChapter(chapter.id);});
   $('empty-open-outline').addEventListener('click',()=>{state.view='outline';renderShell();});$('empty-add-chapter').addEventListener('click',()=>addChapter());

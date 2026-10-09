@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Assemble the original, separately authored chapters into an editable v3 example."""
 import base64
-from collections import Counter
 import hashlib
 import json
 from pathlib import Path

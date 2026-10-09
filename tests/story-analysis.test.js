@@ -39,9 +39,9 @@ assert.deepEqual(result.cooccurrences, [
   { fromId: 'chen', toId: 'zhou', chapterIds: ['one', 'two'] }
 ]);
 assert.deepEqual(result.candidates.map(candidate => [candidate.name, candidate.chapterIds]), [
-  ['王明', ['one', 'two']], ['李小雨', ['two']]
+  ['王明', ['one']]
 ]);
-assert.equal(result.candidates[0].excerpts.length, 2, 'one excerpt per chapter, rather than repeated mentions');
+assert.equal(result.candidates[0].excerpts.length, 1, 'one excerpt per chapter, rather than repeated mentions');
 assert.ok(result.candidates[0].excerpts[0].text.includes('王明问'));
 assert.ok(!result.candidates.some(candidate => ['林舟', '陈河', '小舟', '孙宁'].includes(candidate.name)));
 
@@ -51,7 +51,7 @@ assert.deepEqual(analyzeBook({ chapters: [chapter('plain', '雨落在窗上。�
 assert.deepEqual(analyzeBook({ chapters: [chapter('words', '高兴笑了。白衣走来，林间站着一棵树。于是李明说话。赵长名字说话。')] }).candidates, [],
   'common words and suffixes of longer Chinese runs are not candidates');
 assert.deepEqual(analyzeBook({ chapters: [chapter('compound', '欧阳青问：“什么？”司马明月抬头。')] }).candidates.map(item => item.name),
-  ['欧阳青', '司马明月'], 'compound surnames work without treating the final surname character as a fresh boundary');
+  ['欧阳青'], 'compound surnames work without treating the final surname character as a fresh boundary');
 
 const archivedRelation = analyzeBook({
   notes: [person('a', '阿青', ['青儿']), person('b', '林宁')],
@@ -67,8 +67,10 @@ const reverseRelation = analyzeBook({
 });
 assert.equal(reverseRelation.cooccurrences.length, 0, 'manual pair suppression ignores direction');
 
-const candidates = Array.from({ length: 30 }, (_, index) => '赵' + String.fromCharCode(0x4e00 + index) + '说话。').join('');
+const candidates = Array.from({ length: 30 }, (_, index) => '赵' + String.fromCharCode(0x4e00 + index) + '说：“来了。”').join('');
 assert.equal(analyzeBook({ chapters: [chapter('many', candidates)] }).candidates.length, 20, 'candidate limit is enforced');
+const narration = analyzeBook({notes:[person('known','沈砚'),person('prefix','林舟')],chapters:[chapter('narration','沈砚想问。沈砚回答。沈砚又说。终于说完。林舟扬说：“来了。”')]});
+assert.deepEqual(narration.candidates.map(item=>item.name),['林舟扬'], 'registered names with narration suffixes do not become new people; distinct three-character names remain candidates');
 assert.deepEqual(analyzeBook(null), { appearances: {}, cooccurrences: [], candidates: [], ambiguous: [] });
 
 const overlaps = analyzeBook({

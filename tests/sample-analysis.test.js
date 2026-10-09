@@ -1,0 +1,17 @@
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const {performance}=require('node:perf_hooks');
+require('../public/story-analysis.js');
+const analysis=globalThis.WriterAnalysis;
+const book=JSON.parse(fs.readFileSync(require('node:path').join(__dirname,'../examples/tide-archive.yejian.json'),'utf8')).book;
+const snapshot=JSON.stringify(book),start=performance.now(),result=analysis.analyzeBook(book),elapsed=performance.now()-start;
+const people=book.notes.filter(p=>p.type==='人物');
+assert.equal(people.length,32);
+assert.ok(people.every(p=>result.appearances[p.id].length>0));
+assert.ok(result.cooccurrences.length>0);
+assert.equal(JSON.stringify(book),snapshot);
+const manualPairs=new Set(book.relations.map(r=>JSON.stringify([r.fromId,r.toId].sort())));
+assert.ok(result.cooccurrences.every(r=>!manualPairs.has(JSON.stringify([r.fromId,r.toId].sort()))));
+assert.deepEqual(result.candidates,[], 'The fully registered sample must not suggest narrative fragments as new people.');
+console.log(`PASS: complete novel analysis (${elapsed.toFixed(1)} ms), all 32 people indexed, ${result.cooccurrences.length} shared-chapter pairs, manual relationships kept separate.`);

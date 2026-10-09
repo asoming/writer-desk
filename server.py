@@ -447,7 +447,7 @@ class Handler(BaseHTTPRequestHandler):
                 book["cover"] = checked_cover(data.get("cover", ""))
             elif path == "/api/import":
                 if not isinstance(data, dict) or data.get("format") != "yejian-backup" or type(data.get("version")) is not int or data.get("version") not in (1, 2, 3):
-                    raise ValueError("请选择页间导出的完整备份文件（v1、v2 或 v3）")
+                    raise ValueError("请选择作家工作台导出的完整备份文件（v1、v2 或 v3）")
                 book = restore_book(data.get("book"))
             elif path == "/api/examples/tide-archive":
                 example = ROOT / "examples" / "tide-archive.yejian.json"
@@ -459,6 +459,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "找不到这个操作"}, 404)
                 return
             with DB_LOCK, connect() as conn:
+                if path.startswith("/api/examples/"):
+                    titles = {json.loads(row["payload"])["title"] for row in conn.execute("SELECT payload FROM books")}
+                    original_title, number = book["title"], 2
+                    while book["title"] in titles:
+                        book["title"] = f"{original_title} ({number})"
+                        number += 1
                 insert_book(conn, book)
             self.send_json({"book": book, "revision": 1, "updatedAt": now()}, 201)
         except (ValueError, TypeError, AttributeError) as exc:

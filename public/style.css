@@ -331,3 +331,7 @@ html[lang=en] .shelf-book-bottom{flex-wrap:wrap}html[lang=en] .book-switch .eyeb
 .graph-auto-toggle{display:flex;gap:8px;align-items:center;padding:10px 20px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}
 .graph-auto-toggle input{accent-color:var(--accent)}.example-card{padding:8px 0 16px}.example-card h3{margin:3px 0 10px}
 @media(max-width:540px){.shelf-heading-actions{justify-content:flex-start}.shelf-heading-actions button{font-size:12px}}
+
+.choice-search{position:sticky;top:0;z-index:1;background:#fff;margin-bottom:8px}
+
+.outline-search{position:sticky;top:0;z-index:2;background:#fff;margin-bottom:10px;font-size:12px;min-height:34px}
