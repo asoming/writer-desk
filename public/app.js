@@ -96,7 +96,7 @@ function showDialog(title,...children){$('dialog-title').textContent=title;$('di
 function closeDialog(){$('dialog').close();}
 async function showLibrary(){await showCollection('shelf');}
 
-function showBookName(rename,kind=state.kind){showBookSettings(rename,kind);}
+function showBookName(rename,kind=state.kind){if(rename&&state.book)return editBookSettings(state.book.id);showBookSettings(rename,kind);}
 
 function addChapter(title,volumeId=state.volumeId){
   if(!state.book||state.composing||state.transitioning)return null;

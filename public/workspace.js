@@ -85,21 +85,42 @@ function renderCollection(){
     [[T('大纲'),'outline'],[T('人物脉络'),'people'],[book.chapterCount?T('继续写作'):T('开始正文'),'write']].forEach(([label,view])=>actions.append(action(label,view==='write'?'primary-button':'secondary-button',()=>openBook(book.id,view))));
     const tools=el('div','shelf-book-tools'),folder=action('','text-button book-folder-button',()=>openBookFolder(book.id));
     folder.innerHTML=svgIcon('folder');folder.append(el('span',null,T('打开文件夹')));folder.setAttribute('aria-label',T('打开{0}的文件夹',book.title));
-    tools.append(action(T('封面与书名'),'text-button',async()=>{if(await openBook(book.id,'outline')&&state.book?.id===book.id)showBookSettings(true);}),folder);
+    tools.append(action(T('封面与书名'),'text-button',()=>editBookSettings(book.id)),folder);
     actions.append(tools);card.append(coverButton,info,actions);grid.append(card);
   });
   if(!books.length){const empty=el('div','shelf-empty');empty.append(el('span',null,T('还没有{0}作品',kindName())),action(T('新建作品，从大纲开始'),'primary-button',()=>showBookName(false)));grid.append(empty);}
 }
-function showBookSettings(rename,kind=state.kind){
-  if(rename&&!state.book)return;const book=rename?state.book:{title:T('未命名作品'),kind,cover:''};let cover=book.cover;
+async function editBookSettings(bookId){
+  return transition(async()=>{
+    if(!await requireSaved())return false;
+    try{const record=await api('/api/books/'+encodeURIComponent(bookId));showBookSettings(true,record.book.kind,record);return true;}
+    catch(error){toast(error.message);return false;}
+  });
+}
+async function saveBookSettings(record,title,cover){
+  return transition(async()=>{
+    if(!await requireSaved())return false;
+    const current=state.book?.id===record.book.id,book=clone(current?state.book:record.book);
+    book.title=title;book.cover=cover;
+    const result=await api('/api/books/'+encodeURIComponent(book.id),'PUT',{book,revision:current?state.revision:record.revision});
+    record.book=book;record.revision=result.revision;
+    if(current){state.book.title=title;state.book.cover=cover;state.revision=result.revision;state.folderWarning=result.folderWarning||null;}
+    if(result.folderWarning)toast(T(result.folderWarning));
+    closeDialog();await refreshBooks();renderShell();return true;
+  });
+}
+function showBookSettings(rename,kind=state.kind,record=null){
+  if(rename&&!record?.book&&!state.book)return;
+  if(rename&&!record)record={book:clone(state.book),revision:state.revision};
+  const book=rename?record.book:{title:T('未命名作品'),kind,cover:''};let cover=book.cover;
   const form=el('form'),input=el('input','text-field');input.id='book-title-input';input.maxLength=200;input.required=true;input.value=rename?book.title:'';input.placeholder=T('给这部作品起一个名字');addField(form,T('{0}作品名称',kindName(kind)),input);
   const coverRow=el('div','cover-editor'),preview=el('div'),tools=el('div'),file=el('input');file.type='file';file.accept='image/png,image/jpeg,image/webp';file.hidden=true;file.setAttribute('aria-label',T('上传作品封面'));
   function updatePreview(){preview.replaceChildren(buildBookCover({title:input.value.trim()||T('未命名作品'),kind,cover},'cover-preview'));}
   tools.append(action(T('上传封面'),'secondary-button',()=>file.click()),action(T('使用文字封面'),'text-button',()=>{cover='';updatePreview();}),el('p','subtle',T('支持 PNG、JPG、WebP，封面只保存在本机。')));coverRow.append(preview,tools,file);form.append(el('label','field-label',T('作品封面')),coverRow);
   input.addEventListener('input',updatePreview);file.addEventListener('change',async()=>{const selected=file.files[0];if(!selected)return;try{if(!['image/png','image/jpeg','image/webp'].includes(selected.type)||selected.size>12*1024*1024)throw new Error(T('请选择 12 MB 以内的 PNG、JPG 或 WebP 图片。'));const bitmap=await createImageBitmap(selected);const canvas=document.createElement('canvas');canvas.width=600;canvas.height=800;const context=canvas.getContext('2d'),scale=Math.max(600/bitmap.width,800/bitmap.height);context.fillStyle='#fff';context.fillRect(0,0,600,800);context.drawImage(bitmap,(600-bitmap.width*scale)/2,(800-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale);bitmap.close();cover=canvas.toDataURL('image/jpeg',.88);updatePreview();}catch(e){toast(e.message||T('这张图片无法读取。'));}finally{file.value='';}});
   const buttons=el('div','dialog-actions'),submit=el('button','primary-button',rename?T('保存作品信息'):T('创建作品，开始构思'));submit.type='submit';buttons.append(action(T('取消'),'secondary-button',closeDialog),submit);form.append(buttons);updatePreview();
-  form.addEventListener('submit',async event=>{event.preventDefault();const title=input.value.trim();if(!title)return;submit.disabled=true;try{
-    if(rename){book.title=title;book.cover=cover;markDirty();if(await saveNow()){closeDialog();await refreshBooks();renderShell();}}
+  form.addEventListener('submit',async event=>{event.preventDefault();const title=input.value.trim();if(!title||submit.disabled)return;submit.disabled=true;try{
+    if(rename)await saveBookSettings(record,title,cover);
     else await transition(async()=>{if(!await requireSaved())return;setBook(await api('/api/books','POST',{title,kind}));state.book.cover=cover;createOutlineTemplate();state.view='outline';state.collection=null;markDirty();await saveNow();closeDialog();await refreshBooks();renderShell();});
   }catch(e){toast(e.message);}finally{submit.disabled=false;}});showDialog(rename?T('封面与书名'):T('新建{0}',kindName(kind)),form);input.focus();
 }
