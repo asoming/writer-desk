@@ -1,0 +1,10 @@
+data/
+__pycache__/
+*.pyc
+node_modules/
+build/
+dist/
+.venv-build/
+npm-debug.log
+*.sqlite3*
+*.log

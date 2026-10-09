@@ -1,0 +1,567 @@
+#!/usr/bin/env python3
+"""作家工作台 / Writer's Desk: local writing and SQLite storage."""
+import argparse
+import base64
+import binascii
+import hashlib
+import json
+import mimetypes
+import os
+import hmac
+import sqlite3
+import sys
+import threading
+import uuid
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+ROOT = Path(__file__).resolve().parent
+DB_PATH = ROOT / "data" / "writer.sqlite3"
+DB_LOCK = threading.RLock()
+MAX_REQUEST = 64 * 1024 * 1024
+MAX_BOOK = 25 * 1024 * 1024
+MAX_COVER = 2 * 1024 * 1024
+DESKTOP_TOKEN = os.environ.get("WRITER_DESKTOP_TOKEN", "")
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def uid():
+    return uuid.uuid4().hex
+
+
+def chapter(title="未命名章节", body="", volume_id=None):
+    return {"id": uid(), "title": title, "body": body, "volumeId": volume_id, "deletedAt": None}
+
+
+def first_volume(book_id):
+    # A deterministic ID makes repeated reads of a legacy book consistent.
+    volume_id = hashlib.sha256(book_id.encode("utf-8")).hexdigest()[:32] + "-volume-1"
+    return {"id": volume_id, "title": "第一卷", "summary": "", "deletedAt": None}
+
+
+def empty_profile():
+    return {"group": "", "role": "", "desire": "", "flaw": "", "ending": "", "arcs": []}
+
+
+def new_book(title="未命名作品", kind="long"):
+    book_id = uid()
+    return {"id": book_id, "title": title, "kind": kind, "cover": "",
+            "volumes": [first_volume(book_id)] if kind == "long" else [], "chapters": [],
+            "notes": [], "outline": [], "relations": []}
+
+
+def upgrade_book(book):
+    """Add new fields without changing existing text, IDs or revisions."""
+    book.setdefault("kind", "long")
+    book.setdefault("cover", "")
+    legacy_volumes = "volumes" not in book
+    book.setdefault("volumes", [first_volume(book["id"])] if book["kind"] == "long" else [])
+    book.setdefault("outline", [])
+    book.setdefault("relations", [])
+    for item in book["chapters"]:
+        item.setdefault("volumeId", None)
+        if legacy_volumes and book["kind"] == "long" and item["volumeId"] is None:
+            item["volumeId"] = book["volumes"][0]["id"]
+    for note in book["notes"]:
+        note.setdefault("chapterIds", [])
+        note.setdefault("aliases", [])
+        if note["type"] == "人物":
+            profile = note.setdefault("profile", {})
+            for key, value in empty_profile().items():
+                profile.setdefault(key, value)
+    for item in book["outline"]:
+        item.setdefault("volumeId", None)
+        item.setdefault("kind", "scene")
+    for item in book["relations"]:
+        item.setdefault("type", "other")
+        item.setdefault("stage", "")
+        item.setdefault("volumeIds", [])
+    return book
+
+
+def sample_book():
+    book = new_book("雾港来信 · 示例")
+    book["chapters"] = [
+        chapter("第一章  潮声", "林舟回到雾港的那天，渡轮晚了三个小时。\n\n码头上的钟停在六点十七分。他记得十年前离开时，那根细长的分针还会走，现在钟面上结了一层盐，远远看去，像蒙着薄雪。\n\n母亲的信就放在外套口袋里。信封没有邮戳，纸角被海水浸出一圈淡黄色的痕迹。上面只有一句话。\n\n等潮水退了，去看看那间屋子。\n\n林舟抬起头。防波堤尽头，灯塔亮了一下，又熄了。"),
+        chapter("第二章  旧屋", "旧屋在山坡的背面，院门半掩着。\n\n林舟推开门，先闻到了木头受潮的气味。桌上有两只杯子，其中一只的杯沿，还留着一道浅浅的茶渍。"),
+        chapter("第三章  未寄出的信"),
+    ]
+    book["notes"] = [
+        {"id": uid(), "type": "人物", "title": "林舟", "body": "二十八岁，在外地生活十年。\n收到母亲的信后回到雾港。\n不善于表达，但记得许多细小的事。", "deletedAt": None},
+        {"id": uid(), "type": "地点", "title": "雾港", "body": "一座靠渡轮与外界往来的小城。\n码头的钟停在六点十七分。\n防波堤尽头有一座废弃灯塔。", "deletedAt": None},
+    ]
+    mother = {"id": uid(), "type": "人物", "title": "林母", "body": "寄来一封没有邮戳的信。\n她留下的线索，把林舟带回旧屋。", "deletedAt": None}
+    book["notes"].append(mother)
+    book["notes"][0]["chapterIds"] = [book["chapters"][0]["id"], book["chapters"][1]["id"]]
+    mother["chapterIds"] = [book["chapters"][0]["id"]]
+    book["outline"] = [
+        {"id": uid(), "title": "归来", "body": "林舟收到母亲的信，回到离开十年的雾港。停摆的钟与闪烁的灯塔，埋下疑问。", "parentId": None, "chapterIds": [book["chapters"][0]["id"]], "deletedAt": None},
+        {"id": uid(), "title": "旧屋中的线索", "body": "两只杯子和残留的茶渍，让林舟意识到有人刚刚来过。", "parentId": None, "chapterIds": [book["chapters"][1]["id"]], "deletedAt": None},
+        {"id": uid(), "title": "未寄出的信", "body": "留给下一次写作的空白。", "parentId": None, "chapterIds": [book["chapters"][2]["id"]], "deletedAt": None},
+    ]
+    book["relations"] = [{"id": uid(), "fromId": book["notes"][0]["id"], "toId": mother["id"], "label": "母子 · 一封信", "body": "母亲的信是林舟返乡的起点。", "chapterIds": [book["chapters"][0]["id"]], "deletedAt": None}]
+    volume_id = book["volumes"][0]["id"]
+    for item in book["chapters"]:
+        item["volumeId"] = volume_id
+    return upgrade_book(book)
+
+
+def sample_short():
+    book = new_book("雨停之前 · 示例", "short")
+    book["chapters"] = [chapter("正文", "书店快打烊时，雨忽然大了。\n\n许宁站在门口，把伞递给最后一位客人。客人说，明天还来。\n\n第二天，门把手上挂着那把已经晾干的伞。伞柄上多了一张纸条。\n\n谢谢。昨晚，我赶上了最后一班车。\n\n许宁把纸条夹进账本，翻到新的一页。")]
+    person = {"id": uid(), "type": "人物", "title": "许宁", "body": "书店店主，习惯晚一点关门。", "chapterIds": [book["chapters"][0]["id"]], "deletedAt": None}
+    book["notes"] = [person]
+    book["outline"] = [{"id": uid(), "title": "一把借出的伞", "body": "用借伞和还伞两件小事，写陌生人之间的善意。", "parentId": None, "chapterIds": [book["chapters"][0]["id"]], "deletedAt": None}]
+    return upgrade_book(book)
+
+
+def connect():
+    conn = sqlite3.connect(DB_PATH, timeout=15)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+def insert_book(conn, book):
+    stamp = now()
+    conn.execute("INSERT INTO books(id,title,payload,revision,created_at,updated_at) VALUES(?,?,?,1,?,?)",
+                 (book["id"], book["title"], json.dumps(book, ensure_ascii=False), stamp, stamp))
+
+
+def initialize():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with connect() as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE TABLE IF NOT EXISTS books(id TEXT PRIMARY KEY,title TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)")
+        conn.execute("CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
+        if not conn.execute("SELECT 1 FROM books LIMIT 1").fetchone():
+            insert_book(conn, sample_book())
+            insert_book(conn, sample_short())
+
+
+def checked_string(value, label, max_length, allow_empty=True):
+    if not isinstance(value, str) or len(value) > max_length or (not allow_empty and not value.strip()):
+        raise ValueError(f"{label}格式不正确或长度超出限制")
+    return value
+
+
+def checked_cover(value):
+    value = checked_string(value, "封面（最多 2 MB）", MAX_COVER)
+    if not value:
+        return value
+    prefixes = {"data:image/png;base64,": "png", "data:image/jpeg;base64,": "jpeg",
+                "data:image/webp;base64,": "webp"}
+    prefix = next((p for p in prefixes if value.startswith(p)), None)
+    if prefix is None:
+        raise ValueError("封面仅支持 PNG、JPEG 或 WebP 图片")
+    try:
+        content = base64.b64decode(value[len(prefix):], validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError("封面图片编码不正确") from None
+    kind = prefixes[prefix]
+    valid = False
+    if kind == "png":
+        valid = (len(content) >= 45 and content.startswith(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+                 and int.from_bytes(content[16:20], "big") > 0
+                 and int.from_bytes(content[20:24], "big") > 0
+                 and content[-12:] == b"\x00\x00\x00\x00IEND\xaeB`\x82")
+    elif kind == "jpeg":
+        valid = len(content) >= 12 and content.startswith(b"\xff\xd8\xff") and content.endswith(b"\xff\xd9")
+    elif kind == "webp":
+        valid = (len(content) >= 20 and content[:4] == b"RIFF" and content[8:12] == b"WEBP"
+                 and int.from_bytes(content[4:8], "little") == len(content) - 8
+                 and content[12:16] in (b"VP8 ", b"VP8L", b"VP8X"))
+    if not valid:
+        raise ValueError("封面内容与图片格式不符或图片已损坏")
+    return value
+
+
+def validate_book(data):
+    if not isinstance(data, dict):
+        raise ValueError("作品格式不正确")
+    result = {"id": checked_string(data.get("id"), "作品编号", 100, False),
+              "title": checked_string(data.get("title"), "作品名称", 200, False)}
+    result["kind"] = data.get("kind", "long")
+    if result["kind"] not in ("long", "short"):
+        raise ValueError("作品类型必须是长篇或短篇")
+    result["cover"] = checked_cover(data.get("cover", ""))
+    legacy_volumes = "volumes" not in data
+    volumes = data.get("volumes", [first_volume(result["id"])] if result["kind"] == "long" else [])
+    if not isinstance(volumes, list) or len(volumes) > 10000:
+        raise ValueError("卷列表格式不正确")
+    if result["kind"] == "short" and volumes:
+        raise ValueError("短篇作品不能设置分卷")
+    result["volumes"], volume_ids = [], set()
+    for item in volumes:
+        if not isinstance(item, dict):
+            raise ValueError("卷格式不正确")
+        volume_id = checked_string(item.get("id"), "卷编号", 100, False)
+        if volume_id in volume_ids:
+            raise ValueError("卷编号重复")
+        volume_ids.add(volume_id)
+        deleted_at = item.get("deletedAt")
+        if deleted_at is not None:
+            checked_string(deleted_at, "回收时间", 100, False)
+        result["volumes"].append({"id": volume_id, "title": checked_string(item.get("title", ""), "卷标题", 200),
+                                  "summary": checked_string(item.get("summary", ""), "卷梗概", 5_000_000),
+                                  "deletedAt": deleted_at})
+    deleted_volume_ids = {v["id"] for v in result["volumes"] if v["deletedAt"]}
+
+    def checked_volume(value):
+        if value is not None and (not isinstance(value, str) or value not in volume_ids):
+            raise ValueError("所属卷必须指向本作品的卷")
+        return value
+
+    def checked_volumes(value):
+        if not isinstance(value, list) or len(value) > 10000 or any(v is None for v in value):
+            raise ValueError("关联卷列表格式不正确")
+        return list(dict.fromkeys(checked_volume(v) for v in value))
+
+    for key in ("chapters", "notes"):
+        items = data.get(key)
+        if not isinstance(items, list) or len(items) > 10000:
+            raise ValueError("章节或资料列表格式不正确")
+        result[key] = []
+        seen = set()
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("章节或资料格式不正确")
+            item_id = checked_string(item.get("id"), "条目编号", 100, False)
+            if item_id in seen:
+                raise ValueError("条目编号重复")
+            seen.add(item_id)
+            deleted_at = item.get("deletedAt")
+            if deleted_at is not None:
+                checked_string(deleted_at, "回收时间", 100, False)
+            clean = {"id": item_id, "title": checked_string(item.get("title"), "标题", 200),
+                     "body": checked_string(item.get("body"), "正文", 5_000_000), "deletedAt": deleted_at}
+            if key == "notes":
+                if item.get("type") not in ("人物", "地点", "世界观", "灵感"):
+                    raise ValueError("资料类型不正确")
+                clean["type"] = item["type"]
+                clean["chapterIds"] = item.get("chapterIds", [])
+                aliases = item.get("aliases", [])
+                if not isinstance(aliases, list) or len(aliases) > 100:
+                    raise ValueError("人物别名列表格式不正确")
+                clean["aliases"] = list(dict.fromkeys(checked_string(a, "人物别名", 200, False) for a in aliases))
+                if clean["type"] == "人物":
+                    profile = item.get("profile", {})
+                    if not isinstance(profile, dict):
+                        raise ValueError("人物设定格式不正确")
+                    clean["profile"] = {key: checked_string(profile.get(key, ""), "人物设定", 200 if key in ("group", "role") else 5_000_000)
+                                        for key in ("group", "role", "desire", "flaw", "ending")}
+                    arcs = profile.get("arcs", [])
+                    if not isinstance(arcs, list) or len(arcs) > 10000:
+                        raise ValueError("人物分卷成长线格式不正确")
+                    clean["profile"]["arcs"] = []
+                    for arc in arcs:
+                        if not isinstance(arc, dict) or arc.get("volumeId") is None:
+                            raise ValueError("人物成长线必须关联本作品的卷")
+                        clean["profile"]["arcs"].append({"volumeId": checked_volume(arc.get("volumeId")),
+                                                         "body": checked_string(arc.get("body", ""), "人物成长线", 5_000_000)})
+            else:
+                volume_id = item.get("volumeId")
+                if legacy_volumes and result["kind"] == "long" and volume_id is None:
+                    volume_id = result["volumes"][0]["id"]
+                clean["volumeId"] = checked_volume(volume_id)
+                if not deleted_at and volume_id in deleted_volume_ids:
+                    raise ValueError("活动章节不能归入已回收的卷")
+            result[key].append(clean)
+    chapter_ids = {c["id"] for c in result["chapters"]}
+    def checked_links(value):
+        if not isinstance(value, list) or len(value) > 10000 or any(not isinstance(v, str) or v not in chapter_ids for v in value):
+            raise ValueError("关联正文必须指向本作品的章节")
+        return list(dict.fromkeys(value))
+    for note in result["notes"]:
+        note["chapterIds"] = checked_links(note["chapterIds"])
+    for key in ("outline", "relations"):
+        items = data.get(key, [])
+        if not isinstance(items, list) or len(items) > 10000:
+            raise ValueError("大纲或人物关系列表格式不正确")
+        result[key], seen = [], set()
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("大纲或人物关系格式不正确")
+            item_id = checked_string(item.get("id"), "条目编号", 100, False)
+            if item_id in seen:
+                raise ValueError("条目编号重复")
+            seen.add(item_id)
+            clean = {"id": item_id, "body": checked_string(item.get("body", ""), "内容", 5_000_000),
+                     "chapterIds": checked_links(item.get("chapterIds", [])), "deletedAt": item.get("deletedAt")}
+            if clean["deletedAt"] is not None:
+                checked_string(clean["deletedAt"], "回收时间", 100, False)
+            if key == "outline":
+                clean["title"] = checked_string(item.get("title", ""), "大纲标题", 200)
+                clean["parentId"] = item.get("parentId")
+                clean["volumeId"] = checked_volume(item.get("volumeId"))
+                clean["kind"] = item.get("kind", "scene")
+                if clean["kind"] not in ("story", "volume", "chapter", "scene"):
+                    raise ValueError("大纲类型必须是故事、卷、章或场景")
+            else:
+                clean["label"] = checked_string(item.get("label", ""), "关系名称", 200)
+                clean["type"] = item.get("type", "other")
+                if clean["type"] not in ("friend", "mentor", "family", "conflict", "cooperate", "fate", "other"):
+                    raise ValueError("人物关系类型不正确")
+                clean["stage"] = checked_string(item.get("stage", ""), "关系阶段", 200)
+                clean["volumeIds"] = checked_volumes(item.get("volumeIds", []))
+                person_ids = {n["id"] for n in result["notes"] if n["type"] == "人物"}
+                if item.get("fromId") not in person_ids or item.get("toId") not in person_ids or item["fromId"] == item["toId"]:
+                    raise ValueError("人物关系需要连接本作品中两个不同的人物")
+                clean.update(fromId=item["fromId"], toId=item["toId"])
+            result[key].append(clean)
+    parents = {o["id"]: o["parentId"] for o in result["outline"]}
+    for item_id, parent_id in parents.items():
+        seen = {item_id}
+        while parent_id is not None:
+            if not isinstance(parent_id, str) or parent_id not in parents or parent_id in seen:
+                raise ValueError("大纲层级不能循环或指向其他作品")
+            seen.add(parent_id)
+            parent_id = parents[parent_id]
+    if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > MAX_BOOK:
+        raise ValueError("单部作品超过 25 MB，请拆分为多部作品")
+    return result
+
+
+def book_result(row):
+    return {"book": upgrade_book(json.loads(row["payload"])), "revision": row["revision"], "updatedAt": row["updated_at"]}
+
+
+def restore_book(data):
+    book = validate_book(data)
+    book["id"] = uid()
+    volume_map = {volume["id"]: uid() for volume in book["volumes"]}
+    for volume in book["volumes"]:
+        volume["id"] = volume_map[volume["id"]]
+    for item in book["chapters"] + book["outline"]:
+        if item["volumeId"] is not None:
+            item["volumeId"] = volume_map[item["volumeId"]]
+    for note in book["notes"]:
+        if note["type"] == "人物":
+            for arc in note["profile"]["arcs"]:
+                arc["volumeId"] = volume_map[arc["volumeId"]]
+    for relation in book["relations"]:
+        relation["volumeIds"] = [volume_map[v] for v in relation["volumeIds"]]
+    return validate_book(book)
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "WritersDesk/0.2"
+
+    def log_message(self, fmt, *args):
+        if args and str(args[1] if len(args) > 1 else "") not in ("200", "201", "304"):
+            super().log_message(fmt, *args)
+
+    def send_bytes(self, content, status=200, content_type="application/json; charset=utf-8"):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+        self.end_headers()
+        self.wfile.write(content)
+
+    def send_json(self, data, status=200):
+        self.send_bytes(json.dumps(data, ensure_ascii=False).encode(), status)
+
+    def allowed_host(self):
+        return self.headers.get("Host") in (f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}")
+
+    def allowed_client(self):
+        return not DESKTOP_TOKEN or hmac.compare_digest(self.headers.get("X-Writer-Desktop", ""), DESKTOP_TOKEN)
+
+    def read_json(self):
+        if not self.allowed_host() or not self.allowed_client() or self.headers.get("X-Writer-Client") != "1":
+            raise PermissionError("请从本机写作页面进行操作")
+        origin = self.headers.get("Origin")
+        if origin and origin not in (f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}"):
+            raise PermissionError("不接受来自其他网站的保存请求")
+        if self.headers.get_content_type() != "application/json":
+            raise ValueError("需要 JSON 格式")
+        size = int(self.headers.get("Content-Length", "0"))
+        if size <= 0 or size > MAX_REQUEST:
+            raise ValueError("请求为空或超过 64 MB")
+        return json.loads(self.rfile.read(size))
+
+    def do_GET(self):
+        if not self.allowed_host() or not self.allowed_client():
+            self.send_json({"error": "请使用本机地址访问"}, 403)
+            return
+        path = unquote(urlparse(self.path).path)
+        try:
+            if path == "/api/examples":
+                manifest = ROOT / "examples" / "manifest.json"
+                self.send_json({"examples": json.loads(manifest.read_text("utf-8")) if manifest.is_file() else []})
+            elif path == "/api/books":
+                with connect() as conn:
+                    rows = conn.execute("SELECT * FROM books ORDER BY updated_at DESC").fetchall()
+                result = []
+                for row in rows:
+                    book = upgrade_book(json.loads(row["payload"]))
+                    chapters = [c for c in book["chapters"] if not c["deletedAt"]]
+                    latest = next((c for c in reversed(chapters) if c["body"].strip()), chapters[-1] if chapters else None)
+                    result.append({"id": book["id"], "title": book["title"], "kind": book["kind"], "cover": book["cover"],
+                                   "volumeCount": sum(not v["deletedAt"] for v in book["volumes"]),
+                                   "outlineCount": sum(not o["deletedAt"] for o in book["outline"]),
+                                   "personCount": sum(not n["deletedAt"] and n["type"] == "人物" for n in book["notes"]),
+                                   "chapterCount": len(chapters), "latestChapterTitle": latest["title"] if latest else "",
+                                   "excerpt": next((c["body"][:100] for c in chapters if c["body"].strip()), ""),
+                                   "charCount": sum(sum(not ch.isspace() for ch in c["body"]) for c in chapters),
+                                   "updatedAt": row["updated_at"]})
+                self.send_json({"books": result})
+            elif path.startswith("/api/books/"):
+                with connect() as conn:
+                    row = conn.execute("SELECT * FROM books WHERE id=?", (path[len("/api/books/"):],)).fetchone()
+                self.send_json(book_result(row) if row else {"error": "找不到这部作品"}, 200 if row else 404)
+            elif path.startswith("/api/"):
+                self.send_json({"error": "找不到这个操作"}, 404)
+            else:
+                files = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/story-analysis.js": "story-analysis.js",
+                         "/workspace.js": "workspace.js", "/i18n.js": "i18n.js", "/style.css": "style.css", "/favicon.svg": "favicon.svg"}
+                filename = files.get(path)
+                if not filename:
+                    self.send_json({"error": "找不到这个页面"}, 404)
+                    return
+                content = (ROOT / "public" / filename).read_bytes()
+                content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+                self.send_bytes(content, content_type=content_type + ("; charset=utf-8" if filename.endswith((".html", ".css", ".js", ".svg")) else ""))
+        except Exception as exc:
+            print(f"读取失败: {exc}", file=sys.stderr)
+            self.send_json({"error": "读取失败，原有文件仍保留在本机"}, 500)
+
+    def do_POST(self):
+        try:
+            data = self.read_json()
+            path = urlparse(self.path).path
+            if path == "/api/books":
+                title = checked_string(data.get("title", "未命名作品"), "作品名称", 200, False)
+                kind = data.get("kind", "long")
+                if kind not in ("long", "short"):
+                    raise ValueError("作品类型必须是长篇或短篇")
+                book = new_book(title, kind)
+                book["cover"] = checked_cover(data.get("cover", ""))
+            elif path == "/api/import":
+                if not isinstance(data, dict) or data.get("format") != "yejian-backup" or type(data.get("version")) is not int or data.get("version") not in (1, 2, 3):
+                    raise ValueError("请选择页间导出的完整备份文件（v1、v2 或 v3）")
+                book = restore_book(data.get("book"))
+            elif path == "/api/examples/tide-archive":
+                example = ROOT / "examples" / "tide-archive.yejian.json"
+                if not example.is_file():
+                    self.send_json({"error": "示例小说尚未安装"}, 404)
+                    return
+                book = restore_book(json.loads(example.read_text("utf-8"))["book"])
+            else:
+                self.send_json({"error": "找不到这个操作"}, 404)
+                return
+            with DB_LOCK, connect() as conn:
+                insert_book(conn, book)
+            self.send_json({"book": book, "revision": 1, "updatedAt": now()}, 201)
+        except (ValueError, TypeError, AttributeError) as exc:
+            self.send_json({"error": str(exc)}, 400)
+        except PermissionError as exc:
+            self.send_json({"error": str(exc)}, 403)
+        except Exception as exc:
+            print(f"新建失败: {exc}", file=sys.stderr)
+            self.send_json({"error": "无法写入本机，请检查磁盘空间后重试"}, 500)
+
+    def do_PUT(self):
+        try:
+            data = self.read_json()
+            path = urlparse(self.path).path
+            if not path.startswith("/api/books/"):
+                self.send_json({"error": "找不到这个操作"}, 404)
+                return
+            book_id = path[len("/api/books/"):]
+            book = validate_book(data.get("book"))
+            if book["id"] != book_id or type(data.get("revision")) is not int:
+                raise ValueError("作品编号或保存版本不正确")
+            with DB_LOCK, connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute("SELECT * FROM books WHERE id=?", (book_id,)).fetchone()
+                if not row:
+                    self.send_json({"error": "找不到这部作品"}, 404)
+                    return
+                if row["revision"] != data["revision"]:
+                    self.send_json({"error": "另一个窗口修改了这部作品。本页内容已保留，请另存为新作品。", "conflict": True}, 409)
+                    return
+                stamp = now()
+                conn.execute("INSERT INTO history(book_id,revision,payload,saved_at) VALUES(?,?,?,?)", (book_id, row["revision"], row["payload"], stamp))
+                conn.execute("DELETE FROM history WHERE book_id=? AND id NOT IN (SELECT id FROM history WHERE book_id=? ORDER BY id DESC LIMIT 30)", (book_id, book_id))
+                conn.execute("UPDATE books SET title=?,payload=?,revision=revision+1,updated_at=? WHERE id=?", (book["title"], json.dumps(book, ensure_ascii=False), stamp, book_id))
+            self.send_json({"revision": row["revision"] + 1, "updatedAt": stamp})
+        except (ValueError, TypeError, AttributeError) as exc:
+            self.send_json({"error": str(exc)}, 400)
+        except PermissionError as exc:
+            self.send_json({"error": str(exc)}, 403)
+        except Exception as exc:
+            print(f"保存失败: {exc}", file=sys.stderr)
+            self.send_json({"error": "暂时无法保存，编辑内容仍留在本页。请重试或下载备份。"}, 500)
+
+
+def main():
+    global DB_PATH
+    parser = argparse.ArgumentParser(description="启动作家工作台 / Writer's Desk")
+    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--data-dir", type=Path, default=ROOT / "data")
+    parser.add_argument("--open", action="store_true", help="自动打开浏览器")
+    parser.add_argument("--desktop", action="store_true", help="输出桌面进程就绪消息")
+    parser.add_argument("--legacy-data-dir", type=Path, action="append", default=[], help="首次启动时复制旧数据库，保留原文件")
+    args = parser.parse_args()
+    DB_PATH = args.data_dir.resolve() / "writer.sqlite3"
+    if not DB_PATH.exists():
+        for legacy in args.legacy_data_dir:
+            source = legacy.resolve() / "writer.sqlite3"
+            if not source.is_file() or source == DB_PATH:
+                continue
+            DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+            temporary = DB_PATH.with_suffix(".migration.sqlite3")
+            try:
+                with sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True) as old:
+                    if not old.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='books'").fetchone():
+                        continue
+                    with sqlite3.connect(temporary) as fresh:
+                        old.backup(fresh)
+                temporary.replace(DB_PATH)
+                print("已复制旧版作品库，原数据库仍保留。", file=sys.stderr, flush=True)
+                break
+            finally:
+                if temporary.exists():
+                    temporary.unlink()
+    initialize()
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError as exc:
+        print(f"无法启动: {exc}\n可使用 --port 8766 指定其他端口。", file=sys.stderr)
+        sys.exit(1)
+    url = f"http://127.0.0.1:{server.server_port}"
+    if args.desktop:
+        print("WRITER_READY " + json.dumps({"url": url, "pid": os.getpid()}), flush=True)
+        def watch_parent():
+            # Electron keeps this pipe open. EOF also cleans up after a crashed
+            # or force-killed desktop process, without a fixed PID or timer.
+            try:
+                sys.stdin.buffer.read()
+            except (OSError, ValueError):
+                pass
+            server.shutdown()
+        threading.Thread(target=watch_parent, daemon=True).start()
+    else:
+        print(f"作家工作台已启动：{url}\n作品保存在：{DB_PATH}\n按 Ctrl+C 关闭。", flush=True)
+    if args.open:
+        import webbrowser
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()
