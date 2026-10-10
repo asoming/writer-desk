@@ -443,21 +443,24 @@ class FolderExportError(Exception):
                      FOLDER_UNSUPPORTED: "FOLDER_UNSUPPORTED"}.get(message, "FOLDER_FAILURE")
 
 
-def manuscript_text(book):
-    """Follow authored volume/chapter order, excluding every recycled item."""
+def manuscript_groups(book):
+    """Use the same authored reading order in the shelf and text export."""
     volumes = [item for item in book["volumes"] if not item["deletedAt"]]
     deleted_volumes = {item["id"] for item in book["volumes"] if item["deletedAt"]}
     chapters = [item for item in book["chapters"] if not item["deletedAt"] and item["volumeId"] not in deleted_volumes]
-    parts = [book["title"]]
     if book["kind"] == "long":
         volume_ids = {item["id"] for item in volumes}
         groups = [(volume["title"], [item for item in chapters if item["volumeId"] == volume["id"]]) for volume in volumes]
         groups.append(("未分卷", [item for item in chapters if item["volumeId"] not in volume_ids]))
     else:
         groups = [("", chapters)]
-    for title, items in groups:
-        if not items:
-            continue
+    return [(title, items) for title, items in groups if items]
+
+
+def manuscript_text(book):
+    """Follow authored volume/chapter order, excluding every recycled item."""
+    parts = [book["title"]]
+    for title, items in manuscript_groups(book):
         if title:
             parts.append(title)
         parts.extend((item["title"] or "未命名章节") + "\n\n" + item["body"] for item in items)
@@ -680,7 +683,7 @@ class Handler(BaseHTTPRequestHandler):
                 result = []
                 for row in rows:
                     book = upgrade_book(json.loads(row["payload"]))
-                    chapters = [c for c in book["chapters"] if not c["deletedAt"]]
+                    chapters = [chapter for _, group in manuscript_groups(book) for chapter in group]
                     latest = next((c for c in reversed(chapters) if c["body"].strip()), chapters[-1] if chapters else None)
                     result.append({"id": book["id"], "title": book["title"], "kind": book["kind"], "cover": book["cover"],
                                    "volumeCount": sum(not v["deletedAt"] for v in book["volumes"]),

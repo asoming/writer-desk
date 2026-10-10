@@ -11,15 +11,15 @@ function atlasViews(){
     ...state.book.atlasViews.map(v=>({...v,id:'view:'+v.id})),
     {id:'all',title:T('全部人物'),description:T('查看整本书的人物网络。可按分组、关系类型或卷缩小范围。')}];
 }
-function graphRelations(){
-  let relations=combinedRelations().filter(r=>state.showAutomatic||!r.automatic);
-  if(state.graphRelationType)relations=relations.filter(r=>r.type===state.graphRelationType);
+function graphRelations({showAutomatic=state.showAutomatic,type=state.graphRelationType}={}){
+  let relations=combinedRelations().filter(r=>showAutomatic||!r.automatic);
+  if(type)relations=relations.filter(r=>r.type===type);
   if(!state.graphVolume)return relations;
   const chapters=new Set(activeChapters().filter(c=>c.volumeId===state.graphVolume).map(c=>c.id));
   return relations.filter(r=>r.volumeIds?.length?r.volumeIds.includes(state.graphVolume):!r.chapterIds.length||r.chapterIds.some(id=>chapters.has(id)));
 }
-function filteredGraphPeople(){
-  let list=people();const relations=graphRelations(),view=state.atlasView||'core';
+function filteredGraphPeople(relations=graphRelations({showAutomatic:state.atlasMode==='index'||state.showAutomatic,type:state.atlasMode==='index'?'':state.graphRelationType})){
+  let list=people();const view=state.atlasView||'core';
   if(view==='core'){
     const center=atlasCorePerson()?.id,ids=new Set([center]);
     relations.filter(r=>r.fromId===center||r.toId===center).forEach(r=>{ids.add(r.fromId);ids.add(r.toId);});
@@ -63,7 +63,8 @@ function renderAtlasNavigation(){
   $('atlas-view-title').textContent=state.graphGroup||view.title;
   $('atlas-description').textContent=view.id.startsWith('view:')?view.description||'':'';$('atlas-description').hidden=!$('atlas-description').textContent;
   $('atlas-edit-view').hidden=!state.atlasView.startsWith('view:');
-  $('graph-type').value=state.graphRelationType||'';
+  $('graph-type').value=state.graphRelationType||'';$('graph-type').hidden=state.atlasMode==='index';
+  const automaticControl=$('graph-auto-control');if(automaticControl)automaticControl.hidden=state.atlasMode==='index';
   $('atlas-map-button').classList.toggle('active',state.atlasMode!=='index');$('atlas-index-button').classList.toggle('active',state.atlasMode==='index');
   $('people-layout').hidden=state.atlasMode==='index';$('atlas-timeline-section').hidden=state.kind==='short'||state.atlasMode==='index';
   $('relation-index').classList.toggle('atlas-index-active',state.atlasMode==='index');
@@ -183,12 +184,15 @@ function renderAtlasTimeline(){
   });
 }
 function renderRelationIndex(){
-  const all=combinedRelations();$('relation-index-count').textContent=T('{0} 条手动关系 · {1} 条同章提及',all.filter(r=>!r.automatic).length,all.filter(r=>r.automatic).length);
+  const ids=new Set(filteredGraphPeople().map(p=>p.id));
+  const all=graphRelations({showAutomatic:true,type:state.atlasMode==='index'?'':state.graphRelationType}).filter(r=>ids.has(r.fromId)&&ids.has(r.toId));
+  const heading=$('relation-index-title');if(heading){const view=atlasViews().find(v=>v.id===state.atlasView)||atlasViews()[0];heading.textContent=state.graphGroup?state.graphGroup+' · '+T('关系索引'):view.id==='all'?T('全部关系索引'):view.title+' · '+T('关系索引');}
+  $('relation-index-count').textContent=T('{0} 条手动关系 · {1} 条同章提及',all.filter(r=>!r.automatic).length,all.filter(r=>r.automatic).length);
   const list=$('relation-index-list');list.replaceChildren();if(!$('relation-index').open)return;
   const query=$('relation-search').value.trim().toLocaleLowerCase(),type=$('relation-type-filter').value;
   const rows=all.filter(r=>(!type||(type==='manual'?!r.automatic:r.type===type))&&(!query||[personName(r.fromId),personName(r.toId),r.label,r.stage,r.body].join(' ').toLocaleLowerCase().includes(query)));
   const table=el('table','atlas-relation-table'),head=el('thead'),tr=el('tr');[T('人物一'),T('人物二'),T('关系与阶段'),T('具体变化')].forEach(label=>tr.append(el('th',null,label)));head.append(tr);table.append(head);const body=el('tbody');
-  rows.forEach(r=>{const row=el('tr');[r.fromId,r.toId].forEach(id=>{const cell=el('td');cell.append(action(personName(id),'atlas-person-link',()=>{state.atlasView='all';state.graphVolume='';state.graphGroup='';state.graphScope='all';selectAtlasPerson(id);$('people-layout').scrollIntoView({block:'start'});}));row.append(cell);});
+  rows.forEach(r=>{const row=el('tr');[r.fromId,r.toId].forEach(id=>{const cell=el('td');cell.append(action(personName(id),'atlas-person-link',()=>{state.personId=id;resetAtlasForPerson();renderPeople();$('people-layout').scrollIntoView({block:'start'});}));row.append(cell);});
     const label=el('td'),button=action(r.label||T('未命名关系'),'atlas-relation-link',()=>r.automatic?showAutomaticRelation(r):showRelation(r));label.append(button,el('small',null,(r.stage?r.stage+' · ':'')+(relationTypes[r.type]||T('其他'))));const detail=el('td','atlas-relation-description',r.body||T('尚未填写关系变化'));row.append(label,detail);body.append(row);});
   table.append(body);list.append(table);if(!rows.length)list.append(el('p','empty-hint',T('没有匹配的关系。')));
 }
@@ -196,8 +200,20 @@ function showAtlasViewEditor(existing=null){
   const form=el('form'),title=el('input','text-field'),description=el('textarea','text-field'),search=el('input','text-field'),choices=el('div','atlas-view-members'),selected=new Set(existing?.personIds||filteredGraphPeople().map(p=>p.id));
   title.id='atlas-view-name';title.maxLength=200;title.required=true;title.value=existing?.title||'';description.id='atlas-view-description';description.maxLength=50000;description.rows=3;description.value=existing?.description||'';search.type='search';search.placeholder=T('搜索分图成员');search.setAttribute('aria-label',T('搜索分图成员'));addField(form,T('分图名称'),title);addField(form,T('分图说明'),description);form.append(el('p','dialog-description',T('同一人物可以出现在多个主题分图中。选择这张图要展示的人物。')),search,choices);
   function renderChoices(){const query=search.value.trim().toLocaleLowerCase();choices.replaceChildren();people().filter(p=>[p.title,p.profile.group,...p.aliases].join(' ').toLocaleLowerCase().includes(query)).forEach(person=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.checked=selected.has(person.id);box.addEventListener('change',()=>box.checked?selected.add(person.id):selected.delete(person.id));row.append(box,el('span',null,person.title),el('small',null,person.profile.group));choices.append(row);});}search.addEventListener('input',renderChoices);renderChoices();
+  const view=existing||{id:uid(),title:'',description:'',personIds:[]};
   const buttons=el('div','dialog-actions'),save=el('button','primary-button',T('保存分图'));save.type='submit';buttons.append(action(T('取消'),'secondary-button',closeDialog),save);form.append(buttons);
-  form.addEventListener('submit',async event=>{event.preventDefault();if(!title.value.trim())return;if(!existing&&state.book.atlasViews.length>=100){toast(T('每部作品最多建立 100 个主题分图。'));return;}const view=existing||{id:uid(),title:'',description:'',personIds:[]};view.title=title.value.trim();view.description=description.value;view.personIds=[...selected];if(!existing)state.book.atlasViews.push(view);markDirty();if(await saveNow()){closeDialog();setAtlasView('view:'+view.id);}});showDialog(existing?T('编辑主题分图'):T('新建主题分图'),form);title.focus();
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();if(save.disabled||!title.value.trim())return;
+    const added=state.book.atlasViews.some(item=>item.id===view.id);
+    if(!added&&state.book.atlasViews.length>=100){toast(T('每部作品最多建立 100 个主题分图。'));return;}
+    save.disabled=true;
+    try{
+      view.title=title.value.trim();view.description=description.value;view.personIds=[...selected];
+      if(!added)state.book.atlasViews.push(view);markDirty();
+      if(!await requireSaved())return;
+      closeDialog();setAtlasView('view:'+view.id);
+    }finally{save.disabled=false;}
+  });showDialog(existing?T('编辑主题分图'):T('新建主题分图'),form);title.focus();
 }
 function bindAtlasEvents(){
   $('atlas-new-view').addEventListener('click',()=>showAtlasViewEditor());$('atlas-edit-view').addEventListener('click',()=>showAtlasViewEditor(state.book.atlasViews.find(v=>'view:'+v.id===state.atlasView)));
