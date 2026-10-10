@@ -5,6 +5,7 @@ const { createHash, randomBytes } = require('node:crypto');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const updater = require('./updater.cjs');
 
 const userData = process.env.WRITER_DESK_USER_DATA
   ? path.resolve(process.env.WRITER_DESK_USER_DATA)
@@ -13,7 +14,7 @@ app.setPath('userData', userData);
 app.setName("Writer's Desk");
 const hasLock = app.requestSingleInstanceLock();
 let window = null, service = null, origin = '', closing = false, allowQuit = false, saveReady = false;
-let closeRequest = null, lastServiceLog = '';
+let closeRequest = null, lastServiceLog = '', updateBusy = false;
 const serviceToken = randomBytes(32).toString('hex');
 const settingsPath = path.join(userData, 'settings.json');
 const storagePath = path.join(userData, 'client-storage.json');
@@ -23,6 +24,32 @@ const settings = readObject(settingsPath), storage = readObject(storagePath);
 let language = settings.language === 'en' ? 'en' : 'zh';
 const text = (zh, en) => language === 'en' ? en : zh;
 const title = () => text('作家工作台', "Writer's Desk");
+const updateOptions = () => ({ ...updater.paths({ root: process.env.WRITER_DESK_INSTALL_ROOT, applications: process.env.WRITER_DESK_APPLICATIONS_DIR }), currentVersion: app.getVersion(), previousExecutable: process.execPath });
+function updateFailure(error) { return { error: updater.errorMessage(error, language), code: typeof error?.code === 'string' && error.code.startsWith('update-') ? error.code : 'update-failed' }; }
+async function installUpdate() {
+  if (process.platform !== 'linux') throw Object.assign(new Error(), { code: 'update-unsupported' });
+  if (updateBusy || closing || allowQuit) throw Object.assign(new Error(), { code: 'update-busy' });
+  updateBusy = true;
+  try {
+    const selected = await dialog.showOpenDialog(window, { title: text('选择可信来源的 Linux 升级包（同目录需有 .sha256）', 'Choose a trusted Linux update package (.sha256 required beside it)'), properties: ['openFile'], filters: [{ name: 'WriterDesk Linux package', extensions: ['gz'] }] });
+    if (selected.canceled || !selected.filePaths?.length) return { canceled: true };
+    return await updater.stageArchive(selected.filePaths[0], updateOptions());
+  } finally { updateBusy = false; }
+}
+async function restartAfterUpdate() {
+  if (process.platform !== 'linux') throw Object.assign(new Error(), { code: 'update-unsupported' });
+  if (updateBusy || closing || allowQuit) throw Object.assign(new Error(), { code: 'update-busy' });
+  updateBusy = true; closing = true;
+  try {
+    if (!await waitForSave()) throw Object.assign(new Error(), { code: 'update-save-failed' });
+    const planned = await updater.planRestart(updateOptions());
+    app.relaunch({ execPath: planned.executable, args: ['--writer-activate-update', planned.token] });
+    allowQuit = true;
+    if (window && !window.isDestroyed()) window.destroy();
+    await stopService(); app.quit();
+    return { restarting: true };
+  } finally { if (!allowQuit) { updateBusy = false; closing = false; } }
+}
 function atomicWrite(file, value) {
   const temporary = file + '.tmp';
   fs.writeFileSync(temporary, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
@@ -160,8 +187,15 @@ ipcMain.handle('writer:language', (event, value) => {
 });
 ipcMain.handle('writer:app-settings', event => {
   if (!trusted(event)) return { error: text('当前窗口无权读取应用设置。', 'This window is not authorized to read app settings.'), code: 'untrusted-sender' };
-  return { version: app.getVersion(), dataPath: path.join(userData, 'data'), ...windowState() };
+  return { version: app.getVersion(), dataPath: path.join(userData, 'data'), ...windowState(), ...updater.info(updateOptions()) };
 });
+for (const [channel, action] of [['writer:install-update', installUpdate], ['writer:restart-after-update', restartAfterUpdate]]) {
+  ipcMain.handle(channel, async (event, ...args) => {
+    if (!trusted(event)) return { error: text('当前窗口无权安装升级。', 'This window is not authorized to install updates.'), code: 'untrusted-sender' };
+    if (args.length) return { error: text('请通过系统文件选择器选择升级包。', 'Choose the update package through the system file picker.'), code: 'update-invalid-request' };
+    try { return await action(); } catch (error) { return updateFailure(error); }
+  });
+}
 ipcMain.handle('writer:app-action', async (event, action) => {
   if (!trusted(event)) return { error: text('当前窗口无权执行应用操作。', 'This window is not authorized to perform app actions.'), code: 'untrusted-sender' };
   if (typeof action !== 'string' || !appActions.has(action)) return { error: text('不支持此应用操作。', 'This app action is not supported.'), code: 'invalid-app-action' };
@@ -215,7 +249,7 @@ function waitForSave() {
   });
 }
 async function requestClose() {
-  if (closing || allowQuit) return;
+  if (closing || allowQuit || updateBusy) return;
   closing = true;
   let saved = await waitForSave();
   if (!saved && window && !window.isDestroyed()) {
@@ -329,6 +363,11 @@ else {
     try {
       Menu.setApplicationMenu(null);
       await startService(); await createWindow();
+      const activationArgument = process.argv.indexOf('--writer-activate-update');
+      if (activationArgument !== -1) {
+        try { await updater.activatePending(process.argv[activationArgument + 1], process.execPath, { ...updateOptions(), expectedVersion: app.getVersion() }); console.info('[writer-desk] Managed update activated after successful startup.'); }
+        catch (error) { console.error('[writer-desk] Managed update activation failed (' + updateFailure(error).code + ').'); dialog.showMessageBox(window, { type: 'error', title: title(), message: updater.errorMessage(error, language) }); }
+      }
       const folderArgument = process.argv.indexOf('--open-book-folder');
       if (folderArgument !== -1) {
         try { await openBookFolder(process.argv[folderArgument + 1]); console.info('[writer-desk] Requested book folder opened.'); }

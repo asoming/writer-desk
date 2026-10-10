@@ -351,6 +351,9 @@ html[lang=en] .shelf-book-bottom{flex-wrap:wrap}
 .settings-dialog{max-width:480px;padding:24px 26px}
 .settings-dialog .dialog-heading{margin-bottom:8px}
 .settings-section{padding:12px 0;border-bottom:1px solid var(--line)}
+.settings-section>summary{font-size:.8125rem;font-weight:600;cursor:pointer;padding:4px 0;color:var(--ink)}
+.settings-section[open]>summary{margin-bottom:12px}
+.settings-update-content .subtle{font-size:.75rem;line-height:1.65;overflow-wrap:anywhere}
 .settings-section h3{font-size:.75rem;font-weight:600;line-height:1.5;color:var(--muted);margin:0 0 10px}
 .settings-row{display:flex;align-items:center;justify-content:space-between;gap:18px;font-size:.8125rem;min-height:34px}
 .settings-row+.settings-row{margin-top:8px}

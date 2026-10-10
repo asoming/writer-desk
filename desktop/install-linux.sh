@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Register this extracted distribution in the current user's application menu.
+# Copy a verified release into a stable user-managed installation.
 writer_app_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 writer_app_binary="$writer_app_dir/writer-desk"
 if [[ ! -x "$writer_app_binary" ]]; then
   printf '%s\n' '请在解压后的 WriterDesk 发行目录运行此脚本。 / Run this script from the extracted distribution.' >&2
   exit 1
 fi
-writer_desktop_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-mkdir -p -- "$writer_desktop_dir"
-python3 - "$writer_app_dir" "$writer_desktop_dir/writer-desk.desktop" <<'PY'
-from pathlib import Path
-import sys
-root, output = Path(sys.argv[1]), Path(sys.argv[2])
-def quote(value):
-    return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$').replace('%', '%%') + '"'
-output.write_text('[Desktop Entry]\nType=Application\nName=作家工作台\nName[en]=Writer\'s Desk\nName[zh]=作家工作台\nName[zh_CN]=作家工作台\nComment=本地小说写作与策划工作台\nComment[en]=Local writing studio\nKeywords=作家工作台;作家;写作;小说;Writer\'s Desk;writer;desk;writing;novel;\nExec=' + quote(root / 'writer-desk') + '\nIcon=' + str(root / 'writer-desk.png') + '\nTerminal=false\nCategories=Office;\nStartupWMClass=writer-desk\n', encoding='utf-8')
-PY
-chmod 644 -- "$writer_desktop_dir/writer-desk.desktop"
-printf '%s\n' '已添加应用菜单入口。 / Added to the application menu.'
+if [[ ! -f "$writer_app_dir/install-managed.cjs" || ! -f "$writer_app_dir/release-manifest.json" ]]; then
+  printf '%s\n' '发行文件不完整，请重新解压完整安装包。 / Incomplete release; extract the complete package again.' >&2
+  exit 1
+fi
+ELECTRON_RUN_AS_NODE=1 "$writer_app_binary" "$writer_app_dir/install-managed.cjs" "$writer_app_dir"

@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const state={book:null,revision:0,chapterId:null,noteId:null,dirty:false,seq:0,saving:null,timer:null,error:null,conflict:false,composing:false,transitioning:false,fontSize:19,kind:"long",view:"shelf",books:[],outlineId:null,personId:null,trail:null,folderWarning:null};
+const state={book:null,revision:0,chapterId:null,noteId:null,dirty:false,seq:0,saving:null,timer:null,error:null,conflict:false,composing:false,transitioning:false,fontSize:19,kind:"long",view:"shelf",books:[],outlineId:null,personId:null,trail:null,folderWarning:null,protectionWarning:null};
 const activeChapters=()=>state.book?.chapters.filter(c=>!c.deletedAt)||[];
 const currentChapter=()=>state.book?.chapters.find(c=>c.id===state.chapterId);
 const currentNote=()=>state.book?.notes.find(n=>n.id===state.noteId&&!n.deletedAt);
@@ -43,7 +43,7 @@ async function saveNow(){
   state.saving=(async()=>{try{
     const r=await api('/api/books/'+payload.id,'PUT',{book:payload,revision:state.revision});state.revision=r.revision;
     if(state.seq===seq){state.dirty=false;removeDraft(payload.id);}else saveDraft();
-    state.error=null;$('error-banner').hidden=true;saveStatus(state.dirty?T('待保存'):T('已保存'));if(r.folderWarning&&r.folderWarning!==state.folderWarning)toast(T(r.folderWarning));state.folderWarning=r.folderWarning||null;return true;
+    state.error=null;$('error-banner').hidden=true;saveStatus(state.dirty?T('待保存'):T('已保存'));if(r.folderWarning&&r.folderWarning!==state.folderWarning)toast(T(r.folderWarning));state.folderWarning=r.folderWarning||null;if(r.protectionWarning&&r.protectionWarning!==state.protectionWarning)toast(T(r.protectionWarning));state.protectionWarning=r.protectionWarning||null;return true;
   }catch(error){state.error=error;state.conflict=!!error.conflict;saveDraft();saveStatus(T('保存未完成'),true);showError(error);return false;}})();
   const result=await state.saving;state.saving=null;if(result&&state.dirty)return saveNow();if(result&&state.view==='write')renderBacklinks();return result;
 }
@@ -74,10 +74,12 @@ function selectChapter(id){
 }
 
 function setBook(r){
+  state.protectionWarning=null;
   clearTimeout(state.timer);state.book=r.book;normalizeWorkspaceBook(state.book);state.kind=state.book.kind;state.revision=r.revision;state.seq=0;state.dirty=false;state.error=null;state.conflict=false;state.noteId=null;state.trail=null;state.collection=null;state.analysis=null;state.analysisSeq=-1;state.folderWarning=null;state.graphZoom=null;state.graphVolume='';state.graphGroup='';state.graphScope='all';state.atlasView='core';state.atlasMode='graph';state.atlasFocusId=null;state.personEditing=false;state.graphRelationType='';state.atlasLayoutKey=null;state.outlineCategory='all';state.outlineVolumeFilter='';state.outlineKindFilter='';state.showAutomatic=false;state.collapsedVolumes=new Set(activeVolumes().map(v=>v.id));$('chapter-search').value='';$('outline-search').value='';$('person-search').value='';$('relation-search').value='';$('relation-type-filter').value='manual';
   state.outlineId=activeOutline()[0]?.id||null;state.personId=people()[0]?.id||null;state.volumeId=activeVolumes()[0]?.id||null;
   $('error-banner').hidden=true;$('book-name').textContent=state.book.title;
   preference('yejian.last-book',state.book.id);preference('yejian.last-book.'+state.kind,state.book.id);preference('yejian.kind',state.kind);
+  if(r.protectionWarning){state.protectionWarning=r.protectionWarning;toast(T(r.protectionWarning));}
   const old=preference('yejian.chapter.'+state.book.id);selectChapter(activeChapters().some(c=>c.id===old)?old:activeChapters()[0]?.id);renderNotes();saveStatus(T('已保存'));document.title=state.book.title+T(' · 作家工作台');renderShell();
 }
 
@@ -145,7 +147,9 @@ function showBackup(){
   if(!state.book)return;const description=el('p','dialog-description',T('导出当前作品的正文，或者保留一份包含章节、大纲、人物关系、关联和回收站的完整备份。')),grid=el('div','export-grid');
   [[T('TXT 正文'),T('用于阅读、投稿或粘贴到其他编辑器'),'txt'],[T('Markdown 正文'),T('保留作品与章节标题层级'),'md']].forEach(([title,sub,format])=>{const b=action('','export-card',()=>exportBook(format));b.append(el('strong',null,title),el('small',null,sub));grid.append(b);});
   const section=el('div','backup-section');section.append(el('h3',null,T('完整备份')),el('p',null,T('备份只包含当前作品。恢复会新建一部作品，不会覆盖已有内容。建议定期将备份复制到其他磁盘。')));
-  const a=el('div','dialog-actions');a.append(action(T('恢复备份'),'secondary-button',()=>$('import-file').click()),action(T('下载完整备份'),'primary-button',downloadBackup));section.append(a);showDialog(T('导出与备份'),description,grid,section);
+  const a=el('div','dialog-actions');a.append(action(T('恢复备份'),'secondary-button',()=>$('import-file').click()),action(T('下载完整备份'),'primary-button',downloadBackup));section.append(a);
+  if(typeof showHistory==='function')section.append(action(T('历史与自动备份'),'text-button',()=>showHistory()));
+  showDialog(T('导出与备份'),description,grid,section);
 }
 async function importBackup(file){
   if(!file)return;if(file.size>50*1024*1024){toast(T('备份文件超过 50 MB，请使用较小的文件。'));$('import-file').value='';return;}
@@ -173,6 +177,7 @@ function restoreSettingsEditor(){
   saved.target.focus({preventScroll:true});saved.target.setSelectionRange(saved.start,saved.end,saved.direction||'none');saved.target.scrollTop=saved.scrollTop;saved.target.scrollLeft=saved.scrollLeft;return true;
 }
 function updateAppSettings(info={}){
+  if(typeof updateContinuationSettings==='function')updateContinuationSettings(info);
   for(const key of ['version','dataPath'])if(typeof info[key]==='string')appSettingsState[key]=info[key];
   if(Number.isFinite(info.zoomFactor))appSettingsState.zoomFactor=info.zoomFactor;
   for(const key of ['fullscreen','maximized'])if(typeof info[key]==='boolean')appSettingsState[key]=info[key];
@@ -190,6 +195,7 @@ async function showAppSettings(){
   rememberSettingsEditor();settingsEditor=lastSettingsEditor?{...lastSettingsEditor}:null;settingsFocusRestored=false;
   $('settings-edit-actions').querySelectorAll('[data-settings-edit]').forEach(button=>{const saved=currentSettingsEditor();button.disabled=!saved||(saved.target.readOnly&&!['copy','selectAll'].includes(button.dataset.settingsEdit));});
   closeNav();updateAppSettings();$('settings-dialog').showModal();const request=++settingsRequest;
+  if(typeof buildContinuationSettings==='function')buildContinuationSettings();
   if(hasDesktopSettings())try{const info=await window.WriterDesktop.getAppSettings();if(request===settingsRequest&&$('settings-dialog').open)updateAppSettings(info);}catch(error){if(request===settingsRequest)toast(error.message||T('无法读取设置。'));}
 }
 function closeAppSettings(){
@@ -264,7 +270,7 @@ async function registerTools(){
 }
 async function initialize(){
   state.kind=preference('yejian.kind')==='short'?'short':'long';const oldView=preference('yejian.view');if(['shelf','write','outline','people'].includes(oldView))state.view=oldView;state.collection=null;
-  bindEvents();bindWorkspaceEvents();bindLanguageEvents();bindAppSettingsEvents();installIcons();const font=Number(preference('yejian.font-size'));if(font>=16&&font<=26)state.fontSize=font;setFont(0);
+  bindEvents();bindWorkspaceEvents();bindLanguageEvents();bindAppSettingsEvents();if(typeof bindContinuationEvents==='function')bindContinuationEvents();installIcons();const font=Number(preference('yejian.font-size'));if(font>=16&&font<=26)state.fontSize=font;setFont(0);
   try{await refreshBooks();await loadKind(state.kind);renderShell();if(state.book)await recoverDraft();await registerTools();}catch(e){saveStatus(T('无法打开作品'),true);showError(e);}
 }
 

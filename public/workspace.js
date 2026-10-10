@@ -104,8 +104,9 @@ async function saveBookSettings(record,title,cover){
     book.title=title;book.cover=cover;
     const result=await api('/api/books/'+encodeURIComponent(book.id),'PUT',{book,revision:current?state.revision:record.revision});
     record.book=book;record.revision=result.revision;
-    if(current){state.book.title=title;state.book.cover=cover;state.revision=result.revision;state.folderWarning=result.folderWarning||null;}
+    if(current){state.book.title=title;state.book.cover=cover;state.revision=result.revision;state.folderWarning=result.folderWarning||null;state.protectionWarning=result.protectionWarning||null;}
     if(result.folderWarning)toast(T(result.folderWarning));
+    if(result.protectionWarning)toast(T(result.protectionWarning));
     closeDialog();await refreshBooks();renderShell();return true;
   });
 }

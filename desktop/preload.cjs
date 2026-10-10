@@ -14,8 +14,8 @@ const storage = {
   getLength: () => callStorage('length')
 };
 const boot = ipcRenderer.sendSync('writer:bootstrap');
-async function nativeRequest(channel, value) {
-  const result = await ipcRenderer.invoke(channel, value);
+async function nativeRequest(channel, ...args) {
+  const result = await ipcRenderer.invoke(channel, ...args);
   if (result?.error) throw Object.assign(new Error(result.error), { code: result.code });
   if (!result || typeof result !== 'object' || Array.isArray(result)) throw Object.assign(new Error('Invalid app response'), { code: 'invalid-response' });
   return result;
@@ -41,8 +41,11 @@ contextBridge.exposeInMainWorld('WriterDesktop', {
   getAppSettings: async () => {
     const result = await nativeRequest('writer:app-settings');
     if (typeof result.version !== 'string' || typeof result.dataPath !== 'string' || !Number.isFinite(result.zoomFactor)) throw Object.assign(new Error('Invalid app settings'), { code: 'invalid-response' });
-    return { version: result.version, dataPath: result.dataPath, ...checkedWindowState(result, true) };
+    return { version: result.version, dataPath: result.dataPath, ...checkedWindowState(result, true), updateSupported: result.updateSupported === true,
+      installPath: typeof result.installPath === 'string' ? result.installPath : '', installedVersion: typeof result.installedVersion === 'string' ? result.installedVersion : '', pendingVersion: typeof result.pendingVersion === 'string' ? result.pendingVersion : '' };
   },
+  installUpdate: () => nativeRequest('writer:install-update'),
+  restartAfterUpdate: () => nativeRequest('writer:restart-after-update'),
   performAppAction: async action => checkedWindowState(await nativeRequest('writer:app-action', action)),
   onWindowState: callback => {
     if (typeof callback !== 'function') throw new TypeError('A window state callback is required');

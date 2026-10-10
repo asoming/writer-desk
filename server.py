@@ -9,6 +9,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import hmac
 import sqlite3
 import stat
@@ -20,6 +21,8 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+import protection
+from ai_service import AIService, AIError
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "data" / "writer.sqlite3"
@@ -159,6 +162,7 @@ def initialize():
                     conn.execute("CREATE TABLE IF NOT EXISTS books(id TEXT PRIMARY KEY,title TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)")
                     conn.execute("CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
                     conn.execute("CREATE TABLE IF NOT EXISTS app_migrations(name TEXT PRIMARY KEY,applied_at TEXT NOT NULL)")
+                    protection.initialize(conn)
                     if not conn.execute("SELECT 1 FROM books LIMIT 1").fetchone():
                         insert_book(conn, sample_book())
                         insert_book(conn, sample_short())
@@ -435,6 +439,103 @@ def restore_book(data):
     return validate_book(book)
 
 
+def preserve_history(conn, row, stamp):
+    conn.execute("INSERT INTO history(book_id,revision,payload,saved_at) VALUES(?,?,?,?)",
+                 (row["id"], row["revision"], row["payload"], stamp))
+    conn.execute("DELETE FROM history WHERE book_id=? AND id NOT IN (SELECT id FROM history WHERE book_id=? ORDER BY id DESC LIMIT 30)",
+                 (row["id"], row["id"]))
+
+
+def saved_book_row(conn, book_id):
+    row = conn.execute("SELECT * FROM books WHERE id=?", (book_id,)).fetchone()
+    if row is None:
+        raise protection.ProtectionError("找不到这部作品", 404)
+    return row
+
+
+def checkpoint_book(book_id, force=False):
+    with DB_LOCK, connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = saved_book_row(conn, book_id)
+        return protection.checkpoint(conn, DB_PATH, row, validate_book, force=force, reason="manual" if force else "automatic")
+
+
+def protection_route(path):
+    return re.fullmatch(r"/api/books/(.+)/(history|backups|checkpoint)(?:/([^/]+)(/restore)?)?", path)
+
+
+def read_protection(path):
+    if path == "/api/protection/settings":
+        with connect() as conn:
+            return {"settings": protection.settings(conn)}
+    match = protection_route(path)
+    if not match:
+        return None
+    book_id, kind, token, restore = match.groups()
+    if restore or kind == "checkpoint":
+        raise protection.ProtectionError("找不到这个操作", 404)
+    with connect() as conn:
+        current = saved_book_row(conn, book_id)
+        if kind == "history":
+            if token:
+                if not token.isdecimal() or int(token) < 1:
+                    raise protection.ProtectionError("历史版本编号不正确")
+                row = conn.execute("SELECT * FROM history WHERE book_id=? AND revision=? ORDER BY id DESC LIMIT 1", (book_id, int(token))).fetchone()
+                if row is None:
+                    raise protection.ProtectionError("这个历史版本已不存在，请刷新列表", 404)
+                book = validate_book(json.loads(row["payload"]))
+                return {"book": book, **protection.summary(book, row["revision"], row["saved_at"]), "currentRevision": current["revision"]}
+            rows = conn.execute("SELECT * FROM history WHERE book_id=? ORDER BY id DESC LIMIT 30", (book_id,)).fetchall()
+            versions = [protection.summary(validate_book(json.loads(row["payload"])), row["revision"], row["saved_at"]) for row in rows]
+            return {"versions": versions, "currentRevision": current["revision"]}
+        result = (protection.get_snapshot(DB_PATH, book_id, token, validate_book) if token
+                  else {"backups": protection.list_snapshots(DB_PATH, book_id, validate_book)})
+        return {**result, "currentRevision": current["revision"]}
+
+
+def write_protection(path, data):
+    match = protection_route(path)
+    if not match:
+        return None
+    book_id, kind, token, restore = match.groups()
+    if kind == "checkpoint" and not token:
+        if not isinstance(data, dict) or data:
+            raise protection.ProtectionError("立即备份不接受文件路径")
+        return {"backup": checkpoint_book(book_id, force=True)}
+    if not restore or not token or kind not in ("history", "backups"):
+        raise protection.ProtectionError("找不到这个操作", 404)
+    if not isinstance(data, dict) or set(data) != {"revision"} or type(data["revision"]) is not int:
+        raise protection.ProtectionError("恢复时需要当前保存版本")
+    with DB_LOCK, connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        current = saved_book_row(conn, book_id)
+        if current["revision"] != data["revision"]:
+            raise protection.ProtectionError("作品已在另一个窗口更新，请重新查看版本后恢复", 409, True)
+        if kind == "history":
+            if not token.isdecimal() or int(token) < 1:
+                raise protection.ProtectionError("历史版本编号不正确")
+            source = conn.execute("SELECT payload FROM history WHERE book_id=? AND revision=? ORDER BY id DESC LIMIT 1", (book_id, int(token))).fetchone()
+            if source is None:
+                raise protection.ProtectionError("这个历史版本已不存在，请刷新列表", 404)
+            book = validate_book(json.loads(source["payload"]))
+        else:
+            book = protection.get_snapshot(DB_PATH, book_id, token, validate_book)["book"]
+        if book["id"] != book_id:
+            raise protection.ProtectionError("版本与当前作品不一致")
+        # If preserving the current book fails, do not start the restoration.
+        protection.checkpoint(conn, DB_PATH, current, validate_book, force=True, reason="before-restore")
+        stamp = now()
+        preserve_history(conn, current, stamp)
+        conn.execute("UPDATE books SET title=?,payload=?,revision=revision+1,updated_at=? WHERE id=?",
+                     (book["title"], json.dumps(book, ensure_ascii=False), stamp, book_id))
+        result = {"book": book, "revision": current["revision"] + 1, "updatedAt": stamp}
+    try:
+        sync_book_folder(book_id)
+    except Exception:
+        result["folderWarning"] = FOLDER_WARNING
+    return result
+
+
 class FolderExportError(Exception):
     def __init__(self, message, status=409):
         super().__init__(message)
@@ -629,6 +730,27 @@ def sync_book_folder(book_id, create=False):
         raise FolderExportError(FOLDER_FAILURE, 500) from exc
 
 
+def handle_ai_request(path, data):
+    service = AIService(DB_PATH.parent)
+    if path == "/api/ai/test":
+        if not isinstance(data, dict) or data:
+            raise AIError(400, "连接测试不接受作品内容或额外参数。")
+        return service.test_connection()
+    match = re.fullmatch(r"/api/books/([^/]+)/ai(/preview)?", path)
+    if not match:
+        return None
+    if not isinstance(data, dict) or set(data) - {"action", "chapterIds", "instruction"}:
+        raise AIError(400, "AI 请求参数不正确。")
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM books WHERE id=?", (match.group(1),)).fetchone()
+    if not row:
+        raise AIError(404, "找不到这部作品")
+    book = book_result(row)["book"]
+    operation = service.preview if match.group(2) else service.run
+    # Never hold a database transaction while waiting for an external service.
+    return operation(book, data.get("action"), data.get("chapterIds"), data.get("instruction", ""))
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WritersDesk/0.2"
 
@@ -674,7 +796,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = unquote(urlparse(self.path).path)
         try:
-            if path == "/api/examples":
+            protected = read_protection(path)
+            if protected is not None:
+                self.send_json(protected)
+            elif path == "/api/ai/settings":
+                self.send_json(AIService(DB_PATH.parent).get_settings())
+            elif path == "/api/examples":
                 manifest = ROOT / "examples" / "manifest.json"
                 self.send_json({"examples": json.loads(manifest.read_text("utf-8")) if manifest.is_file() else []})
             elif path == "/api/books":
@@ -704,7 +831,9 @@ class Handler(BaseHTTPRequestHandler):
                 files = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/story-analysis.js": "story-analysis.js",
                          "/atlas-layout.js": "atlas-layout.js", "/atlas-ui.js": "atlas-ui.js", "/atlas.css": "atlas.css", "/outline.css": "outline.css",
                          "/vendor/dagre.min.js": "vendor/dagre.min.js",
-                         "/workspace.js": "workspace.js", "/i18n.js": "i18n.js", "/style.css": "style.css", "/favicon.svg": "favicon.svg"}
+                         "/workspace.js": "workspace.js", "/i18n.js": "i18n.js", "/style.css": "style.css", "/favicon.svg": "favicon.svg",
+                         "/protection.js": "protection.js", "/protection.css": "protection.css",
+                         "/continuation.js": "continuation.js", "/ai.js": "ai.js", "/ai.css": "ai.css"}
                 filename = files.get(path)
                 if not filename:
                     self.send_json({"error": "找不到这个页面"}, 404)
@@ -712,6 +841,10 @@ class Handler(BaseHTTPRequestHandler):
                 content = (ROOT / "public" / filename).read_bytes()
                 content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
                 self.send_bytes(content, content_type=content_type + ("; charset=utf-8" if filename.endswith((".html", ".css", ".js", ".svg")) else ""))
+        except AIError as exc:
+            self.send_json({"error": exc.message}, exc.status)
+        except protection.ProtectionError as exc:
+            self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)
         except Exception as exc:
             print(f"读取失败: {exc}", file=sys.stderr)
             self.send_json({"error": "读取失败，原有文件仍保留在本机"}, 500)
@@ -720,6 +853,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            protected = write_protection(path, data)
+            if protected is not None:
+                self.send_json(protected)
+                return
+            ai_result = handle_ai_request(path, data)
+            if ai_result is not None:
+                self.send_json(ai_result)
+                return
             if path.startswith("/api/books/") and path.endswith("/folder"):
                 if not isinstance(data, dict) or data:
                     self.send_json({"error": FOLDER_REQUEST, "code": "FOLDER_REQUEST"}, 400)
@@ -756,7 +897,16 @@ class Handler(BaseHTTPRequestHandler):
                         book["title"] = f"{original_title} ({number})"
                         number += 1
                 insert_book(conn, book)
-            self.send_json({"book": book, "revision": 1, "updatedAt": now()}, 201)
+            result = {"book": book, "revision": 1, "updatedAt": now()}
+            try:
+                checkpoint_book(book["id"])
+            except Exception:
+                result["protectionWarning"] = protection.WARNING
+            self.send_json(result, 201)
+        except AIError as exc:
+            self.send_json({"error": exc.message}, exc.status)
+        except protection.ProtectionError as exc:
+            self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)
         except FolderExportError as exc:
             self.send_json({"error": str(exc), "code": exc.code}, exc.status)
         except (ValueError, TypeError, AttributeError) as exc:
@@ -771,6 +921,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            if path == "/api/ai/settings":
+                self.send_json(AIService(DB_PATH.parent).save_settings(data))
+                return
+            if path == "/api/protection/settings":
+                with DB_LOCK, connect() as conn:
+                    result = protection.update_settings(conn, data)
+                self.send_json({"settings": result})
+                return
             if not path.startswith("/api/books/"):
                 self.send_json({"error": "找不到这个操作"}, 404)
                 return
@@ -788,10 +946,13 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({"error": "另一个窗口修改了这部作品。本页内容已保留，请另存为新作品。", "conflict": True}, 409)
                     return
                 stamp = now()
-                conn.execute("INSERT INTO history(book_id,revision,payload,saved_at) VALUES(?,?,?,?)", (book_id, row["revision"], row["payload"], stamp))
-                conn.execute("DELETE FROM history WHERE book_id=? AND id NOT IN (SELECT id FROM history WHERE book_id=? ORDER BY id DESC LIMIT 30)", (book_id, book_id))
+                preserve_history(conn, row, stamp)
                 conn.execute("UPDATE books SET title=?,payload=?,revision=revision+1,updated_at=? WHERE id=?", (book["title"], json.dumps(book, ensure_ascii=False), stamp, book_id))
             result = {"revision": row["revision"] + 1, "updatedAt": stamp}
+            try:
+                checkpoint_book(book_id)
+            except Exception:
+                result["protectionWarning"] = protection.WARNING
             try:
                 sync_book_folder(book_id)
             except Exception as exc:
@@ -801,6 +962,10 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, ValueError):
                     pass  # Logging cannot invalidate an already committed save.
             self.send_json(result)
+        except AIError as exc:
+            self.send_json({"error": exc.message}, exc.status)
+        except protection.ProtectionError as exc:
+            self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)
         except (ValueError, TypeError, AttributeError) as exc:
             self.send_json({"error": str(exc)}, 400)
         except PermissionError as exc:
