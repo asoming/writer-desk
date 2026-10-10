@@ -836,6 +836,21 @@ Object.assign(englishMessages,{
   "无法保留本机草稿，请先下载完整备份或另存为新作品。": "The local draft could not be kept. Download a complete backup or save as a new book first.",
   "草稿已保留在本机。恢复原作品后，可将这份草稿另存为新作品。": "Draft kept on this device. After restoring the original book, you can save this draft as a new book."
 });
+Object.assign(englishMessages,{
+  "高级": "Advanced",
+  "手动限制资料字符数": "Set a character limit",
+  "字符上限": "Character limit",
+  "资料": "Material",
+  "资料 · {0} 章": "Material · {0} chapters",
+  "写作 Skill · {0}": "Writing Skills · {0}",
+  "共 {0} 字符": "{0} characters total",
+  "手动上限 {0}": "Manual limit {0}",
+  "Skill：{0} 字符（计入总数）": "Skills: {0} characters (included in total)",
+  "资料预览无效，请重试。": "Invalid material preview. Try again.",
+  "资料超过手动上限，请减少章节或调整设置。": "Material exceeds your manual limit. Select fewer chapters or change settings.",
+  "AI 上下文模式不正确。": "Invalid AI context mode.",
+  "所选资料超出模型上下文，请减少章节后重试。": "The selected material exceeds the model context. Select fewer chapters and try again."
+});
 function T(source,...values){
   if(uiLanguage==='en'&&typeof source==='string'){
     const failure=source.match(/^AI 服务请求失败（HTTP (\d{3})）。请检查配置后重试。$/);

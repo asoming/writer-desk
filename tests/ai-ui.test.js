@@ -26,15 +26,15 @@ function harness(){
   const context=vm.createContext({document:{getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),addEventListener(){},querySelector:()=>new Element()},crypto:{randomUUID},sessionStorage:storage,clientStorage:storage,structuredClone,setTimeout:()=>0,clearTimeout(){},requestAnimationFrame:fn=>fn(),addEventListener(){},T:(text,...args)=>Array.isArray(text)?text.reduce((out,part,i)=>out+part+(args[i]??''),''):String(text).replace(/\{(\d+)\}/g,(_,i)=>args[i]??'')});context.window=context;
   for(const file of ['public/app.js','public/workspace.js','public/ai.js']){let source=fs.readFileSync(path.join(root,file),'utf8');if(file.endsWith('workspace.js'))source=source.replace(/\ninitialize\(\);\s*$/,'\n');vm.runInContext(source,context,{filename:file});}
   const run=source=>vm.runInContext(source,context),state=run('state');state.book=structuredClone(sample);state.kind='long';state.view='write';state.chapterId=sample.chapters[0].id;
-  const h={get,run,state,context,calls:[],saves:[],copied:[],renderCount:0,settings:{enabled:true,endpoint:'http://127.0.0.1:9999/v1/chat/completions',model:'stub-model',hasKey:false,maxContextChars:250000,timeoutSeconds:60}};
+  const h={get,run,state,context,calls:[],saves:[],copied:[],renderCount:0,settings:{enabled:true,endpoint:'http://127.0.0.1:9999/v1/chat/completions',model:'stub-model',hasKey:false,contextMode:'auto',maxContextChars:250000,timeoutSeconds:60}};
   context.navigator={clipboard:{writeText:async text=>h.copied.push(text)}};
   h.skills={skills:['chinese-novelist','novelskill','human-writing'].map(id=>({id,name:id,available:true,imported:false,referenceCount:1})),defaults:{skillIds:[],skillMode:'auto'}};
-  h.preview=data=>({bookId:state.book.id,action:data.action,chapterIds:data.chapterIds,contextChars:2000+data.instruction.length+data.skillIds.length*300,maxContextChars:250000,overLimit:!!h.overLimit,counts:{chapters:data.chapterIds.length,outlines:3,people:32,relationships:35},selectedSkillIds:data.skillIds,skillMode:data.skillMode,skillChars:data.skillIds.length*300,skills:data.skillIds.map(id=>({id,name:id,mode:data.skillMode==='auto'?'chapter':data.skillMode,files:['SKILL.md','references/chapter.md']}))});
+  h.preview=data=>({bookId:state.book.id,action:data.action,chapterIds:data.chapterIds,contextChars:2000+data.instruction.length+data.skillIds.length*300,contextMode:h.settings.contextMode,maxContextChars:h.settings.contextMode==='manual'?h.settings.maxContextChars:null,overLimit:h.settings.contextMode==='manual'&&!!h.overLimit,counts:{chapters:data.chapterIds.length,outlines:3,people:32,relationships:35},selectedSkillIds:data.skillIds,skillMode:data.skillMode,skillChars:data.skillIds.length*300,skills:data.skillIds.map(id=>({id,name:id,mode:data.skillMode==='auto'?'chapter':data.skillMode,files:['SKILL.md','references/chapter.md']}))});
   h.skillDetail=id=>({id,name:id,content:'# SKILL.md\n<img src=x onerror=alert(1)>\n只读写作说明',files:[{path:'references/chapter.md',content:'连续阅读参考内容'}],imported:true});
   h.result=(request)=>({bookId:state.book.id,action:request.action,chapterIds:request.chapterIds,data:request.action==='draft'?{title:'AI测试草稿',body:'<img src=x onerror=alert(1)>\n一段新的试写。'}:request.action==='consistency'?{issues:[{title:'待核查',description:'核对人物设定',chapterIds:request.chapterIds,evidence:[{chapterId:request.chapterIds[0],quote:sample.chapters[0].body.slice(0,40)}]}]}:{people:[{name:'测试新人物',group:'测试组',description:'仅供确认',evidence:[{chapterId:request.chapterIds[0],quote:sample.chapters[0].body.slice(0,40)}]}],relationships:[{from:'测试新人物',to:'沈砚',type:'cooperate',label:'测试核验',description:'作者确认后建立',evidence:[{chapterId:request.chapterIds[0],quote:sample.chapters[0].body.slice(0,40)}]}]}});
   context.localAPI=async(url,method='GET',data)=>{
     h.calls.push({url,method,data:structuredClone(data)});
-    if(url==='/api/ai/settings')return h.settings;
+    if(url==='/api/ai/settings'){if(method==='PUT'){const {apiKey,clearKey,...settings}=data;h.settings={...h.settings,...settings,hasKey:clearKey?false:!!apiKey||h.settings.hasKey};}return h.settings;}
     if(url==='/api/skills'){if(h.skillError)throw h.skillError;return structuredClone(h.skills);}
     if(url==='/api/skills/import'){data.skillIds.forEach(id=>h.skills.skills.find(skill=>skill.id===id).imported=true);return structuredClone(h.skills);}
     if(url==='/api/skills/settings'){h.skills.defaults=structuredClone(data);return structuredClone(h.skills);}
@@ -56,8 +56,54 @@ test('default settings stay collapsed, redact existing key, and clear the passwo
   assert.equal(key.value,'');assert.ok(h.calls.some(call=>call.method==='PUT'&&call.data.apiKey==='stub-only-secret'));
 });
 
+test('automatic context is the default; manual character protection is optional, collapsed and preserves its saved value',async()=>{
+  const h=harness(),container=new Element();h.context.container=container;h.run('appendAISettings(container)');await new Promise(resolve=>setImmediate(resolve));
+  const advanced=find(container,node=>node.className==='ai-advanced'),manual=find(container,node=>node.id==='ai-context-manual'),limit=find(container,node=>node.id==='ai-context-limit'),save=find(container,node=>node.textContent==='保存 AI 设置');
+  assert.equal(advanced.open,false);assert.equal(manual.checked,false);assert.equal(limit.disabled,true);assert.equal(limit.parentElement.hidden,true);
+  await save.listeners.click();let payload=h.calls.filter(call=>call.method==='PUT').at(-1).data;
+  assert.equal(payload.contextMode,'auto');assert.equal(Object.hasOwn(payload,'maxContextChars'),false);
+  manual.checked=true;manual.listeners.change();assert.equal(limit.disabled,false);assert.equal(limit.parentElement.hidden,false);assert.equal(limit.min,'1');assert.equal(limit.max,'26214400');
+  limit.value='1200000';await save.listeners.click();payload=h.calls.filter(call=>call.method==='PUT').at(-1).data;
+  assert.equal(payload.contextMode,'manual');assert.equal(payload.maxContextChars,1200000);assert.equal(manual.checked,true);
+  limit.value='';manual.checked=false;manual.listeners.change();await save.listeners.click();payload=h.calls.filter(call=>call.method==='PUT').at(-1).data;
+  assert.equal(payload.contextMode,'auto');assert.equal(Object.hasOwn(payload,'maxContextChars'),false);assert.equal(h.settings.maxContextChars,1200000);assert.equal(limit.parentElement.hidden,true);
+});
+
+test('automatic previews above the old cap stay sendable with no fixed limit, token estimate or target URL in the assistant',async()=>{
+  const h=harness(),normal=h.preview;h.preview=data=>({...normal(data),contextChars:800000});
+  await h.run("showAIAssistant('draft')");
+  const content=h.get('dialog-body'),material=find(content,node=>node.className==='ai-material');
+  assert.equal(material.open,false);assert.equal(button(h,'发送所选资料').disabled,false);
+  assert.ok(find(material,node=>node.textContent==='共 800,000 字符'));
+  assert.ok(find(material,node=>node.tagName==='SUMMARY'&&node.textContent==='资料 · 1 章'));
+  assert.ok(!find(content,node=>node.className==='ai-notice'||node.textContent.includes('250,000')||node.textContent.includes('上限')||node.textContent.includes('目标服务')||node.textContent.includes('token')));
+  assert.equal(find(content,node=>node.className==='ai-status').textContent,'');assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
+  await button(h,'发送所选资料').listeners.click();assert.equal(h.calls.filter(call=>call.url.endsWith('/ai')).length,1);
+});
+
+test('manual limits and real provider context errors remain clear without blocking the prompt or modifying prose',async()=>{
+  const h=harness(),snapshot=JSON.stringify(h.state.book);h.settings.contextMode='manual';h.settings.maxContextChars=1000;h.overLimit=true;
+  await h.run("showAIAssistant('draft')");const material=find(h.get('dialog-body'),node=>node.className==='ai-material');
+  assert.ok(find(material,node=>node.textContent.includes('手动上限 1,000')));assert.equal(button(h,'发送所选资料').disabled,true);
+  assert.ok(find(h.get('dialog-body'),node=>node.textContent==='资料超过手动上限，请减少章节或调整设置。'));
+  h.overLimit=false;await field(h,'ai-skill-mode').listeners.change();assert.equal(button(h,'发送所选资料').disabled,false);
+  h.result=()=>{throw new Error('所选资料超出模型上下文，请减少章节后重试。');};await button(h,'发送所选资料').listeners.click();
+  assert.ok(find(h.get('dialog-body'),node=>node.textContent==='所选资料超出模型上下文，请减少章节后重试。'));assert.equal(field(h,'ai-instruction').disabled,false);assert.equal(JSON.stringify(h.state.book),snapshot);
+});
+
+test('empty chapters create no explanatory gray paragraph and inconsistent auto-limit previews cannot send',async()=>{
+  const h=harness();h.state.book.chapters=[];h.state.chapterId=null;await h.run("showAIAssistant('outline')");
+  const material=find(h.get('dialog-body'),node=>node.className==='ai-material');assert.ok(find(material,node=>node.tagName==='SUMMARY'&&node.textContent==='资料'));
+  assert.ok(!find(h.get('dialog-body'),node=>node.textContent.includes('还没有章节。')));assert.equal(find(material,node=>node.className==='ai-chapter-choices').hidden,true);
+  assert.equal(button(h,'发送所选资料').disabled,false);
+  for(const malformed of [value=>({...value,maxContextChars:250000}),value=>({...value,overLimit:true}),value=>({...value,contextMode:'unknown'})]){
+    const bad=harness(),normal=bad.preview;bad.preview=data=>malformed(normal(data));await bad.run("showAIAssistant('draft')");assert.equal(button(bad,'发送所选资料').disabled,true);
+    assert.ok(find(bad.get('dialog-body'),node=>node.textContent==='资料预览无效，请重试。'));
+  }
+});
+
 test('opening and previewing never sends to AI; disabled and oversized scopes cannot run',async()=>{
-  for(const mode of ['disabled','oversized']){const h=harness();if(mode==='disabled')h.settings.enabled=false;else h.overLimit=true;
+  for(const mode of ['disabled','oversized']){const h=harness();if(mode==='disabled')h.settings.enabled=false;else{h.overLimit=true;h.settings.contextMode='manual';}
     await h.run("showAIAssistant('draft')");assert.ok(h.calls.some(call=>call.url.endsWith('/ai/preview')));assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
     assert.equal(button(h,'发送所选资料').disabled,true);await button(h,'发送所选资料').listeners.click();assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
   }
@@ -157,10 +203,11 @@ test('AI inherits imported skill defaults, previews names/references/counts and 
   await h.run("showAIAssistant('draft')");
   assert.equal(find(h.get('dialog-body'),node=>node.className==='ai-writing-skills').open,false);
   assert.equal(field(h,'ai-skill-chinese-novelist').checked,true);assert.equal(field(h,'ai-skill-human-writing').disabled,true);assert.equal(field(h,'ai-skill-mode').value,'continue');
-  assert.ok(find(h.get('dialog-body'),node=>node.textContent.includes('此次写作 Skill：中文小说创作；300 字符')));
-  assert.ok(find(h.get('dialog-body'),node=>node.textContent.includes('references/chapter.md')));assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
+  const material=find(h.get('dialog-body'),node=>node.className==='ai-material');assert.equal(material.open,false);
+  assert.ok(find(material,node=>node.textContent==='Skill：300 字符（计入总数）'));
+  assert.ok(find(material,node=>node.textContent.includes('references/chapter.md')));assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
   const box=field(h,'ai-skill-chinese-novelist');box.checked=false;box.listeners.change();await new Promise(resolve=>setImmediate(resolve));
-  assert.ok(find(h.get('dialog-body'),node=>node.textContent.includes('此次写作 Skill：不使用；0 字符')));
+  assert.ok(!find(h.get('dialog-body'),node=>node.textContent.startsWith('Skill：')));assert.ok(find(h.get('dialog-body'),node=>node.tagName==='SUMMARY'&&node.textContent==='写作 Skill'));
   await button(h,'发送所选资料').listeners.click();const sent=h.calls.find(call=>call.url.endsWith('/ai')).data;
   assert.deepEqual(sent.skillIds,[]);assert.equal(sent.skillMode,'continue');assert.equal(sent.action,'draft');
 });

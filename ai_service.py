@@ -28,10 +28,14 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         raise AIError(502, "AI 服务要求重定向，已停止请求。请填写最终服务地址。")
 
 
-DEFAULTS = {"enabled": False, "endpoint": "", "model": "", "maxContextChars": 250000, "timeoutSeconds": 60}
+DEFAULTS = {"enabled": False, "endpoint": "", "model": "", "contextMode": "auto", "maxContextChars": 250000, "timeoutSeconds": 60}
 RELATION_TYPES = {"friend", "mentor", "family", "conflict", "cooperate", "fate", "other"}
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_OUTPUT_CHARS = 100000
+MAX_CONTEXT_CHARS = 25 * 1024 * 1024  # Matches the application's maximum book size.
+CONTEXT_ERROR_CODES = {"context_length_exceeded", "context_window_exceeded", "context_limit_exceeded",
+                       "max_context_length_exceeded", "input_too_long", "prompt_too_long"}
+CONTEXT_ERROR_MESSAGE = "所选资料超出模型上下文，请减少章节后重试。"
 _CONFIG_LOCK = threading.RLock()
 
 
@@ -63,6 +67,12 @@ def _compact(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def _context_rejected(value):
+    error = value.get("error") if isinstance(value, dict) else None
+    return isinstance(error, dict) and any(isinstance(error.get(key), str) and error[key].strip().lower() in CONTEXT_ERROR_CODES
+                                          for key in ("code", "type"))
+
+
 class AIService:
     def __init__(self, data_dir):
         self.data_dir = Path(data_dir)
@@ -83,7 +93,12 @@ class AIService:
                 value = json.load(handle)
             if not isinstance(value, dict):
                 raise ValueError("invalid settings")
-            return {**DEFAULTS, **value}
+            settings = {**DEFAULTS, **value}
+            if "contextMode" not in value:
+                settings["contextMode"] = "auto" if settings["maxContextChars"] == 250000 else "manual"
+            if settings["contextMode"] not in {"auto", "manual"} or type(settings["maxContextChars"]) is not int or not 1 <= settings["maxContextChars"] <= MAX_CONTEXT_CHARS:
+                raise ValueError("invalid context settings")
+            return settings
         except (OSError, ValueError, TypeError):
             raise AIError(500, "无法读取本机 AI 设置，请检查文件权限。") from None
 
@@ -102,7 +117,9 @@ class AIService:
                 raise AIError(400, "AI 开关参数不正确。")
             value["endpoint"] = _endpoint(value["endpoint"])
             value["model"] = _text(value["model"], 200, "模型名称").strip()
-            for key, low, high in [("maxContextChars", 1000, 500000), ("timeoutSeconds", 1, 180)]:
+            if not isinstance(value["contextMode"], str) or value["contextMode"] not in {"auto", "manual"}:
+                raise AIError(400, "AI 上下文模式不正确。")
+            for key, low, high in [("maxContextChars", 1, MAX_CONTEXT_CHARS), ("timeoutSeconds", 1, 180)]:
                 if type(value[key]) is not int or not low <= value[key] <= high:
                     raise AIError(400, "AI 数值设置超出允许范围。")
             key = _text(data.get("apiKey", ""), 8192, "API Key").strip()
@@ -149,6 +166,8 @@ class AIService:
             if len(raw) > MAX_RESPONSE_BYTES:
                 raise AIError(502, "AI 返回内容过大，请减少生成范围后重试。")
             result = json.loads(raw.decode("utf-8"))
+            if _context_rejected(result):
+                raise AIError(400, CONTEXT_ERROR_MESSAGE)
             choice = result["choices"][0]
             if choice.get("finish_reason") == "length":
                 raise AIError(502, "AI 返回被截断，请减少生成范围后重试。")
@@ -163,6 +182,15 @@ class AIService:
         except urllib.error.HTTPError as error:
             if 300 <= error.code < 400:
                 raise AIError(502, "AI 服务要求重定向，已停止请求。请填写最终服务地址。") from None
+            try:
+                raw = error.read(65537)
+                rejected = len(raw) <= 65536 and _context_rejected(json.loads(raw.decode("utf-8")))
+            except (OSError, ValueError, UnicodeError):
+                rejected = False
+            finally:
+                error.close()
+            if rejected:
+                raise AIError(400, CONTEXT_ERROR_MESSAGE) from None
             raise AIError(502, "AI 服务请求失败（HTTP " + str(error.code) + "）。请检查配置后重试。") from None
         except (TimeoutError, OSError, urllib.error.URLError):
             raise AIError(502, "AI 服务连接失败或超时，请检查地址后重试。") from None
@@ -219,14 +247,15 @@ class AIService:
         context, summary = self._skill_context(book, action, chapter_ids, instruction, skill_ids, skill_mode)
         settings = self.get_settings()
         count = len(_compact(context))
-        return {"bookId": book["id"], "action": action, "chapterIds": chapter_ids, "contextChars": count, "maxContextChars": settings["maxContextChars"], "overLimit": count > settings["maxContextChars"], "counts": {"chapters": len(context["chapters"]), "outlines": len(context["outlines"]), "people": len(context["people"]), "relationships": len(context["relationships"])}, **summary}
+        limit = settings["maxContextChars"] if settings["contextMode"] == "manual" else None
+        return {"bookId": book["id"], "action": action, "chapterIds": chapter_ids, "contextChars": count, "contextMode": settings["contextMode"], "maxContextChars": limit, "overLimit": limit is not None and count > limit, "counts": {"chapters": len(context["chapters"]), "outlines": len(context["outlines"]), "people": len(context["people"]), "relationships": len(context["relationships"])}, **summary}
 
     def run(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None):
         settings = self._configured()
         context, summary = self._skill_context(book, action, chapter_ids, instruction, skill_ids, skill_mode)
         _, active = self._context(book, action, chapter_ids, instruction)
         encoded = _compact(context)
-        if len(encoded) > settings["maxContextChars"]:
+        if settings["contextMode"] == "manual" and len(encoded) > settings["maxContextChars"]:
             raise AIError(400, "所选资料超过上下文字符上限，请减少章节或调整设置；没有发送任何资料。")
         schemas = {
             "relationships": '{"people":[{"name":"姓名","group":"分组","description":"介绍","evidence":[{"chapterId":"原章节id","quote":"逐字引用正文"}]}],"relationships":[{"from":"人物姓名","to":"人物姓名","type":"friend|mentor|family|conflict|cooperate|fate|other","label":"关系名称","description":"关系说明","evidence":[{"chapterId":"原章节id","quote":"逐字引用正文"}]}]}',

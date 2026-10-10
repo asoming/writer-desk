@@ -210,7 +210,7 @@ class SkillTests(unittest.TestCase):
         self.ai.run(self.book, "draft", self.ids, skill_ids=[])
         self.assertNotIn("writingSkills", json.loads(Stub.received[-1]["payload"]["messages"][1]["content"]))
         count = len(Stub.received)
-        self.ai.save_settings({"maxContextChars": baseline["contextChars"]})
+        self.ai.save_settings({"contextMode": "manual", "maxContextChars": baseline["contextChars"]})
         self.assertTrue(self.ai.preview(self.book, "draft", self.ids)["overLimit"])
         with self.assertRaises(AIError):
             self.ai.run(self.book, "draft", self.ids)
