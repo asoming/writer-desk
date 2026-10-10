@@ -49,6 +49,8 @@ class Stub(BaseHTTPRequestHandler):
             result = b'{"choices": [null]}'
         elif self.mode == 'large':
             result = b'x' * (2 * 1024 * 1024 + 1)
+        elif self.mode == 'plain':
+            result = json.dumps({'choices': [{'finish_reason': 'stop', 'message': {'content': self.reply or '自由回答，不是 JSON。'}}]}, ensure_ascii=False).encode()
         else:
             content = self.reply if self.reply is not None else {'title': '测试草稿', 'body': '这是一段隔离测试草稿。'}
             result = json.dumps({'choices': [{'finish_reason': 'length' if self.mode == 'truncated' else 'stop', 'message': {'content': json.dumps(content, ensure_ascii=False)}}]}).encode()
@@ -151,6 +153,64 @@ class AITests(unittest.TestCase):
         self.assertTrue(self.service.test_connection()['ok'])
         self.assertEqual(Stub.received[-1]['payload']['messages'], [{'role': 'user', 'content': 'Reply with OK.'}])
 
+    def test_blank_book_outline_hierarchy_and_exact_visible_instruction(self):
+        self.configure()
+        book = {'id': 'blank-book', 'kind': 'long', 'title': '新故事', 'chapters': [], 'outline': [], 'notes': [], 'relations': []}
+        nodes = [{'key': 'c1', 'parentKey': 'v1', 'kind': 'chapter', 'title': '第一章', 'body': '主角收到一份失踪名单。'},
+                 {'key': 's1', 'parentKey': None, 'kind': 'story', 'title': '全书总纲', 'body': '候选故事主线。'},
+                 {'key': 'v1', 'parentKey': 's1', 'kind': 'volume', 'title': '第一卷', 'body': '寻找档案的主人。'},
+                 {'key': 'world', 'parentKey': 's1', 'kind': 'setting', 'title': '世界规则', 'body': '档案每天改变一次。'}]
+        Stub.reply = {'nodes': nodes}
+        prompt = '请生成一卷一章的完整候选大纲，保留世界规则。'
+        preview = self.service.preview(book, 'outline', [], prompt, skill_ids=[])
+        self.assertEqual(preview['counts']['chapters'], 0)
+        self.assertEqual(Stub.received, [])
+        result = self.service.run(book, 'outline', [], prompt, skill_ids=[])
+        self.assertEqual([node['key'] for node in result['data']['nodes']], ['s1', 'v1', 'c1', 'world'])
+        message = Stub.received[-1]['payload']['messages'][1]['content']
+        self.assertEqual(json.loads(message)['instruction'], prompt)
+        self.assertEqual(len(message), preview['contextChars'])
+        self.assertEqual(book['outline'], [])
+        for invalid in [[], [nodes[0]], [{**nodes[1], 'parentKey': 'missing'}], [nodes[1], {**nodes[2], 'key': 's1'}],
+                        [nodes[1], {**nodes[0], 'parentKey': 's1'}], [nodes[1], {**nodes[2], 'parentKey': 'c1'}, nodes[0]],
+                        [nodes[1], {**nodes[3], 'kind': 'unknown'}], [{**nodes[1], 'title': 'x' * 201}]]:
+            Stub.reply = {'nodes': invalid}
+            with self.assertRaises(AIError) as error:
+                self.service.run(book, 'outline', [], prompt)
+            self.assertEqual(error.exception.status, 502)
+        short = {**book, 'kind': 'short'}
+        Stub.reply = {'nodes': [nodes[1], {**nodes[0], 'parentKey': 's1'}]}
+        self.assertEqual(len(self.service.run(short, 'outline', [], prompt)['data']['nodes']), 2)
+        Stub.reply = {'nodes': [nodes[1], nodes[2], nodes[0]]}
+        with self.assertRaises(AIError):
+            self.service.run(short, 'outline', [], prompt)
+
+    def test_custom_free_text_requires_prompt_counts_it_and_never_changes_book(self):
+        self.configure()
+        original = copy.deepcopy(self.book)
+        for prompt in ['', ' \n\t ']:
+            with self.assertRaises(AIError) as error:
+                self.service.preview(self.book, 'custom', [], prompt)
+            self.assertEqual(error.exception.status, 400)
+        self.assertEqual(Stub.received, [])
+        Stub.mode, Stub.reply = 'plain', '<img src=x onerror=alert(1)>\n候选名字：潮声、灯塔。'
+        prompt = '为本书里的档案馆取两个名字，给出解释。'
+        preview = self.service.preview(self.book, 'custom', [], prompt)
+        result = self.service.run(self.book, 'custom', [], prompt)
+        self.assertEqual(result['data'], {'text': Stub.reply})
+        messages = Stub.received[-1]['payload']['messages']
+        self.assertIn('操作为custom', messages[0]['content'])
+        self.assertIn('不强制JSON', messages[0]['content'])
+        self.assertEqual(json.loads(messages[1]['content'])['instruction'], prompt)
+        self.assertEqual(len(messages[1]['content']), preview['contextChars'])
+        self.assertEqual(self.book, original)
+        before = len(Stub.received)
+        self.configure(maxContextChars=1000)
+        self.assertTrue(self.service.preview(self.book, 'custom', [], prompt)['overLimit'])
+        with self.assertRaises(AIError):
+            self.service.run(self.book, 'custom', [], prompt)
+        self.assertEqual(len(Stub.received), before)
+
     def test_redirect_is_not_followed_and_error_text_never_echoed(self):
         self.configure(apiKey=FAKE_KEY)
         for mode in ['redirect', 'error', 'invalid', 'malformed', 'truncated', 'large']:
@@ -233,6 +293,14 @@ class AITests(unittest.TestCase):
             self.assertEqual(request('/api/books/' + book_id + '/ai', 'POST', {**body, 'apiKey': 'forbidden'})[0], 400)
             self.assertEqual(request('/api/books/missing/ai', 'POST', body)[0], 404)
             self.assertEqual(request('/api/ai/test', 'POST', {'body': 'must not be sent'})[0], 400)
+            Stub.reply = {'nodes': [{'key': 'story', 'parentKey': None, 'kind': 'story', 'title': '候选总纲', 'body': '一个新的故事方向。'}]}
+            outline_body = {'action': 'outline', 'chapterIds': [], 'instruction': '只生成候选总纲。', 'skillIds': []}
+            self.assertEqual(request('/api/books/' + book_id + '/ai/preview', 'POST', outline_body)[0], 200)
+            self.assertEqual(request('/api/books/' + book_id + '/ai', 'POST', outline_body)[1]['data']['nodes'][0]['kind'], 'story')
+            Stub.mode, Stub.reply = 'plain', '自由形式的咨询回答。'
+            custom_body = {'action': 'custom', 'chapterIds': [], 'instruction': '请讨论一个创作方向。', 'skillIds': []}
+            self.assertEqual(request('/api/books/' + book_id + '/ai', 'POST', custom_body)[1]['data']['text'], Stub.reply)
+            self.assertEqual(request('/api/books/' + book_id + '/ai/preview', 'POST', {**custom_body, 'instruction': ''})[0], 400)
             self.assertEqual(request('/api/books/' + book_id)[1]['book'], book)
             self.assertNotIn(FAKE_KEY.encode(), app.DB_PATH.read_bytes())
         finally:

@@ -26,7 +26,7 @@ async function buildContinuationSettings(){
 }
 
 function bindContinuationEvents(){
-  for(const [id,kind]of [['outline-ai','draft'],['people-ai','relationships'],['writing-ai',null]]){
+  for(const [id,kind]of [['outline-ai','outline'],['people-ai','relationships'],['writing-ai',null]]){
     $(id)?.addEventListener('click',()=>showAIAssistant(kind));
   }
   $('settings-install-update')?.addEventListener('click',async()=>{

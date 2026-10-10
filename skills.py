@@ -300,7 +300,7 @@ class SkillsService:
             mode = defaults["skillMode"] if skill_mode is None else skill_mode
             if not isinstance(mode, str) or mode not in MODES:
                 raise SkillError("写作技能模式不正确。")
-            resolved = {"relationships": "characters", "consistency": "check", "draft": "chapter"}.get(action) if mode == "auto" else mode
+            resolved = {"relationships": "characters", "consistency": "check", "draft": "chapter", "outline": "outline", "custom": "custom"}.get(action) if mode == "auto" else mode
             if resolved is None:
                 raise SkillError("写作技能操作不正确。")
             results = []
@@ -308,7 +308,7 @@ class SkillsService:
                 files = self._imported(skill_id)
                 if files is None:
                     raise SkillError("请先导入所选写作技能。")
-                selected, pending = {"SKILL.md"}, list(SEEDS[skill_id][resolved])
+                selected, pending = {"SKILL.md"}, [] if resolved == "custom" else list(SEEDS[skill_id][resolved])
                 while pending:
                     name = pending.pop(0)
                     if name in selected or name not in files:

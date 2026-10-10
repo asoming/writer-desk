@@ -42,12 +42,12 @@ class DefaultDemoTests(unittest.TestCase):
             conn.execute("CREATE TABLE history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
             for index, book in enumerate(books):
                 payload = json.dumps(book, ensure_ascii=False)
-                conn.execute("INSERT INTO books VALUES(?,?,?,?,?,?)", (book["id"], book["title"], payload, 7 + index, "created-original", "updated-original"))
+                conn.execute("INSERT INTO books(id,title,payload,revision,created_at,updated_at) VALUES(?,?,?,?,?,?)", (book["id"], book["title"], payload, 7 + index, "created-original", "updated-original"))
                 conn.execute("INSERT INTO history(book_id,revision,payload,saved_at) VALUES(?,?,?,?)", (book["id"], 3, payload, "history-original"))
 
     def snapshot(self):
         with sqlite3.connect(self.db) as conn:
-            return (dict((row[0], row) for row in conn.execute("SELECT * FROM books")),
+            return (dict((row[0], row) for row in conn.execute("SELECT id,title,payload,revision,created_at,updated_at FROM books")),
                     list(conn.execute("SELECT * FROM history ORDER BY id")))
 
     def marker_count(self):
@@ -108,7 +108,7 @@ class DefaultDemoTests(unittest.TestCase):
         damaged["chapters"] = [{"id": [], "body": "不能被覆盖的旧数据"}]
         self.legacy_library([damaged])
         with sqlite3.connect(self.db) as conn:
-            conn.execute("INSERT INTO books VALUES(?,?,?,?,?,?)", ("invalid-json", "原始损坏行", "{not-json", 9, "old-created", "old-updated"))
+            conn.execute("INSERT INTO books(id,title,payload,revision,created_at,updated_at) VALUES(?,?,?,?,?,?)", ("invalid-json", "原始损坏行", "{not-json", 9, "old-created", "old-updated"))
         before = self.snapshot()
         server.initialize()
         self.assert_preserved(before)

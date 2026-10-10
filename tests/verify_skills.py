@@ -128,6 +128,11 @@ class SkillTests(unittest.TestCase):
         self.assertEqual(self.service.selected("draft", [])[0], [])
         self.assertEqual(self.service.selected("relationships", ["human-writing"], "auto")[0][0]["mode"], "characters")
         self.assertEqual(self.service.selected("consistency", ["novelskill"], "auto")[0][0]["mode"], "check")
+        self.assertEqual(self.service.selected("outline", ["novelskill"], "auto")[0][0]["mode"], "outline")
+        custom = self.service.selected("custom", ["novelskill"], "auto")[0][0]
+        self.assertEqual(custom["mode"], "custom")
+        self.assertEqual([file["path"] for file in custom["files"]], ["SKILL.md"])
+        self.assertEqual(len(self.service.selected("custom", ["novelskill"], "outline")[0][0]["files"]), 2)
         for data in [{"skillIds": [], "skillMode": "bad"}, {"skillIds": []}, {"skillIds": [], "skillMode": "auto", "path": "/tmp"}]:
             with self.assertRaises(SkillError):
                 self.service.save_settings(data)

@@ -41,6 +41,8 @@ FOLDER_UNSAFE = "作品文件夹路径异常，无法安全同步。请检查目
 FOLDER_FAILURE = "无法同步作品文件夹，请检查磁盘空间和目录权限。作品仍已保存在本机。"
 FOLDER_REQUEST = "打开作品文件夹只接受作品编号，不接受文件路径。"
 FOLDER_UNSUPPORTED = "当前系统不支持安全打开作品文件夹。作品仍已保存在本机。"
+BOOK_TRASHED = "这部作品已移入回收站。请从回收站恢复，或将本页内容另存为新作品。"
+BOOK_STATE_CONFLICT = "作品状态已在另一个窗口变化。请刷新书架或回收站后重试。"
 
 
 def now():
@@ -161,6 +163,8 @@ def initialize():
                     # Serialize both fresh seeding and upgrades across processes.
                     conn.execute("BEGIN IMMEDIATE")
                     conn.execute("CREATE TABLE IF NOT EXISTS books(id TEXT PRIMARY KEY,title TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)")
+                    if "deleted_at" not in {column["name"] for column in conn.execute("PRAGMA table_info(books)")}:
+                        conn.execute("ALTER TABLE books ADD COLUMN deleted_at TEXT")
                     conn.execute("CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
                     conn.execute("CREATE TABLE IF NOT EXISTS app_migrations(name TEXT PRIMARY KEY,applied_at TEXT NOT NULL)")
                     protection.initialize(conn)
@@ -422,6 +426,61 @@ def book_result(row):
     return {"book": upgrade_book(json.loads(row["payload"])), "revision": row["revision"], "updatedAt": row["updated_at"]}
 
 
+def require_active_book(row):
+    if row["deleted_at"] is not None:
+        error = protection.ProtectionError(BOOK_TRASHED, 409, True)
+        error.deleted = True
+        raise error
+
+
+def book_summary(row):
+    book = upgrade_book(json.loads(row["payload"]))
+    chapters = [chapter for _, group in manuscript_groups(book) for chapter in group]
+    latest = next((chapter for chapter in reversed(chapters) if chapter["body"].strip()), chapters[-1] if chapters else None)
+    return {"id": book["id"], "title": book["title"], "kind": book["kind"], "cover": book["cover"],
+            "volumeCount": sum(not volume["deletedAt"] for volume in book["volumes"]),
+            "outlineCount": sum(not item["deletedAt"] for item in book["outline"]),
+            "personCount": sum(not note["deletedAt"] and note["type"] == "人物" for note in book["notes"]),
+            "chapterCount": len(chapters), "latestChapterTitle": latest["title"] if latest else "",
+            "excerpt": next((chapter["body"][:100] for chapter in chapters if chapter["body"].strip()), ""),
+            "charCount": sum(sum(not character.isspace() for character in chapter["body"]) for chapter in chapters),
+            "updatedAt": row["updated_at"], "revision": row["revision"]}
+
+
+def change_book_trash(path, data):
+    match = re.fullmatch(r"/api/books/([^/]+)/(trash|restore)", path)
+    if not match:
+        return None
+    if not isinstance(data, dict) or set(data) != {"revision"} or type(data["revision"]) is not int or data["revision"] < 1:
+        raise protection.ProtectionError("移入回收站或恢复作品时需要当前保存版本。")
+    book_id, operation = match.groups()
+    with DB_LOCK, connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = saved_book_row(conn, book_id)
+        if row["revision"] != data["revision"]:
+            raise protection.ProtectionError(BOOK_STATE_CONFLICT, 409, True)
+        if operation == "trash":
+            require_active_book(row)
+        elif row["deleted_at"] is None:
+            raise protection.ProtectionError("这部作品不在回收站中，请刷新列表后重试。", 409, True)
+        stamp = now()
+        deleted_at = stamp if operation == "trash" else None
+        changed = conn.execute("UPDATE books SET deleted_at=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?",
+                               (deleted_at, stamp, book_id, row["revision"]))
+        if changed.rowcount != 1:
+            raise protection.ProtectionError(BOOK_STATE_CONFLICT, 409, True)
+        # Soft deletion only changes row metadata. Authored payloads, IDs, history,
+        # snapshots and opted-in exported folders all remain available for recovery.
+        if operation == "trash":
+            return {"bookId": book_id, "revision": row["revision"] + 1, "deletedAt": deleted_at, "updatedAt": stamp}
+        result = {**book_result(row), "revision": row["revision"] + 1, "updatedAt": stamp}
+    try:
+        sync_book_folder(book_id)
+    except Exception:
+        result["folderWarning"] = FOLDER_WARNING
+    return result
+
+
 def restore_book(data):
     book = validate_book(data)
     book["id"] = uid()
@@ -458,6 +517,7 @@ def checkpoint_book(book_id, force=False):
     with DB_LOCK, connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = saved_book_row(conn, book_id)
+        require_active_book(row)
         return protection.checkpoint(conn, DB_PATH, row, validate_book, force=force, reason="manual" if force else "automatic")
 
 
@@ -510,6 +570,7 @@ def write_protection(path, data):
     with DB_LOCK, connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         current = saved_book_row(conn, book_id)
+        require_active_book(current)
         if current["revision"] != data["revision"]:
             raise protection.ProtectionError("作品已在另一个窗口更新，请重新查看版本后恢复", 409, True)
         if kind == "history":
@@ -713,7 +774,7 @@ def sync_book_folder(book_id, create=False):
         with DB_LOCK, connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT * FROM books WHERE id=?", (book_id,)).fetchone()
-            if row is None:
+            if row is None or row["deleted_at"] is not None:
                 return None
             with book_folder_directory(book_id, create) as (folder_fd, folder):
                 if folder_fd is None:
@@ -748,6 +809,7 @@ def handle_ai_request(path, data):
         row = conn.execute("SELECT * FROM books WHERE id=?", (match.group(1),)).fetchone()
     if not row:
         raise AIError(404, "找不到这部作品")
+    require_active_book(row)
     book = book_result(row)["book"]
     operation = service.preview if match.group(2) else service.run
     # Never hold a database transaction while waiting for an external service.
@@ -813,24 +875,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"examples": json.loads(manifest.read_text("utf-8")) if manifest.is_file() else []})
             elif path == "/api/books":
                 with connect() as conn:
-                    rows = conn.execute("SELECT * FROM books ORDER BY updated_at DESC").fetchall()
-                result = []
-                for row in rows:
-                    book = upgrade_book(json.loads(row["payload"]))
-                    chapters = [chapter for _, group in manuscript_groups(book) for chapter in group]
-                    latest = next((c for c in reversed(chapters) if c["body"].strip()), chapters[-1] if chapters else None)
-                    result.append({"id": book["id"], "title": book["title"], "kind": book["kind"], "cover": book["cover"],
-                                   "volumeCount": sum(not v["deletedAt"] for v in book["volumes"]),
-                                   "outlineCount": sum(not o["deletedAt"] for o in book["outline"]),
-                                   "personCount": sum(not n["deletedAt"] and n["type"] == "人物" for n in book["notes"]),
-                                   "chapterCount": len(chapters), "latestChapterTitle": latest["title"] if latest else "",
-                                   "excerpt": next((c["body"][:100] for c in chapters if c["body"].strip()), ""),
-                                   "charCount": sum(sum(not ch.isspace() for ch in c["body"]) for c in chapters),
-                                   "updatedAt": row["updated_at"]})
-                self.send_json({"books": result})
+                    rows = conn.execute("SELECT * FROM books WHERE deleted_at IS NULL ORDER BY updated_at DESC").fetchall()
+                    trash_count = conn.execute("SELECT COUNT(*) FROM books WHERE deleted_at IS NOT NULL").fetchone()[0]
+                self.send_json({"books": [book_summary(row) for row in rows], "trashCount": trash_count})
+            elif path == "/api/trash/books":
+                with connect() as conn:
+                    rows = conn.execute("SELECT * FROM books WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC").fetchall()
+                self.send_json({"books": [{**book_summary(row), "deletedAt": row["deleted_at"]} for row in rows]})
             elif path.startswith("/api/books/"):
                 with connect() as conn:
                     row = conn.execute("SELECT * FROM books WHERE id=?", (path[len("/api/books/"):],)).fetchone()
+                if row:
+                    require_active_book(row)
                 self.send_json(book_result(row) if row else {"error": "找不到这部作品"}, 200 if row else 404)
             elif path.startswith("/api/"):
                 self.send_json({"error": "找不到这个操作"}, 404)
@@ -851,7 +907,7 @@ class Handler(BaseHTTPRequestHandler):
         except (AIError, SkillError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
-            self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)
+            self.send_json({"error": str(exc), "conflict": exc.conflict, **({"deleted": True} if getattr(exc, "deleted", False) else {})}, exc.status)
         except Exception as exc:
             print(f"读取失败: {exc}", file=sys.stderr)
             self.send_json({"error": "读取失败，原有文件仍保留在本机"}, 500)
@@ -864,6 +920,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(data, dict) or set(data) != {"skillIds"}:
                     raise SkillError("写作技能导入参数不正确。")
                 self.send_json(SkillsService(DB_PATH.parent).import_skills(data["skillIds"]))
+                return
+            lifecycle = change_book_trash(path, data)
+            if lifecycle is not None:
+                self.send_json(lifecycle)
                 return
             protected = write_protection(path, data)
             if protected is not None:
@@ -918,7 +978,7 @@ class Handler(BaseHTTPRequestHandler):
         except (AIError, SkillError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
-            self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)
+            self.send_json({"error": str(exc), "conflict": exc.conflict, **({"deleted": True} if getattr(exc, "deleted", False) else {})}, exc.status)
         except FolderExportError as exc:
             self.send_json({"error": str(exc), "code": exc.code}, exc.status)
         except (ValueError, TypeError, AttributeError) as exc:
@@ -957,6 +1017,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not row:
                     self.send_json({"error": "找不到这部作品"}, 404)
                     return
+                require_active_book(row)
                 if row["revision"] != data["revision"]:
                     self.send_json({"error": "另一个窗口修改了这部作品。本页内容已保留，请另存为新作品。", "conflict": True}, 409)
                     return
@@ -980,7 +1041,7 @@ class Handler(BaseHTTPRequestHandler):
         except (AIError, SkillError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
-            self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)
+            self.send_json({"error": str(exc), "conflict": exc.conflict, **({"deleted": True} if getattr(exc, "deleted", False) else {})}, exc.status)
         except (ValueError, TypeError, AttributeError) as exc:
             self.send_json({"error": str(exc)}, 400)
         except PermissionError as exc:

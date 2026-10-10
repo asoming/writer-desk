@@ -776,6 +776,66 @@ Object.assign(englishMessages,{
   "这个写作技能尚未导入。": "This writing skill has not been imported.",
   "写作技能操作不正确。": "Invalid writing skill task."
 });
+Object.assign(englishMessages,{
+  "请仅根据所选正文提取人物与关系。优先使用已登记姓名，区分真名、别名和称呼。每个人物与关系都给出可逐字核对的原文证据；同章提及不等于确认关系。不要根据常识补全亲属、阵营或感情，不确定的内容请略去。保留人物动机与关系变化中有证据的具体细节。": "Extract characters and relationships only from the selected manuscript. Use registered names where possible and distinguish names, aliases and forms of address. Give exact quotations for every character and relationship. Being mentioned in the same chapter does not confirm a relationship. Do not infer family, factions or feelings from general knowledge; omit uncertain claims. Retain specific, supported details about motives and changing relationships.",
+  "请依据已有大纲、人物设定和所选正文，起草一个可继续修改的新章节。承接已发生的事件与人物已知信息，以人物目标、行动、阻力和代价推动场景，保持对白个性与叙事视角。避免重复讲述前文、堆砌解释或无依据改变设定。本次只写一章，结尾留下合乎情节的推进方向，不自动续写下一章。": "Draft one editable chapter using the existing outline, characters and selected manuscript. Continue established events and what each character knows. Develop scenes through goals, actions, obstacles and consequences, with distinctive dialogue and a consistent viewpoint. Avoid retelling earlier material, excessive exposition or unsupported changes to the setting. End with a plausible direction for the story, without writing another chapter.",
+  "请检查所选正文与提供的大纲、人物设定是否一致，重点核对时间顺序、人物身份与称呼、行动动机、已知信息、世界规则和伏笔。区分明确矛盾与资料不足，逐项说明影响，并引用可逐字核对的章节证据。不要把故意隐瞒、回忆或尚未揭晓的信息直接判为错误，也不要修改正文。": "Check the selected manuscript against the supplied outline and character profiles. Focus on chronology, identity and names, motives, character knowledge, world rules and foreshadowing. Distinguish contradictions from missing information, explain their effects and quote exact chapter evidence. Do not treat deliberate concealment, memories or unrevealed information as errors. Do not change the manuscript.",
+  "请根据书名、我的构思和已有策划，生成一份可追加的分层候选大纲。先明确故事主线、核心冲突、主角目标与结局，再规划分卷和章纲，写清各阶段目标、转折、代价、人物变化及伏笔回收，并补充必要的世界设定。长篇按总纲→分卷→章纲组织；短篇按总纲→章纲组织，不设卷。已有内容保持原意，新内容明确作为候选，不覆盖既有策划。资料较少时可提出一份具体的原创候选方案；本次给出规模适中的完整规划，不生成正文。": "Create an outline proposal using the title, my ideas and existing plans. Establish the main story, central conflict, protagonist goal and ending, then plan volumes and chapters with concrete goals, turns, costs, character development and resolved foreshadowing. Include necessary world rules. Organize novels as book outline → volumes → chapters; short stories have no volumes. Preserve existing intentions and mark new ideas as proposals. If little material is available, propose a specific original plan of moderate scope. Do not write manuscript prose.",
+  "生成大纲": "Generate outline",
+  "其他 / 自定义": "Other / custom",
+  "可直接修改提示词，写明题材、风格、篇幅或具体问题。": "Edit the prompt with your genre, style, length or question.",
+  "当前大纲：{0}": "Current outline: {0}",
+  "提示词": "Prompt",
+  "恢复默认提示词": "Reset prompt",
+  "每项操作都有可编辑提示词，切换时保留本次修改。发送内容以此处显示的文字为准。": "Edit each prompt here. Switching tasks keeps your edits in this dialog. The displayed text is what will be sent.",
+  "还没有章节。大纲、草稿和自定义可直接使用本书已有资料。": "No chapters yet. Outline, draft and custom tasks can use the existing book material.",
+  "请填写自定义提示词。": "Enter a custom prompt.",
+  "AI 大纲结构不正确，请重新生成。": "Invalid outline structure. Generate it again.",
+  "总纲": "Book outline",
+  "分卷": "Volume",
+  "章纲": "Chapter outline",
+  "设定": "Setting",
+  "大纲预览": "Outline preview",
+  "修改后勾选要采用的节点。选择子节点会同时选择父节点，只追加策划，不覆盖已有大纲或建立正文。": "Edit and select sections to add. Selecting a child also selects its parents. This adds plans without replacing outlines or creating manuscript chapters.",
+  "全选大纲": "Select all outline sections",
+  "追加勾选的大纲": "Add selected outline sections",
+  "大纲标题与内容不能为空，且需在长度限制内。": "Outline titles and content must be nonempty and within the length limits.",
+  "AI 未返回有效文本。": "AI returned no valid text.",
+  "自定义结果": "Custom result",
+  "可在此编辑或复制结果。此操作不会修改作品。": "Edit or copy this result. This does not change your book.",
+  "复制结果": "Copy result",
+  "结果已复制。": "Result copied.",
+  "请按 Ctrl+C 或 Command+C 复制选中文字。": "Press Ctrl+C or Command+C to copy the selected text.",
+  "回收的作品": "Books in trash",
+  "正在读取回收站…": "Loading trash…",
+  "当前作品内的回收内容 · {0}": "Items in the current book · {0}",
+  "当前作品内没有回收内容。": "No trashed items in the current book.",
+  "没有回收的作品。": "No books in trash.",
+  "{0} · {1} 章 · {2} 字": "{0} · {1} chapters · {2} characters",
+  "移入时间：{0}": "Moved to trash: {0}",
+  "恢复到书架": "Restore to bookshelf",
+  "重试": "Retry",
+  "作品已恢复到书架，原内容和关联均已保留。": "Book restored with its original content and links.",
+  "将整部「{0}」移入回收站？封面、正文、卷章、大纲和人物关联都会保留，可在回收站恢复。": "Move “{0}” to trash? Its cover, manuscript, volumes, chapters, outline and character links will be kept for recovery.",
+  "移入作品回收站": "Move book to trash",
+  "作品已移入回收站，可随时恢复。": "Book moved to trash. You can restore it anytime.",
+  "这部作品已移入回收站。请从回收站恢复，或将本页内容另存为新作品。": "This book is in trash. Restore it there, or save this page as a new book.",
+  "作品状态已在另一个窗口变化。请刷新书架或回收站后重试。": "Another window changed this book. Refresh the bookshelf or trash and try again.",
+  "移入回收站或恢复作品时需要当前保存版本。": "The current saved revision is required to move or restore a book.",
+  "这部作品不在回收站中，请刷新列表后重试。": "This book is not in trash. Refresh the list and try again."
+});
+Object.assign(englishMessages,{
+  "自定义": "Custom",
+  "大纲标题": "Outline title",
+  "大纲内容": "Outline content"
+});
+Object.assign(englishMessages,{
+  "作品已移入回收站": "Book moved to trash",
+  "这部作品已在另一个窗口移入回收站。本页未保存的内容仍保留，可另存为新作品或下载备份。": "Another window moved this book to trash. Unsaved content on this page is kept. Save it as a new book or download a backup.",
+  "保留草稿并返回书架": "Keep draft and return to bookshelf",
+  "无法保留本机草稿，请先下载完整备份或另存为新作品。": "The local draft could not be kept. Download a complete backup or save as a new book first.",
+  "草稿已保留在本机。恢复原作品后，可将这份草稿另存为新作品。": "Draft kept on this device. After restoring the original book, you can save this draft as a new book."
+});
 function T(source,...values){
   if(uiLanguage==='en'&&typeof source==='string'){
     const failure=source.match(/^AI 服务请求失败（HTTP (\d{3})）。请检查配置后重试。$/);

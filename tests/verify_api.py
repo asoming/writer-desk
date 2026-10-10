@@ -220,7 +220,7 @@ with tempfile.TemporaryDirectory(prefix="yejian-verify-") as tmp:
         legacy = {"id": "legacy-book", "title": "旧作品", "chapters": [{"id": "legacy-chapter", "title": "旧章节", "body": "原文不可丢", "deletedAt": None}],
                   "notes": [{"id": "legacy-person", "type": "人物", "title": "旧人物", "body": "旧设定", "deletedAt": None}]}
         with sqlite3.connect(pathlib.Path(tmp) / "writer.sqlite3") as connection:
-            connection.execute("INSERT INTO books VALUES(?,?,?,?,?,?)", (legacy["id"], legacy["title"], json.dumps(legacy), 7, "old", "old"))
+            connection.execute("INSERT INTO books(id,title,payload,revision,created_at,updated_at) VALUES(?,?,?,?,?,?)", (legacy["id"], legacy["title"], json.dumps(legacy), 7, "old", "old"))
         _, old = request("/api/books/legacy-book")
         _, second_read = request("/api/books/legacy-book", index=1)
         assert old == second_read and old["revision"] == 7

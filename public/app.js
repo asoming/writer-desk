@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const state={book:null,revision:0,chapterId:null,noteId:null,dirty:false,seq:0,saving:null,timer:null,error:null,conflict:false,composing:false,transitioning:false,fontSize:19,kind:"long",view:"shelf",books:[],outlineId:null,personId:null,trail:null,folderWarning:null,protectionWarning:null};
+const state={book:null,revision:0,chapterId:null,noteId:null,dirty:false,seq:0,saving:null,timer:null,error:null,conflict:false,composing:false,transitioning:false,fontSize:19,kind:"long",view:"shelf",books:[],trashBookCount:0,outlineId:null,personId:null,trail:null,folderWarning:null,protectionWarning:null};
 const activeChapters=()=>state.book?.chapters.filter(c=>!c.deletedAt)||[];
 const currentChapter=()=>state.book?.chapters.find(c=>c.id===state.chapterId);
 const currentNote=()=>state.book?.notes.find(n=>n.id===state.noteId&&!n.deletedAt);
@@ -30,7 +30,7 @@ async function transition(task){
 }
 async function api(path,method='GET',data){
   let r;try{r=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Writer-Client':'1'},body:data===undefined?undefined:JSON.stringify(data)});}catch{throw new Error(T('无法连接本机保存服务。请重新启动作家工作台，或先下载本页备份。'));}
-  const v=await r.json();if(!r.ok)throw Object.assign(new Error(T(v.error||'暂时无法完成操作')),{conflict:!!v.conflict});return v;
+  const v=await r.json();if(!r.ok)throw Object.assign(new Error(T(v.error||'暂时无法完成操作')),{conflict:!!v.conflict,deleted:!!v.deleted});return v;
 }
 function saveStatus(text,error=false){$('save-status').textContent=text;$('save-status').classList.toggle('error',error);}
 function showError(error){$('error-message').textContent=error.message;$('error-banner').hidden=false;$('retry-save').hidden=!!error.conflict;$('rescue-copy').hidden=!error.conflict;}
@@ -47,15 +47,23 @@ async function saveNow(){
   }catch(error){state.error=error;state.conflict=!!error.conflict;saveDraft();saveStatus(T('保存未完成'),true);showError(error);return false;}})();
   const result=await state.saving;state.saving=null;if(result&&state.dirty)return saveNow();if(result&&state.view==='write')renderBacklinks();return result;
 }
-async function requireSaved(){if(await saveNow())return true;toast(T('本页还有未保存的内容，请先重试或下载备份。'));return false;}
+async function requireSaved(){if(await saveNow())return true;if(state.error?.deleted)showTrashedBookNotice();else toast(T('本页还有未保存的内容，请先重试或下载备份。'));return false;}
+function showTrashedBookNotice(){
+  if(!state.book)return;const book=state.book,body=el('div'),buttons=el('div','dialog-actions');body.append(el('p','dialog-description',T('这部作品已在另一个窗口移入回收站。本页未保存的内容仍保留，可另存为新作品或下载备份。')));
+  buttons.append(action(T('下载本页备份'),'secondary-button',downloadBackup),action(T('另存为新作品'),'primary-button',async()=>{if(state.book!==book)return;await rescueCopy();if(state.book!==book)closeDialog();}),action(T('保留草稿并返回书架'),'secondary-button',()=>transition(async()=>{
+    if(state.book!==book)return false;saveDraft();try{const draft=JSON.parse(clientStorage.getItem('yejian.draft.'+book.id+'.'+draftOwner));if(!draft?.book||JSON.stringify(draft.book)!==JSON.stringify(book)||draft.revision!==state.revision)throw new Error();}catch{toast(T('无法保留本机草稿，请先下载完整备份或另存为新作品。'));return false;}
+    clearBook();state.view='shelf';state.collection=null;closeDialog();try{await refreshBooks();}catch(error){toast(error.message);}renderShell();toast(T('草稿已保留在本机。恢复原作品后，可将这份草稿另存为新作品。'));return true;
+  })));body.append(buttons);showDialog(T('作品已移入回收站'),body);
+}
 function renderStats(){
+  renderTrashCount();
   if(!state.book)return;const chapters=activeChapters(),total=chapters.reduce((sum,c)=>sum+count(c.body),0);
   $('chapter-stats').textContent=T`${count(currentChapter()?.body||'').toLocaleString()} 字`;
   $('total-stats').textContent=T`${state.kind==='short'?T('全文'):T('全书')} ${total.toLocaleString()} 字`;
   $('chapter-stats').title=T('按字符计数，包含标点和英文字母，不计空格与换行');
   $('chapter-list').querySelectorAll('[data-chapter]').forEach(row=>{const c=chapters.find(c=>c.id===row.dataset.chapter);const n=row.querySelector('.chapter-item-count');if(c&&n)n.textContent=c.body?T`${count(c.body).toLocaleString()} 字`:T('尚未动笔');});
-  const n=['chapters','notes','outline','relations','volumes'].flatMap(key=>state.book[key]||[]).filter(item=>item.deletedAt).length;$('trash-count').textContent=n?`(${n})`:'';
 }
+function renderTrashCount(){const n=(state.trashBookCount||0)+['chapters','notes','outline','relations','volumes'].flatMap(key=>state.book?.[key]||[]).filter(item=>item.deletedAt).length;$('trash-count').textContent=n?`(${n})`:'';}
 
 function renderChapters(){renderVolumeChapters();}
 
@@ -118,10 +126,24 @@ function confirmTrash(kind){
   const p=el('p','dialog-description',T`将「${item.title||item.label||T('未命名')}」移入回收站？内容及关联会保留，之后可以恢复。`),a=el('div','dialog-actions');
   a.append(action(T('取消'),'secondary-button',closeDialog),action(T('移入回收站'),'primary-button',()=>{const list=activeChapters(),i=list.findIndex(c=>c.id===item.id);item.deletedAt=new Date().toISOString();markDirty();if(kind==='chapter')selectChapter(list[i+1]?.id||list[i-1]?.id);else if(kind==='outline'){state.outlineId=null;renderOutline();}else{state.noteId=null;state.personId=null;renderNotes();if(state.view==='people')renderPeople();}renderBacklinks();closeDialog();toast(T('已移入回收站。'));}));showDialog(T('移入回收站'),p,a);
 }
-function showTrash(){
-  if(!state.book)return;const items=[['chapters',T('章节')],['notes',T('资料 / 人物')],['outline',T('大纲')],['relations',T('人物关系')],['volumes',T('卷')]].flatMap(([key,kind])=>state.book[key].filter(c=>c.deletedAt).map(item=>({item,kind}))),list=el('div');
-  if(!items.length)list.append(el('p','dialog-description',T('回收站是空的。章节、大纲、人物和关系都可以从这里恢复。')));
-  items.forEach(({item,kind})=>{const row=el('div','trash-row'),text=el('div',null,item.title||item.label||T('未命名'));text.append(el('small',null,kind));row.append(text,action(T('恢复'),'secondary-button',()=>{item.deletedAt=null;if(kind===T('章节')&&item.volumeId){const volume=state.book.volumes.find(v=>v.id===item.volumeId);if(volume)volume.deletedAt=null;}markDirty();renderShell();showTrash();toast(T('已恢复，原有关联也会保留。'));}));list.append(row);});showDialog(T('回收站 · ')+state.book.title,list);
+let trashRequest=0;
+async function showTrash(){
+  if(state.composing||state.transitioning||!await requireSaved())return;
+  const book=state.book,sequence=++trashRequest,content=el('div'),books=el('div','trash-books'),itemsList=el('div','trash-items');
+  content.append(el('h3',null,T('回收的作品')),books);books.append(el('p','dialog-description',T('正在读取回收站…')));
+  if(book){const items=[['chapters',T('章节')],['notes',T('资料 / 人物')],['outline',T('大纲')],['relations',T('人物关系')],['volumes',T('卷')]].flatMap(([key,kind])=>(book[key]||[]).filter(item=>item.deletedAt).map(item=>({item,kind,key})));content.append(el('h3',null,T('当前作品内的回收内容 · {0}',book.title)),itemsList);
+    if(!items.length)itemsList.append(el('p','dialog-description',T('当前作品内没有回收内容。')));
+    items.forEach(({item,kind,key})=>{const row=el('div','trash-row'),text=el('div',null,item.title||item.label||T('未命名'));text.append(el('small',null,kind));row.append(text,action(T('恢复'),'secondary-button',()=>{if(state.book!==book||state.transitioning)return;item.deletedAt=null;if(key==='chapters'&&item.volumeId){const volume=book.volumes.find(volume=>volume.id===item.volumeId);if(volume)volume.deletedAt=null;}markDirty();renderShell();showTrash();toast(T('已恢复，原有关联也会保留。'));}));itemsList.append(row);});
+  }
+  showDialog(T('回收站'),content);
+  const current=()=>sequence===trashRequest&&state.book===book&&$('dialog').open&&$('dialog-body').contains(content);
+  try{const result=await api('/api/trash/books');if(!current())return;state.trashBookCount=result.books.length;renderTrashCount();books.replaceChildren();
+    if(!result.books.length)books.append(el('p','dialog-description',T('没有回收的作品。')));
+    result.books.forEach(record=>{const row=el('div','trash-row'),text=el('div',null,record.title);text.append(el('small',null,T('{0} · {1} 章 · {2} 字',kindName(record.kind),record.chapterCount,record.charCount.toLocaleString())),el('small',null,T('移入时间：{0}',new Date(record.deletedAt).toLocaleString(uiLanguage==='en'?'en-GB':'zh-CN'))));row.append(text,action(T('恢复到书架'),'secondary-button',()=>restoreTrashedBook(record)));books.append(row);});
+  }catch(error){if(current()){books.replaceChildren(el('p','dialog-description',error.message),action(T('重试'),'secondary-button',showTrash));}}
+}
+async function restoreTrashedBook(record){
+  return transition(async()=>{if(!await requireSaved())return false;try{const result=await api('/api/books/'+encodeURIComponent(record.id)+'/restore','POST',{revision:record.revision});if(state.book?.id===record.id)setBook(result);state.trashBookCount=Math.max(0,(state.trashBookCount||0)-1);closeDialog();try{await refreshBooks();}catch(error){toast(error.message);}renderShell();if(result.folderWarning)toast(T(result.folderWarning));else toast(T('作品已恢复到书架，原内容和关联均已保留。'));return true;}catch(error){toast(error.message);return false;}});
 }
 function toggleNotes(force){const visible=force===undefined?$('notes-panel').hidden:force;$('notes-panel').hidden=!visible;$('toggle-notes').setAttribute('aria-expanded',String(visible));$('workspace').classList.toggle('notes-open',visible);if(visible){renderNotes();renderBacklinks();}requestAnimationFrame(resizeEditor);}
 function filteredNotes(){return state.book.notes.filter(n=>!n.deletedAt&&($('notes-filter').value==='全部'||n.type===$('notes-filter').value));}
@@ -281,8 +303,8 @@ const people=()=>state.book?.notes.filter(n=>n.type==='人物'&&!n.deletedAt)||[
 const currentOutline=()=>activeOutline().find(o=>o.id===state.outlineId);
 const currentPerson=()=>people().find(n=>n.id===state.personId);
 function svgIcon(name){const paths={settings:'M9 3h6l1 4 4 1v6l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0',minimize:'M5 12h14',maximize:'M5 5h14v14H5z',restore:'M8 8h11v11H8zM5 16V5h11',close:'M6 6l12 12M18 6 6 18',folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
-async function refreshBooks(){state.books=(await api('/api/books')).books.map(b=>({...b,kind:b.kind||'long'}));}
-function clearBook(){clearTimeout(state.timer);state.book=null;state.chapterId=null;state.outlineId=null;state.personId=null;state.noteId=null;state.dirty=false;state.conflict=false;state.error=null;state.trail=null;$('error-banner').hidden=true;$('editor').disabled=true;$('chapter-title').disabled=true;$('book-name').textContent='';$('book-name').hidden=true;$('chapter-list').replaceChildren();$('trash-count').textContent='';saveStatus(T('本机保存'));document.title=T('作家工作台 · {0}书架',kindName());}
+async function refreshBooks(){const result=await api('/api/books');state.books=result.books.map(book=>({...book,kind:book.kind||'long'}));state.trashBookCount=Number.isSafeInteger(result.trashCount)?result.trashCount:0;renderTrashCount();}
+function clearBook(){clearTimeout(state.timer);state.book=null;state.chapterId=null;state.outlineId=null;state.personId=null;state.noteId=null;state.dirty=false;state.conflict=false;state.error=null;state.trail=null;$('error-banner').hidden=true;$('editor').disabled=true;$('chapter-title').disabled=true;$('book-name').textContent='';$('book-name').hidden=true;$('chapter-list').replaceChildren();renderTrashCount();saveStatus(T('本机保存'));document.title=T('作家工作台 · {0}书架',kindName());}
 async function loadKind(kind){
   state.kind=kind;preference('yejian.kind',kind);if(state.book?.kind===kind)return;
   const last=preference('yejian.last-book.'+kind),book=state.books.find(b=>b.kind===kind&&b.id===last);

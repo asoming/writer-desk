@@ -14,7 +14,7 @@ class Element{
   contains(target){return this===target||this.children.some(child=>child.contains(target));}
   querySelectorAll(selector){const tags=selector.split(',').map(tag=>tag.toUpperCase());return descendants(this).filter(node=>tags.includes(node.tagName));}
   querySelector(){return null;}
-  focus(){} scrollIntoView(){} close(){this.open=false;} showModal(){this.open=true;}
+  focus(){} select(){this.selected=true;} scrollIntoView(){} close(){this.open=false;} showModal(){this.open=true;}
 }
 function descendants(node){return node.children.flatMap(child=>[child,...descendants(child)]);}
 function find(node,predicate){return [node,...descendants(node)].find(predicate);}
@@ -26,9 +26,10 @@ function harness(){
   const context=vm.createContext({document:{getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),addEventListener(){},querySelector:()=>new Element()},crypto:{randomUUID},sessionStorage:storage,clientStorage:storage,structuredClone,setTimeout:()=>0,clearTimeout(){},requestAnimationFrame:fn=>fn(),addEventListener(){},T:(text,...args)=>Array.isArray(text)?text.reduce((out,part,i)=>out+part+(args[i]??''),''):String(text).replace(/\{(\d+)\}/g,(_,i)=>args[i]??'')});context.window=context;
   for(const file of ['public/app.js','public/workspace.js','public/ai.js']){let source=fs.readFileSync(path.join(root,file),'utf8');if(file.endsWith('workspace.js'))source=source.replace(/\ninitialize\(\);\s*$/,'\n');vm.runInContext(source,context,{filename:file});}
   const run=source=>vm.runInContext(source,context),state=run('state');state.book=structuredClone(sample);state.kind='long';state.view='write';state.chapterId=sample.chapters[0].id;
-  const h={get,run,state,context,calls:[],saves:[],renderCount:0,settings:{enabled:true,endpoint:'http://127.0.0.1:9999/v1/chat/completions',model:'stub-model',hasKey:false,maxContextChars:250000,timeoutSeconds:60}};
+  const h={get,run,state,context,calls:[],saves:[],copied:[],renderCount:0,settings:{enabled:true,endpoint:'http://127.0.0.1:9999/v1/chat/completions',model:'stub-model',hasKey:false,maxContextChars:250000,timeoutSeconds:60}};
+  context.navigator={clipboard:{writeText:async text=>h.copied.push(text)}};
   h.skills={skills:['chinese-novelist','novelskill','human-writing'].map(id=>({id,name:id,available:true,imported:false,referenceCount:1})),defaults:{skillIds:[],skillMode:'auto'}};
-  h.preview=data=>({bookId:state.book.id,action:data.action,chapterIds:data.chapterIds,contextChars:2000+data.skillIds.length*300,maxContextChars:250000,overLimit:!!h.overLimit,counts:{chapters:data.chapterIds.length,outlines:3,people:32,relationships:35},selectedSkillIds:data.skillIds,skillMode:data.skillMode,skillChars:data.skillIds.length*300,skills:data.skillIds.map(id=>({id,name:id,mode:data.skillMode==='auto'?'chapter':data.skillMode,files:['SKILL.md','references/chapter.md']}))});
+  h.preview=data=>({bookId:state.book.id,action:data.action,chapterIds:data.chapterIds,contextChars:2000+data.instruction.length+data.skillIds.length*300,maxContextChars:250000,overLimit:!!h.overLimit,counts:{chapters:data.chapterIds.length,outlines:3,people:32,relationships:35},selectedSkillIds:data.skillIds,skillMode:data.skillMode,skillChars:data.skillIds.length*300,skills:data.skillIds.map(id=>({id,name:id,mode:data.skillMode==='auto'?'chapter':data.skillMode,files:['SKILL.md','references/chapter.md']}))});
   h.skillDetail=id=>({id,name:id,content:'# SKILL.md\n<img src=x onerror=alert(1)>\n只读写作说明',files:[{path:'references/chapter.md',content:'连续阅读参考内容'}],imported:true});
   h.result=(request)=>({bookId:state.book.id,action:request.action,chapterIds:request.chapterIds,data:request.action==='draft'?{title:'AI测试草稿',body:'<img src=x onerror=alert(1)>\n一段新的试写。'}:request.action==='consistency'?{issues:[{title:'待核查',description:'核对人物设定',chapterIds:request.chapterIds,evidence:[{chapterId:request.chapterIds[0],quote:sample.chapters[0].body.slice(0,40)}]}]}:{people:[{name:'测试新人物',group:'测试组',description:'仅供确认',evidence:[{chapterId:request.chapterIds[0],quote:sample.chapters[0].body.slice(0,40)}]}],relationships:[{from:'测试新人物',to:'沈砚',type:'cooperate',label:'测试核验',description:'作者确认后建立',evidence:[{chapterId:request.chapterIds[0],quote:sample.chapters[0].body.slice(0,40)}]}]}});
   context.localAPI=async(url,method='GET',data)=>{
@@ -202,4 +203,103 @@ test('malformed or mismatched skill previews stay unsendable and all seven writi
     assert.equal(field(h,'ai-skill-mode').options.length,7);assert.equal(button(h,'发送所选资料').disabled,true);
     await button(h,'发送所选资料').listeners.click();assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
   }
+});
+
+test('four presets are editable, each action keeps its own words, resetting restores that preset and sends exactly the visible prompt',async()=>{
+  const h=harness();await h.run("showAIAssistant('draft')");const mode=field(h,'ai-action'),prompt=field(h,'ai-instruction'),draft=prompt.value;
+  assert.equal(mode.options.length,5);assert.ok(draft.length>80);
+  prompt.value='我的草稿要求：保留沈砚的动机，只写一个场景。';prompt.listeners.input();
+  mode.value='outline';await mode.listeners.change();const outline=prompt.value;assert.ok(outline.includes('总纲'));assert.ok(!outline.includes('我的草稿要求'));
+  prompt.value='我的大纲要求：三卷，每卷两章。';prompt.listeners.input();
+  mode.value='draft';await mode.listeners.change();assert.equal(prompt.value,'我的草稿要求：保留沈砚的动机，只写一个场景。');
+  await button(h,'恢复默认提示词').listeners.click();assert.equal(prompt.value,draft);
+  for(const action of ['relationships','consistency']){mode.value=action;await mode.listeners.change();assert.ok(prompt.value.length>80);assert.ok(!prompt.value.includes('我的大纲要求'));}
+  mode.value='outline';await mode.listeners.change();assert.equal(prompt.value,'我的大纲要求：三卷，每卷两章。');
+  h.result=request=>({bookId:h.state.book.id,action:request.action,data:{nodes:[{key:'s',parentKey:null,kind:'story',title:'候选总纲',body:'作者可编辑的故事构思。'}]}});
+  await button(h,'发送所选资料').listeners.click();const sent=h.calls.filter(call=>call.url.endsWith('/ai')).at(-1).data;
+  assert.equal(sent.instruction,prompt.value);assert.equal(sent.action,'outline');
+  assert.equal(h.calls.filter(call=>call.url.endsWith('/ai/preview')).at(-1).data.instruction,prompt.value);
+});
+
+test('a blank book adopts edited hierarchical outlines once, with ancestors, and existing volume/chapter builders can use them',async()=>{
+  const h=harness();h.state.book={id:'blank',kind:'long',title:'新故事',volumes:[],chapters:[],outline:[],notes:[],relations:[]};h.state.chapterId=null;h.state.view='outline';
+  const nodes=[{key:'s',parentKey:null,kind:'story',title:'候选总纲',body:'候选主线。'},{key:'v',parentKey:'s',kind:'volume',title:'第一卷 候选',body:'分卷安排。'},{key:'c',parentKey:'v',kind:'chapter',title:'第一章',body:'<img src=x>\n章纲。'},{key:'w',parentKey:'s',kind:'setting',title:'设定',body:'规则。'}];
+  h.result=request=>({bookId:h.state.book.id,action:request.action,data:{nodes:structuredClone(nodes)}});
+  await h.run("showAIAssistant('outline')");assert.equal(h.calls.find(call=>call.url.endsWith('/ai/preview')).data.chapterIds.length,0);
+  await button(h,'发送所选资料').listeners.click();assert.equal(h.state.book.outline.length,0);assert.ok(!find(h.get('dialog-body'),node=>node.tagName==='IMG'));
+  await button(h,'追加勾选的大纲').listeners.click();assert.equal(h.state.book.outline.length,0);
+  const child=field(h,'ai-outline-select-2');child.checked=true;child.listeners.change();assert.equal(field(h,'ai-outline-select-0').checked,true);assert.equal(field(h,'ai-outline-select-1').checked,true);
+  field(h,'ai-outline-title-2').value='第一章 作者修改';field(h,'ai-outline-body-2').value='作者补充的章纲。';
+  h.saves=[true,false];await button(h,'追加勾选的大纲').listeners.click();assert.equal(h.get('dialog').open,true);assert.equal(h.state.book.outline.length,3);assert.equal(h.state.book.chapters.length,0);assert.equal(h.state.book.volumes.length,0);
+  const ids=h.state.book.outline.map(node=>node.id);await button(h,'重试保存').listeners.click();assert.deepEqual(h.state.book.outline.map(node=>node.id),ids);assert.equal(h.state.view,'outline');
+  const chapterOutline=h.state.book.outline[2];assert.equal(chapterOutline.parentId,h.state.book.outline[1].id);assert.equal(chapterOutline.title,'第一章 作者修改');
+  h.run('chapterFromOutline(state.book.outline[2],false)');assert.equal(h.state.book.volumes.length,1);assert.equal(h.state.book.chapters.length,1);assert.equal(h.state.book.chapters[0].volumeId,h.state.book.volumes[0].id);assert.equal(h.state.book.chapters[0].body,'');
+});
+
+test('outline adoption appends to existing plans, maps settings to scene and keeps original manuscript untouched',async()=>{
+  const h=harness(),before=structuredClone(h.state.book),count=before.outline.length;
+  h.result=request=>({bookId:h.state.book.id,action:request.action,data:{nodes:[{key:'s',parentKey:null,kind:'story',title:'候选支线',body:'新的支线规划。'},{key:'w',parentKey:'s',kind:'setting',title:'新规则',body:'候选规则。'}]}});
+  await h.run("showAIAssistant('outline')");await button(h,'发送所选资料').listeners.click();await button(h,'全选大纲').listeners.click();await button(h,'追加勾选的大纲').listeners.click();
+  assert.equal(h.state.book.outline.length,count+2);assert.deepEqual(h.state.book.outline.slice(0,count),before.outline);assert.equal(h.state.book.outline.at(-1).kind,'scene');assert.equal(h.state.book.outline.at(-1).category,'世界设定');assert.deepEqual(h.state.book.chapters,before.chapters);assert.deepEqual(h.state.book.volumes,before.volumes);
+});
+
+function seededNewBook(){
+  const h=harness();h.state.book={id:'new-book',kind:'long',title:'河岸旧事',cover:'',volumes:[{id:'default-volume',title:'第一卷',summary:'',deletedAt:null}],chapters:[],outline:[],notes:[],relations:[],atlasViews:[]};h.state.chapterId=null;h.state.view='outline';
+  h.run('createOutlineTemplate()');
+  h.result=request=>({bookId:h.state.book.id,action:request.action,data:{nodes:[{key:'s',parentKey:null,kind:'story',title:'河岸旧事总纲',body:'围绕旧档案展开调查。'},{key:'v',parentKey:'s',kind:'volume',title:'第一卷 河岸旧事',body:'调查从旧码头开始。'},{key:'c',parentKey:'v',kind:'chapter',title:'第一章 来信',body:'收到一封没有邮戳的信。'},{key:'w',parentKey:'s',kind:'setting',title:'河港规则',body:'涨潮时渡轮停航。'}]}});
+  return h;
+}
+async function prepareOutlineAdoption(h){await h.run("showAIAssistant('outline')");await button(h,'发送所选资料').listeners.click();await button(h,'全选大纲').listeners.click();}
+
+test('the untouched real new-book template reuses its first volume once and changes its title only when generating the directory',async()=>{
+  const h=seededNewBook(),book=h.state.book,volume=book.volumes[0],originalVolume=structuredClone(volume),plan=book.outline[1],planId=plan.id;
+  assert.equal(book.outline.length,5);await prepareOutlineAdoption(h);h.saves=[true,false];await button(h,'追加勾选的大纲').listeners.click();
+  assert.equal(h.get('dialog').open,true);assert.equal(book.outline.length,8);assert.equal(book.outline.filter(node=>node.kind==='volume').length,1);assert.equal(plan.id,planId);assert.equal(plan.title,'第一卷 河岸旧事');assert.equal(plan.volumeId,volume.id);assert.deepEqual(volume,originalVolume);
+  const chapter=book.outline.find(node=>node.kind==='chapter');assert.equal(chapter.parentId,planId);assert.equal(book.chapters.length,0);
+  const ids=book.outline.map(node=>node.id);await button(h,'重试保存').listeners.click();assert.deepEqual(book.outline.map(node=>node.id),ids);assert.equal(book.volumes.length,1);
+  h.run('renderOutline=()=>{};renderChapters=()=>{};renderStats=()=>{};buildOutlineStructure()');
+  assert.ok(find(h.get('dialog-body'),node=>node.textContent.includes('建立 0 卷、1 个空白章节')));assert.deepEqual(volume,originalVolume);
+  await button(h,'生成目录').listeners.click();assert.equal(book.volumes.length,1);assert.equal(book.chapters.length,1);assert.equal(book.chapters[0].volumeId,volume.id);assert.equal(volume.title,'第一卷 河岸旧事');assert.equal(volume.summary,'调查从旧码头开始。');
+  h.run('buildOutlineStructure()');await button(h,'生成目录').listeners.click();assert.equal(book.volumes.length,1);assert.equal(book.chapters.length,1);assert.equal(volume.title,'第一卷 河岸旧事');
+});
+
+test('any authored or changed new-book material keeps AI outline adoption append-only',async()=>{
+  const changes=[
+    book=>{book.outline[0].body='作者的主线。';},
+    book=>{book.outline[1].body='作者的分卷安排。';},
+    book=>{book.outline[2].body='作者的世界规则。';},
+    book=>{book.volumes[0].summary='作者的卷说明。';},
+    book=>{book.volumes[0].title='作者命名的卷';book.outline[1].title=book.volumes[0].title;},
+    book=>{book.outline[1].title='作者单独修改的卷纲';},
+    book=>{book.chapters.push({id:'written',title:'第一章',body:'',volumeId:book.volumes[0].id,deletedAt:null});},
+    book=>{book.notes.push({id:'person',type:'人物',title:'作者人物',body:'',chapterIds:[],deletedAt:null});},
+    book=>{book.relations.push({id:'planned-relationship',fromId:'a',toId:'b',label:'预设关系',deletedAt:null});},
+    book=>{book.outline[4].deletedAt='2026-10-10';},
+    book=>{book.outline[1].parentId=null;},
+    book=>{book.outline[1].chapterIds=['deleted-chapter'];},
+    book=>{book.atlasViews.push({id:'planned-view',title:'作者分图'});}
+  ];
+  for(const change of changes){const h=seededNewBook();change(h.state.book);const before=structuredClone(h.state.book);await prepareOutlineAdoption(h);await button(h,'追加勾选的大纲').listeners.click();
+    assert.equal(h.state.book.outline.length,9);assert.deepEqual(structuredClone(h.state.book.outline.slice(0,5)),before.outline);assert.deepEqual(h.state.book.volumes,before.volumes);assert.deepEqual(h.state.book.chapters,before.chapters);assert.equal(h.state.book.outline.at(-3).volumeId,null);
+  }
+});
+
+test('custom starts blank, allows zero chapters, renders and copies editable plain text without any adoption action',async()=>{
+  const h=harness(),before=JSON.stringify(h.state.book);h.state.book.chapters=[];h.state.chapterId=null;
+  h.result=request=>({bookId:h.state.book.id,action:request.action,data:{text:'<script>alert(1)</script>\n几个候选名字。'}});
+  await h.run("showAIAssistant('custom')");const prompt=field(h,'ai-instruction');assert.equal(prompt.value,'');assert.equal(button(h,'发送所选资料').disabled,true);
+  prompt.value='请给档案馆取三个名字并解释。';prompt.listeners.input();await field(h,'ai-skill-mode').listeners.change();assert.equal(button(h,'发送所选资料').disabled,false);
+  const snapshot=JSON.stringify(h.state.book);await button(h,'发送所选资料').listeners.click();const text=field(h,'ai-custom-result');assert.match(text.value,/<script>/);assert.ok(!find(h.get('dialog-body'),node=>node.tagName==='SCRIPT'));
+  assert.ok(!find(h.get('dialog-body'),node=>node.textContent==='保存为新章节'||node.textContent==='追加勾选的大纲'));text.value='作者编辑后的回答';await button(h,'复制结果').listeners.click();assert.deepEqual(h.copied,['作者编辑后的回答']);assert.equal(JSON.stringify(h.state.book),snapshot);
+  await button(h,'恢复默认提示词').listeners.click();assert.equal(prompt.value,'');assert.equal(button(h,'发送所选资料').disabled,true);assert.notEqual(snapshot,before);
+});
+
+test('action changes invalidate stale previews, pending sends lock prompts/actions/reset and late results after closing are discarded',async()=>{
+  const h=harness();await h.run("showAIAssistant('draft')");const mode=field(h,'ai-action'),prompt=field(h,'ai-instruction'),normal=h.preview,responses=[];
+  h.preview=data=>new Promise(resolve=>responses.push({data,resolve}));mode.value='outline';mode.listeners.change();mode.value='custom';mode.listeners.change();
+  responses[0].resolve(normal(responses[0].data));await new Promise(resolve=>setImmediate(resolve));assert.equal(button(h,'发送所选资料').disabled,true);
+  prompt.value='只讨论一个名字。';prompt.listeners.input();h.preview=normal;await field(h,'ai-skill-mode').listeners.change();
+  let finish;h.result=()=>new Promise(resolve=>{finish=resolve;});const pending=button(h,'发送所选资料').listeners.click();await new Promise(resolve=>setImmediate(resolve));assert.equal(mode.disabled,true);assert.equal(prompt.disabled,true);assert.equal(button(h,'恢复默认提示词').disabled,true);
+  mode.value='draft';mode.listeners.change();assert.equal(mode.value,'custom');const savedPrompt=prompt.value;await button(h,'恢复默认提示词').listeners.click();assert.equal(prompt.value,savedPrompt);
+  const snapshot=JSON.stringify(h.state.book);h.get('dialog').open=false;finish({bookId:h.state.book.id,action:'custom',data:{text:'迟到回答'}});await pending;assert.ok(!find(h.get('dialog-body'),node=>node.id==='ai-custom-result'));assert.equal(JSON.stringify(h.state.book),snapshot);
 });
