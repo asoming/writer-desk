@@ -57,6 +57,8 @@ class Stub(BaseHTTPRequestHandler):
             result = b'{"choices": [null]}'
         elif self.mode == 'large':
             result = b'x' * (2 * 1024 * 1024 + 1)
+        elif self.mode == 'image':
+            result = json.dumps(self.reply).encode()
         elif self.mode == 'plain':
             result = json.dumps({'choices': [{'finish_reason': 'stop', 'message': {'content': self.reply or '自由回答，不是 JSON。'}}]}, ensure_ascii=False).encode()
         else:

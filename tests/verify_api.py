@@ -103,6 +103,7 @@ with tempfile.TemporaryDirectory(prefix="yejian-verify-") as tmp:
         passed("new long work starts with a volume and permits outline-only planning")
 
         book["cover"] = png_cover
+        book["coverTemplate"] = "ocean"
         book["volumes"][0]["summary"] = "归来与追寻"
         book["volumes"].append({"id": "volume-two", "title": "第二卷 重逢", "summary": "第二卷梗概", "deletedAt": None})
         book["chapters"] = [chapter("chapter-one", "第一章", "中文，英文 English 123。\n\n第二段🙂", volume_id),
@@ -143,11 +144,12 @@ with tempfile.TemporaryDirectory(prefix="yejian-verify-") as tmp:
             assert normalize_restored(restored, book) == book
         passed("v1/v2/v3 backups retain all fields and remap every volume reference")
 
-        code, short = request("/api/books", "POST", {"title": "短篇验收", "kind": "short", "cover": png_cover})
+        code, short = request("/api/books", "POST", {"title": "短篇验收", "kind": "short", "cover": png_cover, "coverTemplate": "neon"})
         assert code == 201
         assert short["book"]["kind"] == "short" and short["book"]["chapters"] == [] and short["book"]["volumes"] == []
         listed = {b["id"]: b for b in request("/api/books")[1]["books"]}
         assert listed[bid]["cover"] == png_cover and listed[bid]["volumeCount"] == 2
+        assert listed[bid]["coverTemplate"] == "ocean" and short["book"]["coverTemplate"] == "neon"
         assert listed[bid]["outlineCount"] == 2 and listed[bid]["personCount"] == 2
         assert listed[bid]["latestChapterTitle"] == "第二章" and listed[bid]["chapterCount"] == 3
         assert listed[short["book"]["id"]]["kind"] == "short" and listed[short["book"]["id"]]["latestChapterTitle"] == ""

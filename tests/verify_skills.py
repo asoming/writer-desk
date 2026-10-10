@@ -132,6 +132,9 @@ class SkillTests(unittest.TestCase):
         custom = self.service.selected("custom", ["novelskill"], "auto")[0][0]
         self.assertEqual(custom["mode"], "custom")
         self.assertEqual([file["path"] for file in custom["files"]], ["SKILL.md"])
+        cover = self.service.selected("book_cover", ["novelskill"], "auto")[0][0]
+        self.assertEqual(cover["mode"], "custom")
+        self.assertEqual([file["path"] for file in cover["files"]], ["SKILL.md"])
         self.assertEqual(len(self.service.selected("custom", ["novelskill"], "outline")[0][0]["files"]), 2)
         for data in [{"skillIds": [], "skillMode": "bad"}, {"skillIds": []}, {"skillIds": [], "skillMode": "auto", "path": "/tmp"}]:
             with self.assertRaises(SkillError):

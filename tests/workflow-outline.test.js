@@ -36,6 +36,7 @@ class Element {
   }
   append(...children) { for (const child of children) { this.children.push(child); if (typeof child === 'object') child.parentElement = this; } }
   replaceChildren(...children) { this.children = []; this.append(...children); }
+  contains(node) { return node === this || this.children.some(child => typeof child === 'object' && child.contains(node)); }
   setAttribute(key, value) { this.attributes[key] = String(value); if (key === 'class') this.className = String(value); }
   getAttribute(key) { return this.attributes[key]; }
   addEventListener(type, listener) { this.listeners[type] = listener; }
@@ -82,7 +83,7 @@ function harness() {
     document: { getElementById: get, createElement: tag => new Element(tag), createElementNS: (_, tag) => new Element(tag), addEventListener() {}, title: '' },
     addEventListener() {}, crypto: { randomUUID }, sessionStorage: storage, clientStorage: storage, T,
     setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: callback => callback(), structuredClone,
-    matchMedia: () => ({ matches: true }),
+    matchMedia: () => ({ matches: true }), WriterCovers: { templates: [], render: () => '', randomTitle: () => '本地候选书名' },
   });
   context.window = context;
   for (const file of ['public/app.js', 'public/workspace.js']) {
@@ -115,7 +116,7 @@ function plannedVolume(h) {
 function setupDialog(h, saveResult) {
   h.context.dialogState = { closed: 0, saved: 0, messages: [] };
   h.context.saveResult = saveResult;
-  h.run('showDialog=(title,...children)=>{dialogState.title=title;dialogState.children=children;};closeDialog=()=>dialogState.closed++;saveNow=async()=>{dialogState.saved++;return !state.dirty||saveResult;};toast=message=>dialogState.messages.push(message);renderOutline=()=>{};renderChapters=()=>{};renderStats=()=>{};');
+  h.run('showDialog=(title,...children)=>{dialogState.title=title;dialogState.children=children;$("dialog-body").replaceChildren(...children);$("dialog").open=true;};closeDialog=()=>{dialogState.closed++;$("dialog").open=false;};saveNow=async()=>{dialogState.saved++;return !state.dirty||saveResult;};toast=message=>dialogState.messages.push(message);renderOutline=()=>{};renderChapters=()=>{};renderStats=()=>{};');
 }
 function dialogAction(h, label) {
   return h.context.dialogState.children.flatMap(item => [item, ...descendants(item)]).find(item => item.textContent === label);

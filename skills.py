@@ -300,7 +300,7 @@ class SkillsService:
             mode = defaults["skillMode"] if skill_mode is None else skill_mode
             if not isinstance(mode, str) or mode not in MODES:
                 raise SkillError("写作技能模式不正确。")
-            resolved = {"relationships": "characters", "consistency": "check", "draft": "chapter", "outline": "outline", "custom": "custom"}.get(action) if mode == "auto" else mode
+            resolved = {"relationships": "characters", "consistency": "check", "draft": "chapter", "outline": "outline", "custom": "custom", "book_cover": "custom"}.get(action) if mode == "auto" else mode
             if resolved is None:
                 raise SkillError("写作技能操作不正确。")
             results = []

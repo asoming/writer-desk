@@ -26,6 +26,7 @@ for(const name of ['ai.js','protection.js','continuation.js']){
 }
 assert.equal(en.api.T('AI 服务请求失败（HTTP 429）。请检查配置后重试。'),'The AI request failed (HTTP 429). Check your settings and retry.');
 for(const label of ['中文小说创作','小说项目管理','自然中文表达','分章创作、悬念与自然叙事。','人物、分层大纲、伏笔与状态追踪。','润色文字、对白与叙事节奏。','自动匹配','章节创作','续写','润色','大纲规划','人物塑造','一致性检查'])assert.notEqual(en.api.T(label),label,'Dynamic skill labels are translated: '+label);
+for(const label of ['随机书名','换一个书名','模板封面','上传图片','文字封面','AI生成','山海','星轨','夜航','花信','霓虹','远山','诗笺','波纹','绿意','曙光','无法绘制封面，请重试。','封面模板不存在。','这张图片无法读取。','作品信息不匹配，请重新打开。','图片模型名称格式不正确或过长。','请先在 AI 设置中填写图片模型。','AI 图片返回格式无效，请检查图片服务配置。','封面图片提示词格式不正确或过长。','封面图片请求只接受文字提示词。','AI 未返回有效的 PNG、JPEG 或 WebP 封面图片。','新书封面方案参数不正确。','封面模板不正确。'])assert.notEqual(en.api.T(label),label,'Dynamic cover labels and errors are translated: '+label);
 console.log('PASS: Chinese/English messages, locale, stable data values and authored text isolation.');
 
 async function testDelayedLanguageSwitch(){

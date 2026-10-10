@@ -13,7 +13,7 @@ const copy = value => JSON.parse(JSON.stringify(value));
 class Element {
   constructor(tag = 'div') {
     this.tagName = tag.toUpperCase(); this.children = []; this.value = ''; this.textContent = '';
-    this.hidden = false; this.open = false; this.inert = false; this.listeners = {}; this.attributes = {};
+    this.hidden = false; this.open = false; this.inert = false; this.listeners = {}; this.attributes = {}; this.dataset = {};
     this.style = { setProperty() {} }; this.classList = { toggle() {}, add() {}, remove() {} };
   }
   append(...children) { for (const child of children) { this.children.push(child); if (typeof child === 'object') child.parentElement = this; } }
@@ -21,6 +21,7 @@ class Element {
   setAttribute(key, value) { this.attributes[key] = String(value); }
   addEventListener(type, listener) { this.listeners[type] = listener; }
   querySelectorAll() { return []; }
+  contains(node) { return node === this || this.children.some(child => typeof child === 'object' && child.contains(node)); }
   showModal() { this.open = true; }
   close() { this.open = false; }
   focus() { this.focused = true; }
@@ -31,7 +32,7 @@ class Element {
 function descendants(element) { return element.children.flatMap(child => typeof child === 'object' ? [child, ...descendants(child)] : []); }
 function text(element) { return [element.textContent, ...descendants(element).map(child => child.textContent)].filter(Boolean).join(' '); }
 function book(id, kind = 'long') {
-  return { id, title: '作品 ' + id, kind, cover: 'data:image/jpeg;base64,b2xkLWNvdmVy',
+  return { id, title: '作品 ' + id, kind, cover: 'data:image/jpeg;base64,b2xkLWNvdmVy', coverTemplate: '',
     volumes: kind === 'long' ? [{ id: id + '-volume', title: '第一卷', summary: '卷纲', deletedAt: null }] : [],
     chapters: [{ id: id + '-chapter', title: '正文', body: id + ' 这段正文和它的关联不得被作品信息覆盖。', volumeId: kind === 'long' ? id + '-volume' : null, deletedAt: null }],
     outline: [{ id: id + '-outline', title: '总纲', body: '大纲内容', kind: 'story', chapterIds: [id + '-chapter'], parentId: null, deletedAt: null }],
@@ -52,11 +53,14 @@ function harness({ language = 'zh', kind = 'long', current = true, dirty = false
     createImageBitmap: async () => ({ width: 600, height: 800, close() {} }),
   });
   context.window = context;
-  for (const file of ['public/i18n.js', 'public/app.js', 'public/workspace.js']) {
+  for (const file of ['public/i18n.js', 'public/app.js', 'public/book-covers.js', 'public/workspace.js']) {
     let source = fs.readFileSync(path.join(root, file), 'utf8');
     if (file.endsWith('workspace.js')) source = source.replace(/\ninitialize\(\);\s*$/, '\n');
     vm.runInContext(source, context, { filename: file });
   }
+  const renderCalls = [], covers = context.WriterCovers;
+  context.WriterCovers = { templates: covers.templates, randomTitle: covers.randomTitle,
+    render(id, title, kind) { renderCalls.push({ id, title, kind }); return 'data:image/jpeg;base64,' + Buffer.from([id, title, kind].join('|')).toString('base64'); } };
   vm.runInContext('renderBacklinks=()=>{};openBook=()=>{throw new Error("Metadata editing must not navigate into a book")};setBook=()=>{throw new Error("Metadata editing must not replace the current book")};', context);
   const state = vm.runInContext('state', context), books = new Map();
   for (const [id, type, revision] of [['active', 'long', 7], ['long-target', 'long', 31], ['short-target', 'short', 42]]) books.set(id, { book: book(id, type), revision });
@@ -92,7 +96,7 @@ function harness({ language = 'zh', kind = 'long', current = true, dirty = false
   function form() { const result = descendants(get('dialog-body')).find(node => node.tagName === 'FORM'); assert.ok(result, 'The metadata form should open'); return result; }
   function input() { return descendants(form()).find(node => node.id === 'book-title-input'); }
   async function submit() { await form().listeners.submit({ preventDefault() {} }); }
-  return { context, state, get, calls, books, active, storageData, removedKeys, run, open, form, input, submit, findButton };
+  return { context, state, get, calls, books, active, storageData, removedKeys, renderCalls, run, open, form, input, submit, findButton };
 }
 
 const checks = [];
@@ -214,7 +218,7 @@ check('cover upload and text-cover selection affect only the selected book and d
     const expected = { ...before, cover: 'data:image/jpeg;base64,dXBsb2FkZWQtY292ZXI=' };
     assert.deepEqual(h.books.get(id).book, expected); assert.deepEqual(h.active, activeBefore); assert.equal(h.state.view, 'shelf');
     assert.ok(descendants(h.get('shelf-grid')).some(node => node.tagName === 'IMG' && node.src === expected.cover), 'Updated cover must appear on the shelf');
-    await h.open(id); await h.findButton(h.form(), '使用文字封面').listeners.click(); await h.submit();
+    await h.open(id); await h.findButton(h.form(), '文字封面').listeners.click(); await h.submit();
     assert.deepEqual(h.books.get(id).book, { ...before, cover: '' }); assert.deepEqual(h.active, activeBefore); assert.equal(h.state.view, 'shelf');
   }
 });
@@ -228,6 +232,120 @@ check('metadata load failure and an active IME composition do not change page, b
   assert.equal(h.state.view, 'shelf'); assert.equal(h.state.book, h.active); assert.deepEqual(h.active, before); assert.equal(h.get('workspace').inert, false);
   h.state.composing = true; let requested = false; h.context.settingsApi = async () => { requested = true; throw new Error('Must not start while composing'); };
   await edit.listeners.click(); assert.equal(requested, false); assert.equal(h.get('dialog').open, false); assert.equal(h.state.view, 'shelf'); assert.deepEqual(h.active, before);
+});
+
+function templateButton(h, id) { return descendants(h.form()).find(node => node.tagName === 'BUTTON' && node.dataset.template === id); }
+function coverSource(h) { return descendants(h.form()).find(node => node.tagName === 'IMG').src; }
+function uploadInput(h) { return descendants(h.form()).find(node => node.tagName === 'INPUT' && node.type === 'file'); }
+
+check('local dice chooses nonrepeating titles in the interface language and leaves the library untouched until save', async () => {
+  for (const language of ['zh', 'en']) {
+    const h = harness({ language }), before = copy(h.books.get('long-target').book), currentBefore = copy(h.active);
+    await h.open('long-target'); const dice = descendants(h.form()).find(node => node.className?.includes('book-title-dice'));
+    await dice.listeners.click(); const first = h.input().value; await dice.listeners.click(); const second = h.input().value;
+    assert.notEqual(first, second); assert.ok(language === 'en' ? /^[A-Za-z]/.test(second) : /[\u4e00-\u9fff]/.test(second));
+    assert.deepEqual(h.books.get('long-target').book, before); assert.deepEqual(h.active, currentBefore);
+    assert.equal(h.calls.filter(call => call.method === 'PUT').length, 0);
+    await h.submit(); assert.equal(h.books.get('long-target').book.title, second);
+  }
+});
+
+check('all ten templates are available, selection follows title edits, and only the target raster and template ID persist', async () => {
+  for (const kind of ['long', 'short']) {
+    const h = harness({ kind }), id = kind + '-target', before = copy(h.books.get(id).book), activeBefore = copy(h.active);
+    await h.open(id); const choices = descendants(h.form()).filter(node => node.dataset.template);
+    assert.equal(choices.length, 10); assert.equal(new Set(choices.map(node => node.dataset.template)).size, 10);
+    for (const choice of choices) { await choice.listeners.click(); assert.equal(choice.attributes['aria-pressed'], 'true'); }
+    const oldCover = coverSource(h); h.input().value = '晚风中的新书名'; await h.input().listeners.input();
+    assert.notEqual(coverSource(h), oldCover); assert.deepEqual(h.renderCalls.at(-1), { id: 'dawn', title: '晚风中的新书名', kind });
+    assert.equal(h.calls.filter(call => call.method === 'PUT').length, 0); const expectedCover = coverSource(h);
+    await h.submit(); assert.deepEqual(h.books.get(id).book, { ...before, title: '晚风中的新书名', cover: expectedCover, coverTemplate: 'dawn' });
+    assert.deepEqual(h.active, activeBefore); await h.open(id); assert.equal(templateButton(h, 'dawn').attributes['aria-pressed'], 'true');
+    await h.findButton(h.form(), '文字封面').listeners.click(); await h.submit();
+    assert.equal(h.books.get(id).book.coverTemplate, ''); assert.equal(h.books.get(id).book.cover, '');
+  }
+});
+
+check('template rendering failure and persistence failure keep the existing book and editable candidate intact', async () => {
+  const h = harness(), id = 'long-target', before = copy(h.books.get(id).book); await h.open(id);
+  const render = h.context.WriterCovers.render; h.context.WriterCovers.render = () => { throw new Error('无法绘制封面，请重试。'); };
+  await templateButton(h, 'ocean').listeners.click(); assert.equal(coverSource(h), before.cover);
+  assert.equal(templateButton(h, 'ocean').attributes['aria-pressed'], 'false'); assert.deepEqual(h.books.get(id).book, before);
+  h.context.WriterCovers.render = render; await templateButton(h, 'orbit').listeners.click(); h.input().value = '失败后留下的候选'; await h.input().listeners.input();
+  const candidate = coverSource(h), api = h.context.settingsApi; h.context.settingsApi = async (endpoint, method, data) => { if (method === 'PUT') throw new Error('磁盘暂时无法保存'); return api(endpoint, method, data); };
+  await h.submit(); assert.equal(h.get('dialog').open, true); assert.equal(coverSource(h), candidate); assert.equal(h.input().value, '失败后留下的候选'); assert.deepEqual(h.books.get(id).book, before);
+  h.context.settingsApi = api; await h.submit(); assert.equal(h.books.get(id).book.coverTemplate, 'orbit'); assert.equal(h.books.get(id).book.title, '失败后留下的候选');
+});
+
+check('late uploads are discarded after cancel, another dialog, a newer upload, or a template choice, and decoded images close', async () => {
+  for (const scenario of ['cancel', 'dialog', 'newer', 'template']) {
+    const h = harness(), id = 'long-target', before = copy(h.books.get(id).book); await h.open(id);
+    const pending = []; let closed = 0; h.context.createImageBitmap = () => new Promise(resolve => pending.push(resolve));
+    const file = uploadInput(h); file.files = [{ type: 'image/png', size: 100 }]; const upload = file.listeners.change();
+    if (scenario === 'cancel') await h.findButton(h.form(), '取消').listeners.click();
+    if (scenario === 'dialog') { h.state.kind = 'short'; await h.open('short-target'); }
+    if (scenario === 'template') await templateButton(h, 'mountain').listeners.click();
+    let newer;
+    if (scenario === 'newer') { file.files = [{ type: 'image/jpeg', size: 200 }]; newer = file.listeners.change(); pending[1]({ width: 600, height: 800, close() { closed += 1; } }); await newer; }
+    const selectedCover = scenario === 'cancel' ? null : coverSource(h);
+    pending[0]({ width: 600, height: 800, close() { closed += 1; } }); await upload;
+    assert.equal(closed, scenario === 'newer' ? 2 : 1); assert.deepEqual(h.books.get(id).book, before);
+    if (scenario !== 'cancel') assert.equal(coverSource(h), selectedCover, 'Stale decoding must not replace the live candidate');
+    if (scenario === 'dialog') { await h.submit(); assert.equal(h.books.get('short-target').book.cover, before.cover); }
+    if (scenario === 'template') { await h.submit(); assert.equal(h.books.get(id).book.coverTemplate, 'mountain'); }
+  }
+});
+
+check('late upload errors do not surface in a new form and a mismatched metadata record cannot address a different book', async () => {
+  const h = harness(); await h.open('long-target'); let reject;
+  h.context.createImageBitmap = () => new Promise((resolve, fail) => { reject = fail; }); const file = uploadInput(h); file.files = [{ type: 'image/png', size: 100 }]; const upload = file.listeners.change();
+  h.state.kind = 'short'; await h.open('short-target'); h.get('toast').textContent = ''; reject(new Error('旧上传失败')); await upload; assert.equal(text(h.get('toast')), '');
+  h.run('closeDialog()'); const api = h.context.settingsApi; h.context.settingsApi = async (endpoint, method = 'GET', data) => endpoint === '/api/books/short-target' && method === 'GET' ? copy(h.books.get('long-target')) : api(endpoint, method, data);
+  await h.open('short-target'); assert.equal(h.get('dialog').open, false); assert.ok(text(h.get('toast')).includes('作品信息不匹配')); assert.equal(h.calls.filter(call => call.method === 'PUT').length, 0);
+});
+
+check('AI cover callback fills only the live candidate, clears template ID, and cannot overwrite a cancelled or replaced form', async () => {
+  const h = harness(), before = copy(h.books.get('long-target').book), requests = []; h.context.showAIBookCover = request => requests.push(request);
+  await h.open('long-target'); await templateButton(h, 'ocean').listeners.click(); h.input().value = '尚未保存的书名'; await h.input().listeners.input();
+  await h.findButton(h.form(), 'AI生成').listeners.click(); assert.equal(requests[0].bookId, 'long-target'); assert.equal(requests[0].title, '尚未保存的书名'); assert.equal(requests[0].isCurrent(), true);
+  const aiCover = 'data:image/jpeg;base64,YWktY292ZXI='; assert.equal(await requests[0].onApply({ title: 'AI候选书名', cover: aiCover, coverTemplate: '' }), true);
+  assert.equal(h.input().value, 'AI候选书名'); assert.equal(coverSource(h), aiCover); assert.deepEqual(h.books.get('long-target').book, before);
+  await h.submit(); assert.equal(h.books.get('long-target').book.cover, aiCover); assert.equal(h.books.get('long-target').book.coverTemplate, '');
+  await h.open('long-target'); await h.findButton(h.form(), 'AI生成').listeners.click(); await h.findButton(h.form(), '取消').listeners.click();
+  h.state.kind = 'short'; await h.open('short-target'); const currentTitle = h.input().value, currentCover = coverSource(h);
+  assert.equal(requests[1].isCurrent(), false); assert.equal(await requests[1].onApply({ title: '迟到书名', cover: aiCover }), false);
+  assert.equal(h.input().value, currentTitle); assert.equal(coverSource(h), currentCover);
+});
+
+check('new-book dice, template and AI candidates stay in the form until explicit creation', async () => {
+  const h = harness({ current: false, kind: 'short' }), before = copy([...h.books.values()]), requests = [];
+  h.context.showAIBookCover = request => requests.push(request); h.run("showBookSettings(false,'short')");
+  const dice = descendants(h.form()).find(node => node.className?.includes('book-title-dice')); await dice.listeners.click(); const title = h.input().value;
+  await templateButton(h, 'garden').listeners.click(); await h.findButton(h.form(), 'AI生成').listeners.click();
+  assert.equal(requests[0].bookId, null); assert.equal(requests[0].title, title); assert.equal(requests[0].kind, 'short');
+  await requests[0].onApply({ cover: 'data:image/jpeg;base64,bmV3LWNhbmRpZGF0ZQ==', coverTemplate: '' });
+  assert.equal(h.input().value, title); assert.equal(h.state.book, null); assert.equal(h.calls.length, 0); assert.deepEqual([...h.books.values()], before);
+  await h.findButton(h.form(), '取消').listeners.click(); assert.equal(h.state.book, null); assert.equal(h.calls.length, 0);
+});
+
+check('AI title adoption that fails to redraw a selected template leaves the parent candidate and retry token intact', async () => {
+  const h = harness(), requests = []; h.context.showAIBookCover = request => requests.push(request); await h.open('long-target');
+  await templateButton(h, 'ocean').listeners.click(); const title = h.input().value, cover = coverSource(h); await h.findButton(h.form(), 'AI生成').listeners.click();
+  const render = h.context.WriterCovers.render; h.context.WriterCovers.render = () => { throw new Error('无法绘制封面，请重试。'); };
+  await assert.rejects(requests[0].onApply({ title: '尚未采用的AI标题' }), /无法绘制封面/);
+  assert.equal(h.input().value, title); assert.equal(coverSource(h), cover); assert.equal(requests[0].isCurrent(), true); assert.equal(h.calls.filter(call => call.method === 'PUT').length, 0);
+  h.context.WriterCovers.render = render; assert.equal(await requests[0].onApply({ title: '重试后的AI标题' }), true);
+  assert.equal(h.input().value, '重试后的AI标题'); assert.equal(templateButton(h, 'ocean').attributes['aria-pressed'], 'true');
+});
+
+check('submitting freezes cover controls and invalidates image decoding that began before saving', async () => {
+  const h = harness(), id = 'long-target', before = copy(h.books.get(id).book); await h.open(id); let decode, finishSave, closed = 0;
+  h.context.createImageBitmap = () => new Promise(resolve => { decode = resolve; }); const file = uploadInput(h); file.files = [{ type: 'image/png', size: 100 }]; const upload = file.listeners.change();
+  const api = h.context.settingsApi; h.context.settingsApi = async (endpoint, method, data) => { if (endpoint === '/api/books/' + id && method === 'PUT') await new Promise(resolve => { finishSave = resolve; }); return api(endpoint, method, data); };
+  h.input().value = '保存时锁定的候选'; const save = h.submit(); await Promise.resolve(); await Promise.resolve();
+  assert.equal(h.input().disabled, true); assert.ok(descendants(h.form()).filter(node => node.dataset.template).every(node => node.disabled));
+  decode({ width: 600, height: 800, close() { closed++; } }); await upload; assert.equal(coverSource(h), before.cover); assert.equal(closed, 1);
+  finishSave(); await save; assert.equal(h.books.get(id).book.cover, before.cover); assert.equal(h.books.get(id).book.title, '保存时锁定的候选');
 });
 
 (async () => {

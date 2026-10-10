@@ -5,7 +5,7 @@ const relationTypes={friend:T('友谊与信任'),mentor:T('师承'),family:T('�
 const activeVolumes=()=>state.book?.volumes.filter(v=>!v.deletedAt)||[];
 function emptyProfile(){return{group:'',role:'',desire:'',flaw:'',ending:'',arcs:[]};}
 function normalizeWorkspaceBook(book){
-  book.kind??='long';book.cover??='';book.volumes??=[];book.outline??=[];book.relations??=[];book.atlasViews??=[];
+  book.kind??='long';book.cover??='';book.coverTemplate??='';book.volumes??=[];book.outline??=[];book.relations??=[];book.atlasViews??=[];
   book.chapters.forEach(c=>c.volumeId??=null);
   book.notes.forEach(n=>{n.chapterIds??=[];n.aliases??=[];n.profile={...emptyProfile(),...n.profile};});
   book.outline.forEach(o=>{o.kind??='scene';o.volumeId??=null;});
@@ -99,37 +99,83 @@ async function trashBook(record){
 async function editBookSettings(bookId){
   return transition(async()=>{
     if(!await requireSaved())return false;
-    try{const record=await api('/api/books/'+encodeURIComponent(bookId));showBookSettings(true,record.book.kind,record);return true;}
+    try{const record=await api('/api/books/'+encodeURIComponent(bookId));if(record.book?.id!==bookId)throw new Error(T('作品信息不匹配，请重新打开。'));showBookSettings(true,record.book.kind,record);return true;}
     catch(error){toast(error.message);return false;}
   });
 }
-async function saveBookSettings(record,title,cover){
+async function saveBookSettings(record,title,cover,coverTemplate='',visible=()=>true){
   return transition(async()=>{
-    if(!await requireSaved())return false;
+    if(!visible()||!await requireSaved()||!visible())return false;
     const current=state.book?.id===record.book.id,book=clone(current?state.book:record.book);
-    book.title=title;book.cover=cover;
+    book.title=title;book.cover=cover;book.coverTemplate=coverTemplate;
     const result=await api('/api/books/'+encodeURIComponent(book.id),'PUT',{book,revision:current?state.revision:record.revision});
     record.book=book;record.revision=result.revision;
-    if(current){state.book.title=title;state.book.cover=cover;state.revision=result.revision;state.folderWarning=result.folderWarning||null;state.protectionWarning=result.protectionWarning||null;}
+    if(state.book?.id===book.id){state.book.title=title;state.book.cover=cover;state.book.coverTemplate=coverTemplate;state.revision=result.revision;state.folderWarning=result.folderWarning||null;state.protectionWarning=result.protectionWarning||null;}
     if(result.folderWarning)toast(T(result.folderWarning));
     if(result.protectionWarning)toast(T(result.protectionWarning));
-    closeDialog();await refreshBooks();renderShell();return true;
+    if(visible())closeDialog();await refreshBooks();renderShell();return true;
   });
 }
 function showBookSettings(rename,kind=state.kind,record=null){
   if(rename&&!record?.book&&!state.book)return;
   if(rename&&!record)record={book:clone(state.book),revision:state.revision};
-  const book=rename?record.book:{title:T('未命名作品'),kind,cover:''};let cover=book.cover,createdBookId=null;
-  const form=el('form'),input=el('input','text-field');input.id='book-title-input';input.maxLength=200;input.required=true;input.value=rename?book.title:'';input.placeholder=T('给这部作品起一个名字');addField(form,T('{0}作品名称',kindName(kind)),input);
+  const book=rename?record.book:{title:T('未命名作品'),kind,cover:'',coverTemplate:''};let cover=book.cover||'',coverTemplate=book.coverTemplate||'',createdBookId=null,imageRequest=0;
+  const form=el('form','book-settings-form'),input=el('input','text-field'),titleRow=el('div','book-title-row');
+  const visible=()=>$('dialog').open&&$('dialog-body').contains(form),candidateTitle=()=>input.value.trim()||T('未命名作品');
+  input.id='book-title-input';input.maxLength=200;input.required=true;input.value=rename?book.title:'';input.placeholder=T('给这部作品起一个名字');
+  const dice=action('','secondary-button book-title-dice',()=>{if(!visible()||submit.disabled)return;input.value=WriterCovers.randomTitle(uiLanguage,input.value.trim());updatePreview();input.focus();});
+  dice.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="16" cy="8" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="8" cy="16" r="1.2" fill="currentColor"/><circle cx="16" cy="16" r="1.2" fill="currentColor"/></svg>';
+  dice.setAttribute('aria-label',T('随机书名'));dice.title=T('换一个书名');titleRow.append(input,dice);const titleLabel=el('label','field-label',T('{0}作品名称',kindName(kind)));titleLabel.htmlFor=input.id;form.append(titleLabel,titleRow);
   const coverRow=el('div','cover-editor'),preview=el('div'),tools=el('div'),file=el('input');file.type='file';file.accept='image/png,image/jpeg,image/webp';file.hidden=true;file.setAttribute('aria-label',T('上传作品封面'));
-  function updatePreview(){preview.replaceChildren(buildBookCover({title:input.value.trim()||T('未命名作品'),kind,cover},'cover-preview'));}
-  tools.append(action(T('上传封面'),'secondary-button',()=>file.click()),action(T('使用文字封面'),'text-button',()=>{cover='';updatePreview();}),el('p','subtle',T('支持 PNG、JPG、WebP，封面只保存在本机。')));coverRow.append(preview,tools,file);form.append(el('label','field-label',T('作品封面')),coverRow);
-  input.addEventListener('input',updatePreview);file.addEventListener('change',async()=>{const selected=file.files[0];if(!selected)return;try{if(!['image/png','image/jpeg','image/webp'].includes(selected.type)||selected.size>12*1024*1024)throw new Error(T('请选择 12 MB 以内的 PNG、JPG 或 WebP 图片。'));const bitmap=await createImageBitmap(selected);const canvas=document.createElement('canvas');canvas.width=600;canvas.height=800;const context=canvas.getContext('2d'),scale=Math.max(600/bitmap.width,800/bitmap.height);context.fillStyle='#fff';context.fillRect(0,0,600,800);context.drawImage(bitmap,(600-bitmap.width*scale)/2,(800-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale);bitmap.close();cover=canvas.toDataURL('image/jpeg',.88);updatePreview();}catch(e){toast(e.message||T('这张图片无法读取。'));}finally{file.value='';}});
-  const buttons=el('div','dialog-actions'),submit=el('button','primary-button',rename?T('保存作品信息'):T('创建作品，开始构思'));submit.type='submit';buttons.append(action(T('取消'),'secondary-button',closeDialog),submit);form.append(buttons);updatePreview();
-  form.addEventListener('submit',async event=>{event.preventDefault();const title=input.value.trim();if(!title||submit.disabled)return;submit.disabled=true;try{
-    if(rename)await saveBookSettings(record,title,cover);
-    else await transition(async()=>{if(!createdBookId){if(!await requireSaved())return;setBook(await api('/api/books','POST',{title,kind}));createdBookId=state.book.id;}state.book.title=title;state.book.cover=cover;createOutlineTemplate();state.view='outline';state.collection=null;markDirty();if(!await requireSaved()){renderShell();return;}closeDialog();await refreshBooks();renderShell();});
-  }catch(e){toast(e.message);}finally{submit.disabled=false;}});showDialog(rename?T('封面与书名'):T('新建{0}',kindName(kind)),form);input.focus();
+  const templateChoices=[],gallery=el('details','cover-templates'),gallerySummary=el('summary',null,T('模板封面')),galleryGrid=el('div','cover-template-grid');
+  function updatePreview(redraw=true){
+    if(redraw&&coverTemplate){try{cover=WriterCovers.render(coverTemplate,candidateTitle(),kind);}catch(error){toast(T(error.message));return false;}}
+    preview.replaceChildren(buildBookCover({title:candidateTitle(),kind,cover},'cover-preview'));
+    templateChoices.forEach(({id,button})=>{const selected=id===coverTemplate;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));});return true;
+  }
+  const upload=action(T('上传图片'),'secondary-button',()=>{if(visible()&&!submit.disabled)file.click();}),plain=action(T('文字封面'),'text-button',()=>{if(!visible()||submit.disabled)return;imageRequest++;cover='';coverTemplate='';updatePreview();});
+  const ai=action(T('AI生成'),'secondary-button',()=>{
+    if(!visible()||submit.disabled||typeof window.showAIBookCover!=='function')return;
+    const request=++imageRequest;
+    window.showAIBookCover({bookId:rename?book.id:null,title:input.value.trim(),kind,isCurrent:()=>visible()&&!submit.disabled&&request===imageRequest,
+      onApply:async result=>{
+        if(!visible()||submit.disabled||request!==imageRequest)return false;
+        const title=typeof result.title==='string'?result.title.slice(0,200):input.value,template=typeof result.cover==='string'?'':coverTemplate;
+        const image=typeof result.cover==='string'?result.cover:template?WriterCovers.render(template,title.trim()||T('未命名作品'),kind):cover;
+        input.value=title;cover=image;coverTemplate=template;updatePreview(false);imageRequest++;return true;
+      }});
+  });
+  tools.append(upload,ai,plain);coverRow.append(preview,tools,file);form.append(el('label','field-label',T('作品封面')),coverRow);
+  for(const template of WriterCovers.templates){
+    const button=action('','cover-template-choice',()=>{if(!visible()||submit.disabled)return;const previous=coverTemplate;coverTemplate=template.id;if(updatePreview())imageRequest++;else coverTemplate=previous;}),image=el('img');
+    image.alt='';image.loading='lazy';try{image.src=WriterCovers.render(template.id,T(template.name),kind);}catch{}
+    button.dataset.template=template.id;button.setAttribute('aria-label',T(template.name));button.append(image,el('span',null,T(template.name)));templateChoices.push({id:template.id,button});galleryGrid.append(button);
+  }
+  gallery.append(gallerySummary,galleryGrid);form.append(gallery);
+  input.addEventListener('input',()=>{if(visible()&&!submit.disabled)updatePreview();});
+  file.addEventListener('change',async()=>{
+    const selected=file.files[0];if(!selected||!visible()||submit.disabled)return;const request=++imageRequest;let bitmap;
+    try{
+      if(!['image/png','image/jpeg','image/webp'].includes(selected.type)||selected.size>12*1024*1024)throw new Error(T('请选择 12 MB 以内的 PNG、JPG 或 WebP 图片。'));
+      bitmap=await createImageBitmap(selected);if(!visible()||submit.disabled||request!==imageRequest)return;
+      if(!bitmap.width||!bitmap.height||bitmap.width*bitmap.height>100000000)throw new Error(T('这张图片无法读取。'));
+      const canvas=document.createElement('canvas');canvas.width=600;canvas.height=800;const context=canvas.getContext('2d');if(!context)throw new Error(T('无法绘制封面，请重试。'));
+      const scale=Math.max(600/bitmap.width,800/bitmap.height);context.fillStyle='#fff';context.fillRect(0,0,600,800);context.drawImage(bitmap,(600-bitmap.width*scale)/2,(800-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale);
+      cover=canvas.toDataURL('image/jpeg',.88);coverTemplate='';updatePreview();
+    }catch(error){if(visible()&&request===imageRequest)toast(T(error.message||'这张图片无法读取。'));}
+    finally{bitmap?.close();if(request===imageRequest)file.value='';}
+  });
+  const buttons=el('div','dialog-actions'),submit=el('button','primary-button',rename?T('保存作品信息'):T('创建作品，开始构思'));submit.type='submit';buttons.append(action(T('取消'),'secondary-button',()=>{imageRequest++;if(visible())closeDialog();}),submit);form.append(buttons);updatePreview();
+  function setBusy(value){[input,dice,upload,ai,plain,file,...templateChoices.map(item=>item.button),submit].forEach(control=>control.disabled=value);}
+  form.addEventListener('submit',async event=>{event.preventDefault();const title=input.value.trim();if(!title||submit.disabled||!visible()||!updatePreview())return;imageRequest++;setBusy(true);const savedCover=cover,savedTemplate=coverTemplate;try{
+    if(rename)await saveBookSettings(record,title,savedCover,savedTemplate,visible);
+    else await transition(async()=>{
+      if(!visible()||!await requireSaved()||!visible())return;
+      if(!createdBookId){setBook(await api('/api/books','POST',{title,kind}));createdBookId=state.book.id;}
+      if(state.book?.id!==createdBookId)throw new Error(T('作品信息不匹配，请重新打开。'));
+      state.book.title=title;state.book.cover=savedCover;state.book.coverTemplate=savedTemplate;createOutlineTemplate();state.view='outline';state.collection=null;markDirty();if(!await requireSaved()){renderShell();return;}if(visible())closeDialog();await refreshBooks();renderShell();
+    });
+  }catch(error){if(visible())toast(error.message);}finally{setBusy(false);}});showDialog(rename?T('封面与书名'):T('新建{0}',kindName(kind)),form);input.focus();
 }
 function renderVolumeChapters(){
   const container=$('chapter-list');container.replaceChildren();if(!state.book)return;

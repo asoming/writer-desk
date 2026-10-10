@@ -31,6 +31,7 @@ DB_LOCK = threading.RLock()
 MAX_REQUEST = 64 * 1024 * 1024
 MAX_BOOK = 25 * 1024 * 1024
 MAX_COVER = 2 * 1024 * 1024
+COVER_TEMPLATE_IDS = {"ocean", "orbit", "night", "blossom", "neon", "mountain", "paper", "ripple", "garden", "dawn"}
 DESKTOP_TOKEN = os.environ.get("WRITER_DESKTOP_TOKEN", "")
 DEFAULT_EXAMPLE_MIGRATION = "default-tide-archive-v1"
 INITIAL_LIBRARY_MIGRATION = "initial-library-v1"
@@ -72,7 +73,7 @@ def empty_profile():
 
 def new_book(title="未命名作品", kind="long"):
     book_id = uid()
-    return {"id": book_id, "title": title, "kind": kind, "cover": "",
+    return {"id": book_id, "title": title, "kind": kind, "cover": "", "coverTemplate": "",
             "volumes": [first_volume(book_id)] if kind == "long" else [], "chapters": [],
             "notes": [], "outline": [], "relations": []}
 
@@ -81,6 +82,7 @@ def upgrade_book(book):
     """Add new fields without changing existing text, IDs or revisions."""
     book.setdefault("kind", "long")
     book.setdefault("cover", "")
+    book.setdefault("coverTemplate", "")
     legacy_volumes = "volumes" not in book
     book.setdefault("volumes", [first_volume(book["id"])] if book["kind"] == "long" else [])
     book.setdefault("outline", [])
@@ -257,6 +259,12 @@ def checked_cover(value):
     return value
 
 
+def checked_cover_template(value):
+    if not isinstance(value, str) or value and value not in COVER_TEMPLATE_IDS:
+        raise ValueError("封面模板不正确")
+    return value
+
+
 def validate_book(data):
     if not isinstance(data, dict):
         raise ValueError("作品格式不正确")
@@ -266,6 +274,7 @@ def validate_book(data):
     if result["kind"] not in ("long", "short"):
         raise ValueError("作品类型必须是长篇或短篇")
     result["cover"] = checked_cover(data.get("cover", ""))
+    result["coverTemplate"] = checked_cover_template(data.get("coverTemplate", ""))
     legacy_volumes = "volumes" not in data
     volumes = data.get("volumes", [first_volume(result["id"])] if result["kind"] == "long" else [])
     if not isinstance(volumes, list) or len(volumes) > 10000:
@@ -444,7 +453,7 @@ def book_summary(row):
     book = upgrade_book(json.loads(row["payload"]))
     chapters = [chapter for _, group in manuscript_groups(book) for chapter in group]
     latest = next((chapter for chapter in reversed(chapters) if chapter["body"].strip()), chapters[-1] if chapters else None)
-    return {"id": book["id"], "title": book["title"], "kind": book["kind"], "cover": book["cover"],
+    return {"id": book["id"], "title": book["title"], "kind": book["kind"], "cover": book["cover"], "coverTemplate": book["coverTemplate"],
             "volumeCount": sum(not volume["deletedAt"] for volume in book["volumes"]),
             "outlineCount": sum(not item["deletedAt"] for item in book["outline"]),
             "personCount": sum(not note["deletedAt"] and note["type"] == "人物" for note in book["notes"]),
@@ -873,6 +882,22 @@ def sync_book_folder(book_id, create=False):
 
 def handle_ai_request(path, data):
     service = AIService(DB_PATH.parent)
+    if path == "/api/ai/cover-image":
+        if not isinstance(data, dict) or set(data) != {"prompt"}:
+            raise AIError(400, "封面图片请求只接受文字提示词。")
+        return service.cover_image(data["prompt"])
+    if path == "/api/ai/book-cover":
+        if not isinstance(data, dict) or not {"title", "kind", "prompt"} <= set(data) or set(data) - {"title", "kind", "prompt", "skillIds", "skillMode", "preview"}:
+            raise AIError(400, "新书封面方案参数不正确。")
+        if not isinstance(data["title"], str) or len(data["title"]) > 200 or not isinstance(data["kind"], str) or data["kind"] not in ("long", "short") or not isinstance(data["prompt"], str) or len(data["prompt"]) > 10000 or type(data.get("preview", False)) is not bool:
+            raise AIError(400, "新书封面方案参数不正确。")
+        if "skillIds" in data and data["skillIds"] is None or "skillMode" in data and data["skillMode"] is None:
+            raise AIError(400, "AI 写作技能参数不正确。")
+        book = {"id": "unsaved-book", "title": data["title"], "kind": data["kind"], "chapters": [], "outline": [], "notes": [], "relations": []}
+        operation = service.preview if data.get("preview", False) else service.run
+        result = operation(book, "book_cover", [], data["prompt"], data.get("skillIds"), data.get("skillMode"))
+        result.pop("bookId", None)
+        return result
     if path == "/api/ai/test":
         if not isinstance(data, dict) or data:
             raise AIError(400, "连接测试不接受作品内容或额外参数。")
@@ -976,6 +1001,7 @@ class Handler(BaseHTTPRequestHandler):
                          "/workspace.js": "workspace.js", "/i18n.js": "i18n.js", "/style.css": "style.css", "/favicon.svg": "favicon.svg",
                          "/protection.js": "protection.js", "/protection.css": "protection.css",
                          "/continuation.js": "continuation.js", "/ai.js": "ai.js", "/ai.css": "ai.css"}
+                files["/book-covers.js"] = "book-covers.js"
                 filename = files.get(path)
                 if not filename:
                     self.send_json({"error": "找不到这个页面"}, 404)
@@ -1027,6 +1053,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("作品类型必须是长篇或短篇")
                 book = new_book(title, kind)
                 book["cover"] = checked_cover(data.get("cover", ""))
+                book["coverTemplate"] = checked_cover_template(data.get("coverTemplate", ""))
             elif path == "/api/import":
                 if not isinstance(data, dict) or data.get("format") != "yejian-backup" or type(data.get("version")) is not int or data.get("version") not in (1, 2, 3):
                     raise ValueError("请选择作家工作台导出的完整备份文件（v1、v2 或 v3）")

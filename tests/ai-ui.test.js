@@ -4,10 +4,11 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {randomUUID}=require('node:crypto'),{test}=require('node:test');
 const root=path.resolve(__dirname,'..'),sample=JSON.parse(fs.readFileSync(path.join(root,'examples/tide-archive.yejian.json'),'utf8')).book;
 class Element{
-  constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.value='';this.textContent='';this.listeners={};this.open=false;this.disabled=false;this.hidden=false;this.style={setProperty(){}};this.classList={toggle(){},add(){},remove(){}};}
+  constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.value='';this.textContent='';this.listeners={};this.open=false;this.disabled=false;this.hidden=false;this.dataset={};this.style={setProperty(){}};this.classList={toggle(){},add(){},remove(){}};}
   append(...children){children.forEach(child=>{this.children.push(child);child.parentElement=this;});}
   prepend(...children){this.children.unshift(...children);}
   replaceChildren(...children){this.children=[];this.append(...children);}
+  remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);}
   addEventListener(type,listener){this.listeners[type]=listener;}
   setAttribute(key,value){this[key]=String(value);}
   get options(){return this.children;}
@@ -23,10 +24,10 @@ function field(h,id){const result=find(h.get('dialog-body'),node=>node.id===id);
 function harness(){
   const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
   const storage={getItem:()=>null,setItem(){},removeItem(){},length:0};
-  const context=vm.createContext({document:{getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),addEventListener(){},querySelector:()=>new Element()},crypto:{randomUUID},sessionStorage:storage,clientStorage:storage,structuredClone,setTimeout:()=>0,clearTimeout(){},requestAnimationFrame:fn=>fn(),addEventListener(){},T:(text,...args)=>Array.isArray(text)?text.reduce((out,part,i)=>out+part+(args[i]??''),''):String(text).replace(/\{(\d+)\}/g,(_,i)=>args[i]??'')});context.window=context;
+  const context=vm.createContext({document:{body:new Element('body'),getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),addEventListener(){},querySelector:()=>new Element()},crypto:{randomUUID},sessionStorage:storage,clientStorage:storage,structuredClone,setTimeout:()=>0,clearTimeout(){},requestAnimationFrame:fn=>fn(),addEventListener(){},T:(text,...args)=>Array.isArray(text)?text.reduce((out,part,i)=>out+part+(args[i]??''),''):String(text).replace(/\{(\d+)\}/g,(_,i)=>args[i]??'')});context.window=context;
   for(const file of ['public/app.js','public/workspace.js','public/ai.js']){let source=fs.readFileSync(path.join(root,file),'utf8');if(file.endsWith('workspace.js'))source=source.replace(/\ninitialize\(\);\s*$/,'\n');vm.runInContext(source,context,{filename:file});}
   const run=source=>vm.runInContext(source,context),state=run('state');state.book=structuredClone(sample);state.kind='long';state.view='write';state.chapterId=sample.chapters[0].id;
-  const h={get,run,state,context,calls:[],saves:[],copied:[],renderCount:0,settings:{enabled:true,endpoint:'http://127.0.0.1:9999/v1/chat/completions',model:'stub-model',hasKey:false,contextMode:'auto',maxContextChars:250000,timeoutSeconds:60}};
+  const h={get,run,state,context,calls:[],saves:[],copied:[],renderCount:0,settings:{enabled:true,endpoint:'http://127.0.0.1:9999/v1/chat/completions',model:'stub-model',imageModel:'',hasKey:false,contextMode:'auto',maxContextChars:250000,timeoutSeconds:60}};
   context.navigator={clipboard:{writeText:async text=>h.copied.push(text)}};
   h.skills={skills:['chinese-novelist','novelskill','human-writing'].map(id=>({id,name:id,available:true,imported:false,referenceCount:1})),defaults:{skillIds:[],skillMode:'auto'}};
   h.preview=data=>({bookId:state.book.id,action:data.action,chapterIds:data.chapterIds,contextChars:2000+data.instruction.length+data.skillIds.length*300,contextMode:h.settings.contextMode,maxContextChars:h.settings.contextMode==='manual'?h.settings.maxContextChars:null,overLimit:h.settings.contextMode==='manual'&&!!h.overLimit,counts:{chapters:data.chapterIds.length,outlines:3,people:32,relationships:35},selectedSkillIds:data.skillIds,skillMode:data.skillMode,skillChars:data.skillIds.length*300,skills:data.skillIds.map(id=>({id,name:id,mode:data.skillMode==='auto'?'chapter':data.skillMode,files:['SKILL.md','references/chapter.md']}))});
@@ -40,6 +41,8 @@ function harness(){
     if(url==='/api/skills/settings'){h.skills.defaults=structuredClone(data);return structuredClone(h.skills);}
     if(url.startsWith('/api/skills/'))return h.skillDetail(url.split('/').at(-1));
     if(url.endsWith('/ai/preview'))return h.preview(data);
+    if(url==='/api/ai/book-cover')return data.preview?h.preview({...data,action:'book_cover',chapterIds:[],instruction:data.prompt}):h.result({...data,action:'book_cover',chapterIds:[]});
+    if(url==='/api/ai/cover-image')return h.imageResult(data);
     if(url.endsWith('/ai'))return h.result(data);
     if(url==='/api/ai/test')return{ok:true};throw Error('Unexpected local API '+url);
   };
@@ -252,9 +255,9 @@ test('malformed or mismatched skill previews stay unsendable and all seven writi
   }
 });
 
-test('four presets are editable, each action keeps its own words, resetting restores that preset and sends exactly the visible prompt',async()=>{
+test('five presets are editable, each action keeps its own words, resetting restores that preset and sends exactly the visible prompt',async()=>{
   const h=harness();await h.run("showAIAssistant('draft')");const mode=field(h,'ai-action'),prompt=field(h,'ai-instruction'),draft=prompt.value;
-  assert.equal(mode.options.length,5);assert.ok(draft.length>80);
+  assert.equal(mode.options.length,6);assert.ok(draft.length>80);
   prompt.value='我的草稿要求：保留沈砚的动机，只写一个场景。';prompt.listeners.input();
   mode.value='outline';await mode.listeners.change();const outline=prompt.value;assert.ok(outline.includes('总纲'));assert.ok(!outline.includes('我的草稿要求'));
   prompt.value='我的大纲要求：三卷，每卷两章。';prompt.listeners.input();
@@ -349,4 +352,119 @@ test('action changes invalidate stale previews, pending sends lock prompts/actio
   let finish;h.result=()=>new Promise(resolve=>{finish=resolve;});const pending=button(h,'发送所选资料').listeners.click();await new Promise(resolve=>setImmediate(resolve));assert.equal(mode.disabled,true);assert.equal(prompt.disabled,true);assert.equal(button(h,'恢复默认提示词').disabled,true);
   mode.value='draft';mode.listeners.change();assert.equal(mode.value,'custom');const savedPrompt=prompt.value;await button(h,'恢复默认提示词').listeners.click();assert.equal(prompt.value,savedPrompt);
   const snapshot=JSON.stringify(h.state.book);h.get('dialog').open=false;finish({bookId:h.state.book.id,action:'custom',data:{text:'迟到回答'}});await pending;assert.ok(!find(h.get('dialog-body'),node=>node.id==='ai-custom-result'));assert.equal(JSON.stringify(h.state.book),snapshot);
+});
+
+const coverRaster='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2ioAAAAASUVORK5CYII=';
+function coverHarness(){
+  const h=harness();h.compositions=[];
+  h.context.WriterCovers={composeImage:async(image,title)=>{h.compositions.push({image,title});return coverRaster;},render:(template,title)=>'template:'+template+':'+title};
+  h.imageResult=()=>({image:coverRaster});
+  h.result=request=>({bookId:h.state.book.id,action:request.action,data:{titles:['潮声替我来信','第七封信','无人签收的星光'],coverPrompt:'深蓝色海面，一封白色信，竖版构图，为书名留白。'}});
+  return h;
+}
+function dialogButton(dialog,text){const result=find(dialog,node=>node.tagName==='BUTTON'&&node.textContent===text);assert.ok(result,'Missing cover button '+text);return result;}
+function dialogField(dialog,id){const result=find(dialog,node=>node.id===id);assert.ok(result,'Missing cover field '+id);return result;}
+async function showMetadataCover(h,options={}){
+  h.get('dialog').open=true;h.applied=[];h.parentCurrent=true;
+  h.context.coverOptions={bookId:null,title:'尚未保存的新书',kind:'long',isCurrent:()=>h.parentCurrent,onApply:value=>{h.applied.push(structuredClone(value));return true;},...options};
+  await h.run('showAIBookCover(coverOptions)');return h.run('aiBookCoverDialog');
+}
+
+test('image model is optional, retained and explicitly editable in AI settings',async()=>{
+  const h=coverHarness(),container=new Element();h.context.container=container;h.settings.imageModel='provider-image-v1';h.run('appendAISettings(container)');await new Promise(resolve=>setImmediate(resolve));
+  const model=find(container,node=>node.id==='ai-image-model'),save=find(container,node=>node.textContent==='保存 AI 设置');
+  assert.equal(model.value,'provider-image-v1');model.value='';await save.listeners.click();assert.equal(h.settings.imageModel,'');
+  model.value='provider-image-v2';await save.listeners.click();assert.equal(h.calls.filter(call=>call.method==='PUT').at(-1).data.imageModel,'provider-image-v2');
+});
+
+test('the sixth action keeps an editable/resettable title prompt and previews without requesting images or modifying books',async()=>{
+  const h=coverHarness(),snapshot=JSON.stringify(h.state.book);await h.run("showAIAssistant('book_cover')");const prompt=field(h,'ai-instruction'),preset=prompt.value;
+  assert.equal(field(h,'ai-action').options.length,6);assert.match(preset,/候选书名/);assert.match(preset,/不生成图片/);
+  prompt.value='我想要冷静克制的短书名，封面采用午夜蓝。';prompt.listeners.input();await field(h,'ai-skill-mode').listeners.change();await button(h,'发送所选资料').listeners.click();
+  assert.equal(h.calls.filter(call=>call.url.endsWith('/ai')).at(-1).data.instruction,prompt.value);
+  assert.equal(field(h,'ai-cover-title').value,'潮声替我来信');assert.equal(button(h,'采用书名与封面').disabled,true);assert.equal(h.calls.filter(call=>call.url==='/api/ai/cover-image').length,0);assert.equal(JSON.stringify(h.state.book),snapshot);
+  await button(h,'生成封面').listeners.click();assert.ok(find(h.get('dialog-body'),node=>node.textContent==='请先在设置中填写图像模型。'));assert.equal(h.calls.filter(call=>call.url==='/api/ai/cover-image').length,0);
+  await button(h,'恢复默认提示词').listeners.click();assert.equal(prompt.value,preset);assert.ok(!find(h.get('dialog-body'),node=>node.id==='ai-cover-title'));
+});
+
+test('cover images are requested only explicitly with the visible image prompt; changing the title recomposes locally and never sends an image as context',async()=>{
+  const h=coverHarness();h.settings.imageModel='provider-image';await h.run("showAIAssistant('book_cover')");await button(h,'发送所选资料').listeners.click();
+  field(h,'ai-cover-prompt').value='作者修改的海边封面构图';await button(h,'生成封面').listeners.click();
+  assert.deepEqual(h.calls.filter(call=>call.url==='/api/ai/cover-image').map(call=>call.data),[{prompt:'作者修改的海边封面构图'}]);assert.equal(h.compositions.length,1);assert.equal(button(h,'采用书名与封面').disabled,false);
+  await button(h,'第七封信').listeners.click();assert.equal(field(h,'ai-cover-title').value,'第七封信');field(h,'ai-cover-title').value='作者的新书名';await field(h,'ai-cover-title').listeners.input();
+  assert.equal(h.compositions.length,3);assert.equal(h.compositions.at(-1).title,'作者的新书名');assert.equal(h.calls.filter(call=>call.url==='/api/ai/cover-image').length,1);
+  assert.ok(!JSON.stringify(h.calls.filter(call=>call.url.endsWith('/ai'))).includes('data:image'));
+  const before=structuredClone(h.state.book.chapters);h.state.book.coverTemplate='night';h.saves=[true,false];await button(h,'采用书名与封面').listeners.click();
+  assert.equal(h.state.book.title,'作者的新书名');assert.equal(h.state.book.cover,coverRaster);assert.equal(h.state.book.coverTemplate,'');assert.deepEqual(h.state.book.chapters,before);assert.equal(field(h,'ai-cover-title').disabled,true);
+  await button(h,'重试保存').listeners.click();assert.equal(h.get('dialog').open,false);assert.equal(h.calls.filter(call=>call.url==='/api/ai/cover-image').length,1);
+});
+
+test('title-only adoption preserves uploaded covers, updates templates and changes no manuscript content',async()=>{
+  for(const template of ['', 'night']){const h=coverHarness(),original=structuredClone(h.state.book);h.state.book.cover='original-upload';h.state.book.coverTemplate=template;
+    await h.run("showAIAssistant('book_cover')");await button(h,'发送所选资料').listeners.click();await button(h,'采用书名').listeners.click();
+    assert.equal(h.state.book.title,'潮声替我来信');assert.equal(h.state.book.cover,template?'template:night:潮声替我来信':'original-upload');assert.equal(h.state.book.coverTemplate,template);assert.deepEqual(h.state.book.chapters,original.chapters);assert.deepEqual(h.state.book.outline,original.outline);
+  }
+});
+
+test('invalid image responses and provider failures do not retry, overwrite the book or enable image adoption',async()=>{
+  for(const response of [()=>({image:'https://provider.test/private.png'}),()=>({image:'data:image/svg+xml;base64,PHN2Zz4='}),()=>{throw Error('image provider failed');}]){
+    const h=coverHarness();h.settings.imageModel='provider-image';h.imageResult=response;const snapshot=JSON.stringify(h.state.book);await h.run("showAIAssistant('book_cover')");await button(h,'发送所选资料').listeners.click();await button(h,'生成封面').listeners.click();
+    assert.equal(h.calls.filter(call=>call.url==='/api/ai/cover-image').length,1);assert.equal(h.compositions.length,0);assert.equal(button(h,'采用书名与封面').disabled,true);assert.equal(JSON.stringify(h.state.book),snapshot);assert.equal(button(h,'生成封面').disabled,false);
+  }
+});
+
+test('late image responses after a book switch, action change or dialog close cannot preview or adopt a cover',async()=>{
+  for(const abandon of ['book','mode','close']){const h=coverHarness();h.settings.imageModel='provider-image';let finish;h.imageResult=()=>new Promise(resolve=>{finish=resolve;});await h.run("showAIAssistant('book_cover')");await button(h,'发送所选资料').listeners.click();const original=h.state.book,snapshot=JSON.stringify(original),pending=button(h,'生成封面').listeners.click();await new Promise(resolve=>setImmediate(resolve));
+    if(abandon==='book')h.state.book={...structuredClone(sample),id:'another-book'};else if(abandon==='mode'){field(h,'ai-action').value='draft';await field(h,'ai-action').listeners.change();}else h.get('dialog').open=false;
+    finish({image:coverRaster});await pending;assert.equal(h.compositions.length,0);assert.equal(JSON.stringify(original),snapshot);assert.ok(!find(h.get('dialog-body'),node=>node.tagName==='IMG'&&!node.hidden));
+  }
+});
+
+test('local composition discards old results while typing and failed template composition cannot partially rename the book',async()=>{
+  const h=coverHarness();h.settings.imageModel='provider-image';await h.run("showAIAssistant('book_cover')");await button(h,'发送所选资料').listeners.click();await button(h,'生成封面').listeners.click();
+  const compositions=[];h.context.WriterCovers.composeImage=(image,title)=>new Promise(resolve=>compositions.push({title,resolve}));const title=field(h,'ai-cover-title');title.value='旧输入';const old=title.listeners.input();title.value='最终输入';const latest=title.listeners.input();
+  assert.equal(button(h,'采用书名与封面').disabled,true);compositions[1].resolve(coverRaster);await latest;compositions[0].resolve('data:image/png;base64,b2xk');await old;
+  assert.equal(button(h,'采用书名与封面').disabled,false);const originalTitle=h.state.book.title;h.state.book.coverTemplate='night';h.context.WriterCovers.render=()=>{throw Error('无法绘制封面，请重试。');};await button(h,'采用书名').listeners.click();
+  assert.equal(h.state.book.title,originalTitle);assert.equal(field(h,'ai-cover-title').disabled,false);assert.equal(h.state.dirty,false);
+});
+
+test('metadata cover dialog previews locally, keeps the parent form open and applies only explicit candidates without saving or creating a book',async()=>{
+  const h=coverHarness(),snapshot=JSON.stringify(h.state.book);const dialog=await showMetadataCover(h);assert.ok(dialog.open);assert.equal(h.get('dialog').open,true);assert.ok(h.calls.some(call=>call.url==='/api/ai/book-cover'&&call.data.preview===true));assert.equal(h.calls.filter(call=>call.url==='/api/ai/book-cover'&&!call.data.preview).length,0);
+  const prompt=dialogField(dialog,'ai-book-cover-instruction'),preset=prompt.value;prompt.value='未保存新书的作者要求';prompt.listeners.input();await dialogField(dialog,'ai-book-cover-skill-mode').listeners.change();await dialogButton(dialog,'生成候选').listeners.click();
+  const request=h.calls.filter(call=>call.url==='/api/ai/book-cover'&&!call.data.preview).at(-1).data;assert.equal(request.prompt,prompt.value);assert.equal(request.title,'尚未保存的新书');assert.ok(!Object.hasOwn(request,'cover'));assert.equal(h.applied.length,0);
+  await dialogButton(dialog,'恢复默认提示词').listeners.click();assert.equal(prompt.value,preset);await dialogButton(dialog,'生成候选').listeners.click();await dialogButton(dialog,'采用书名').listeners.click();
+  assert.deepEqual(h.applied,[{title:'潮声替我来信'}]);assert.equal(dialog.open,false);assert.equal(h.get('dialog').open,true);assert.equal(JSON.stringify(h.state.book),snapshot);assert.equal(h.renderCount,0);assert.ok(!h.calls.some(call=>call.url.startsWith('/api/books/')||call.url==='/api/books'));
+});
+
+test('metadata adoption closes successfully even when the parent invalidates the one-use callback token, and rejection can be retried',async()=>{
+  const h=coverHarness();let attempts=0;const dialog=await showMetadataCover(h,{onApply:value=>{attempts++;if(attempts===1)return false;h.applied.push(structuredClone(value));h.parentCurrent=false;return true;}});
+  await dialogButton(dialog,'生成候选').listeners.click();await dialogButton(dialog,'采用书名').listeners.click();assert.equal(dialog.open,true);assert.equal(dialogField(dialog,'ai-cover-title').disabled,false);
+  await dialogButton(dialog,'采用书名').listeners.click();assert.equal(attempts,2);assert.equal(dialog.open,false);assert.equal(h.applied.length,1);
+});
+
+test('metadata error and late image/composition results cannot fill a closed or superseded parent book form',async()=>{
+  for(const phase of ['image','compose']){const h=coverHarness();h.settings.imageModel='provider-image';let finish;const dialog=await showMetadataCover(h);await dialogButton(dialog,'生成候选').listeners.click();
+    if(phase==='image')h.imageResult=()=>new Promise(resolve=>{finish=resolve;});else h.context.WriterCovers.composeImage=()=>new Promise(resolve=>{finish=resolve;});
+    const pending=dialogButton(dialog,'生成封面').listeners.click();await new Promise(resolve=>setImmediate(resolve));h.parentCurrent=false;finish(phase==='image'?{image:coverRaster}:coverRaster);await pending;await dialogButton(dialog,'采用书名').listeners.click();assert.equal(h.applied.length,0);assert.ok(!find(dialog,node=>node.tagName==='IMG'&&!node.hidden));await dialogButton(dialog,'关闭').listeners.click();
+    assert.equal(dialog.open,false);assert.equal(h.get('dialog').open,true);
+  }
+  const h=coverHarness();const dialog=await showMetadataCover(h,{onApply:()=>{throw Error('metadata failed');}});await dialogButton(dialog,'生成候选').listeners.click();await dialogButton(dialog,'采用书名').listeners.click();assert.ok(find(dialog,node=>node.textContent==='metadata failed'));assert.equal(dialogField(dialog,'ai-cover-title').disabled,false);
+});
+
+test('metadata AI uses the selected existing book even when another book is open and includes the proposed unsaved title',async()=>{
+  const h=coverHarness(),current=h.state.book,targetId='shelf-book-not-open',normalPreview=h.preview,normalResult=h.result;
+  h.preview=request=>({...normalPreview(request),bookId:targetId,contextChars:24000});h.result=request=>({...normalResult(request),bookId:targetId});
+  const dialog=await showMetadataCover(h,{bookId:targetId,title:'作者待采用的新名字'});assert.equal(h.state.book,current);assert.ok(find(dialog,node=>node.textContent==='共 24,000 字符'));
+  const preview=h.calls.find(call=>call.url==='/api/books/'+targetId+'/ai/preview');assert.equal(preview.data.action,'book_cover');assert.deepEqual(preview.data.chapterIds,[]);assert.match(preview.data.instruction,/待采用书名：作者待采用的新名字$/);assert.ok(find(dialog,node=>node.textContent==='待采用书名：作者待采用的新名字'));
+  dialogField(dialog,'ai-book-cover-instruction').value='作者新提示';await dialogField(dialog,'ai-book-cover-skill-mode').listeners.change();await dialogButton(dialog,'生成候选').listeners.click();
+  const request=h.calls.find(call=>call.url==='/api/books/'+targetId+'/ai');assert.equal(request.data.instruction,'作者新提示\n\n待采用书名：作者待采用的新名字');assert.ok(!h.calls.some(call=>call.url==='/api/ai/book-cover'));assert.equal(h.state.book,current);
+  await dialogButton(dialog,'采用书名').listeners.click();assert.deepEqual(h.applied,[{title:'潮声替我来信'}]);assert.equal(h.state.book.title,sample.title);
+});
+
+test('existing metadata preview and result book IDs must match the chosen shelf book independently of the current book',async()=>{
+  for(const mismatch of ['preview','result']){const h=coverHarness(),targetId='chosen-shelf-book',normalPreview=h.preview;h.preview=request=>({...normalPreview(request),bookId:mismatch==='preview'?h.state.book.id:targetId});
+    const dialog=await showMetadataCover(h,{bookId:targetId});if(mismatch==='preview'){assert.equal(dialogButton(dialog,'生成候选').disabled,true);await dialogButton(dialog,'生成候选').listeners.click();assert.ok(!h.calls.some(call=>call.url==='/api/books/'+targetId+'/ai'));}
+    else{await dialogButton(dialog,'生成候选').listeners.click();assert.ok(find(dialog,node=>node.textContent==='AI 结果与当前作品不匹配。'));assert.ok(!find(dialog,node=>node.id==='ai-cover-title'));}
+    assert.equal(h.applied.length,0);
+  }
 });
