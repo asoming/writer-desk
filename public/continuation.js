@@ -17,7 +17,7 @@ function updateContinuationSettings(info={}){
 }
 
 async function buildContinuationSettings(){
-  const builds=[['settings-protection',typeof appendProtectionSettings==='function'?appendProtectionSettings:null],['settings-ai',typeof appendAISettings==='function'?appendAISettings:null]];
+  const builds=[['settings-protection',typeof appendProtectionSettings==='function'?appendProtectionSettings:null],['settings-ai',typeof appendAISettings==='function'?appendAISettings:null],['settings-skills',typeof appendWritingSkillSettings==='function'?appendWritingSkillSettings:null]];
   await Promise.allSettled(builds.map(async([id,build])=>{
     const host=$(id);if(!host||!build)return;host.replaceChildren();
     try{await build(host);}catch(error){host.append(el('p','subtle',error.message||T('无法读取设置。')));}

@@ -25,6 +25,7 @@ for(const name of ['ai.js','protection.js','continuation.js']){
  for(const match of feature.matchAll(/T\('([^'\\]*)'/g))assert.ok(Object.hasOwn(en.api.englishMessages,match[1]),'New interface message has an English translation: '+match[1]);
 }
 assert.equal(en.api.T('AI 服务请求失败（HTTP 429）。请检查配置后重试。'),'The AI request failed (HTTP 429). Check your settings and retry.');
+for(const label of ['中文小说创作','小说项目管理','自然中文表达','分章创作、悬念与自然叙事。','人物、分层大纲、伏笔与状态追踪。','润色文字、对白与叙事节奏。','自动匹配','章节创作','续写','润色','大纲规划','人物塑造','一致性检查'])assert.notEqual(en.api.T(label),label,'Dynamic skill labels are translated: '+label);
 console.log('PASS: Chinese/English messages, locale, stable data values and authored text isolation.');
 
 async function testDelayedLanguageSwitch(){

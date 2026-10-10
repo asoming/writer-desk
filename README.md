@@ -7,7 +7,7 @@
 
 左下角「设置 → 界面语言」可切换中文和 English，切换前自动保存当前作品。只翻译界面，书名、正文、大纲和人物资料保持原文。
 
-界面预览：[历史与自动备份](docs/backups-v0.4.0.png) · [流程检查与分类索引](docs/workflow-v0.3.6.png) · [内置设置](docs/app-settings-v0.3.5.png) · [书架与作品文件夹](docs/book-folders-v0.3.3.png) · [人物脉络与分类](docs/people-v0.3.1.png) · [完整大纲阅读](docs/outline-v0.3.1.png)。
+界面预览：[写作 Skill](docs/skills-v0.4.1.png) · [历史与自动备份](docs/backups-v0.4.0.png) · [流程检查与分类索引](docs/workflow-v0.3.6.png) · [内置设置](docs/app-settings-v0.3.5.png) · [书架与作品文件夹](docs/book-folders-v0.3.3.png) · [人物脉络与分类](docs/people-v0.3.1.png) · [完整大纲阅读](docs/outline-v0.3.1.png)。
 
 首次打开书架即有原创群像小说《潮汐档案馆》，含六卷三十六章、三十二位人物、四十九条大纲节点、六个主题分图和三十五条手动关系。升级已有作品库也会补入缺少的完整示例，保留已有作品及修改。书架的「载入长篇示例」仍可新建独立副本。正文共 101,506 个非空白字符，字数包含标点和英文字母；完整验证结果见 [验收记录](docs/acceptance-report.md)。
 
@@ -98,6 +98,14 @@
 
 生成结果先在对话框中审阅。人物与关系由你勾选确认，正文由你选择追加或新建章节，一致性问题可跳转到相关章节核对；不会直接改写整本书。AI 可能出错，应结合原文判断。普通保存和本地规则提及索引不调用 AI。
 
+## 本机写作 Skill
+
+「设置 → 写作 Skill」可以导入本机已下载的 `chinese-novelist`、`novelskill` 和 `human-writing`，查看规则与 Markdown 参考，保存默认选择。来源为 `$CODEX_HOME/skills`，未设置时使用 `~/.codex/skills`。导入副本保存在本机数据目录的 `writing-skills/`，原文件保持不变；源文件更新后可再次导入。
+
+AI 对话框可以临时选择多个 Skill，或取消全部选择，并指定章节、续写、润色、大纲、人物或检查任务。自动模式随当前操作选择相关规则。预览会列出本次会用的参考文件，Skill 文本计入上下文上限；点击发送后才会连同所选作品资料交给已配置的 AI 服务。Skill 提供写作规则，需要配合模型使用；程序不执行其中的脚本，也不会自动建立外部小说目录。
+
+Skill 原文、本机导入副本和默认选择不放进作品备份、GitHub 或发行包。其他电脑需先下载相应 Skill，再从设置导入；已导入的副本可以独立于源目录使用。
+
 该接口采用 [Chat Completions 请求格式](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。接入真实服务前需自行配置服务、模型和密钥；验收使用隔离的本机模拟服务，不消耗真实模型额度。
 
 ## 安装与升级
@@ -115,6 +123,7 @@ Linux 安装器将版本保存在 `~/.local/share/writer-desk/app/versions/`（�
 - `server.py`：本机服务与 SQLite 保存。
 - `protection.py`：本机快照、保留与安全恢复。
 - `ai_service.py`：显式调用兼容模型服务及结果校验。
+- `skills.py`：本机写作规则导入、任务参考选择与上下文。
 - `public/`：界面与交互代码。
 - `start.sh` / `start.bat`：启动程序。
 - `data/`：运行后自动生成的本机数据，分发压缩包不含此目录。
@@ -138,3 +147,5 @@ Linux 安装器将版本保存在 `~/.local/share/writer-desk/app/versions/`（�
 完整写作流程可运行 `python3 tests/verify_workflow.py`、`node tests/workflow-outline.test.js` 和 `node tests/workflow-characters.test.js`，使用隔离数据和十万字示例验证目录补建、保存失败重试、分类索引、回收恢复、备份与重启。
 
 新增功能验收可运行 `python3 tests/verify_protection.py`、`python3 tests/verify_ai.py`、`node tests/continuation-ui.test.js` 和 `node scripts/test-desktop.cjs`；均使用隔离数据。
+
+本机 Skill 可运行 `python3 tests/verify_skills.py` 和 `node tests/ai-ui.test.js`，验证导入副本、任务参考、上下文计数及界面流程。

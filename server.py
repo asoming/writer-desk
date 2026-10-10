@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 import protection
 from ai_service import AIService, AIError
+from skills import SkillsService, SkillError
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "data" / "writer.sqlite3"
@@ -739,8 +740,10 @@ def handle_ai_request(path, data):
     match = re.fullmatch(r"/api/books/([^/]+)/ai(/preview)?", path)
     if not match:
         return None
-    if not isinstance(data, dict) or set(data) - {"action", "chapterIds", "instruction"}:
+    if not isinstance(data, dict) or set(data) - {"action", "chapterIds", "instruction", "skillIds", "skillMode"}:
         raise AIError(400, "AI 请求参数不正确。")
+    if "skillIds" in data and data["skillIds"] is None or "skillMode" in data and data["skillMode"] is None:
+        raise AIError(400, "AI 写作技能参数不正确。")
     with connect() as conn:
         row = conn.execute("SELECT * FROM books WHERE id=?", (match.group(1),)).fetchone()
     if not row:
@@ -748,7 +751,7 @@ def handle_ai_request(path, data):
     book = book_result(row)["book"]
     operation = service.preview if match.group(2) else service.run
     # Never hold a database transaction while waiting for an external service.
-    return operation(book, data.get("action"), data.get("chapterIds"), data.get("instruction", ""))
+    return operation(book, data.get("action"), data.get("chapterIds"), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -801,6 +804,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(protected)
             elif path == "/api/ai/settings":
                 self.send_json(AIService(DB_PATH.parent).get_settings())
+            elif path == "/api/skills":
+                self.send_json(SkillsService(DB_PATH.parent).list())
+            elif path.startswith("/api/skills/"):
+                self.send_json(SkillsService(DB_PATH.parent).detail(path[len("/api/skills/"):]))
             elif path == "/api/examples":
                 manifest = ROOT / "examples" / "manifest.json"
                 self.send_json({"examples": json.loads(manifest.read_text("utf-8")) if manifest.is_file() else []})
@@ -841,7 +848,7 @@ class Handler(BaseHTTPRequestHandler):
                 content = (ROOT / "public" / filename).read_bytes()
                 content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
                 self.send_bytes(content, content_type=content_type + ("; charset=utf-8" if filename.endswith((".html", ".css", ".js", ".svg")) else ""))
-        except AIError as exc:
+        except (AIError, SkillError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
             self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)
@@ -853,6 +860,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            if path == "/api/skills/import":
+                if not isinstance(data, dict) or set(data) != {"skillIds"}:
+                    raise SkillError("写作技能导入参数不正确。")
+                self.send_json(SkillsService(DB_PATH.parent).import_skills(data["skillIds"]))
+                return
             protected = write_protection(path, data)
             if protected is not None:
                 self.send_json(protected)
@@ -903,7 +915,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 result["protectionWarning"] = protection.WARNING
             self.send_json(result, 201)
-        except AIError as exc:
+        except (AIError, SkillError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
             self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)
@@ -921,6 +933,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            if path == "/api/skills/settings":
+                self.send_json(SkillsService(DB_PATH.parent).save_settings(data))
+                return
             if path == "/api/ai/settings":
                 self.send_json(AIService(DB_PATH.parent).save_settings(data))
                 return
@@ -962,7 +977,7 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, ValueError):
                     pass  # Logging cannot invalidate an already committed save.
             self.send_json(result)
-        except AIError as exc:
+        except (AIError, SkillError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
             self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)

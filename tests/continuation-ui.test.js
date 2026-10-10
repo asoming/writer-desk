@@ -15,6 +15,8 @@ function harness(desktop=true){
 async function main(){
   const web=harness(false);web.run('updateContinuationSettings()');assert.equal(web.get('settings-updates').hidden,true);
   const h=harness();
+  h.context.appendWritingSkillSettings=async host=>host.append({text:'local writing skills'});
+  await h.run('buildContinuationSettings()');assert.equal(h.get('settings-skills').children[0].text,'local writing skills','settings builds the local writing skill manager');
   h.run('updateContinuationSettings({updateSupported:false});updateContinuationSettings()');assert.equal(h.get('settings-updates').hidden,true,'refresh preserves unsupported native state');h.run('updateContinuationSettings({updateSupported:true})');
   h.run('requireSaved=async()=>false');await h.get('settings-install-update').listeners.click();assert.deepEqual(h.calls,[],'failed save cannot open update installer');
   h.run('requireSaved=async()=>true');await h.get('settings-install-update').listeners.click();
