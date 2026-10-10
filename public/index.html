@@ -18,14 +18,14 @@
       <button id="nav-write-short" class="nav-item"><span data-icon="short"></span><span>短篇写作</span></button>
     </nav>
 
-    <div class="rail-bottom"><button class="plain-button" id="open-trash"><span data-icon="trash"></span>回收站 <span id="trash-count"></span></button><button class="plain-button" id="open-backup"><span data-icon="backup"></span>导出与备份</button><button class="plain-button" id="open-settings" aria-haspopup="dialog" aria-controls="settings-dialog"><span data-icon="settings"></span>设置</button></div>
+    <div class="rail-bottom"><button class="plain-button" id="open-trash"><span data-icon="trash"></span>回收站 <span id="trash-count"></span></button><button class="plain-button" id="open-settings" aria-haspopup="dialog" aria-controls="settings-dialog"><span data-icon="settings"></span>设置</button></div>
   </aside>
   <div id="nav-backdrop" class="nav-backdrop" hidden></div>
   <main class="main">
     <header class="topbar"><div class="topbar-left"><button class="icon-button mobile-only" id="toggle-nav" aria-label="打开主导航"><span data-icon="menu"></span></button><div class="workspace-heading"><h1 id="page-title">书架</h1><span id="book-name" class="workspace-book-name" hidden></span></div></div><div class="topbar-right"><span class="save-status" id="save-status" role="status" aria-live="polite">正在连接本机</span><button class="tool-button" id="toggle-notes" aria-label="关联与资料" aria-expanded="false"><span data-icon="links"></span><span>关联与资料</span></button><button class="icon-button" id="toggle-focus" aria-label="进入专注模式" title="专注模式（Esc 退出）"><span data-icon="focus"></span></button><div class="window-controls" id="window-controls" role="group" aria-label="窗口" hidden><button id="window-minimize" class="window-button" aria-label="最小化" title="最小化"><span data-icon="minimize"></span></button><button id="window-maximize" class="window-button" aria-label="最大化" title="最大化"><span data-icon="maximize"></span></button><button id="window-close" class="window-button window-close" aria-label="关闭窗口" title="关闭窗口"><span data-icon="close"></span></button></div></div></header>
     <div class="error-banner" id="error-banner" role="alert" hidden><span id="error-message"></span><button id="retry-save">重试保存</button><button id="rescue-copy" hidden>另存为新作品</button><button id="emergency-backup">下载本页备份</button></div>
     <section id="shelf-view" class="page-view shelf-view" aria-label="书架">
-      <div class="page-heading"><div><h2 id="shelf-title">我的长篇</h2></div><div class="shelf-heading-actions"><button id="load-example" class="secondary-button">载入长篇示例</button><button id="new-book" class="primary-button">＋ 新建长篇</button></div></div>
+      <div class="page-heading"><div><h2 id="shelf-title">我的长篇</h2></div><div class="shelf-heading-actions"><button id="import-backup" class="text-button">导入备份</button><button id="load-example" class="secondary-button">载入长篇示例</button><button id="new-book" class="primary-button">＋ 新建长篇</button></div></div>
       <div class="shelf-tabs" role="group" aria-label="书架分类"><button id="shelf-long">长篇 <span id="long-count">0</span></button><button id="shelf-short">短篇 <span id="short-count">0</span></button></div>
       <div id="shelf-grid" class="shelf-grid"></div>
     </section>

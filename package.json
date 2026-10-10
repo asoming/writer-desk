@@ -1,12 +1,14 @@
 {
   "name": "writer-desk",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "description": "作家工作台 — Writer's Desk. A local-first writing studio.",
   "author": "Writer's Desk contributors",
   "license": "MIT",
   "main": "desktop/main.cjs",
-  "engines": { "node": ">=22.12.0" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "start": "electron .",
     "build:backend": "node scripts/build-backend.cjs",
@@ -15,25 +17,68 @@
     "build:mac": "npm run build:backend && electron-builder --mac dmg",
     "test:desktop": "node scripts/test-desktop.cjs"
   },
-  "devDependencies": { "electron": "44.4.5", "electron-builder": "26.15.3" },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3"
+  },
   "build": {
     "appId": "local.writerdesk.app",
     "productName": "Writer's Desk",
     "executableName": "writer-desk",
     "asar": true,
     "afterPack": "desktop/after-pack.cjs",
-    "directories": { "output": "dist", "buildResources": "desktop/assets" },
-    "files": ["desktop/**/*", "package.json", "LICENSE", "!desktop/BUILD.md"],
-    "extraResources": [{"from": "build/backend", "to": "backend"}],
+    "directories": {
+      "output": "dist",
+      "buildResources": "desktop/assets"
+    },
+    "files": [
+      "desktop/**/*",
+      "package.json",
+      "LICENSE",
+      "!desktop/BUILD.md"
+    ],
+    "extraResources": [
+      {
+        "from": "build/backend",
+        "to": "backend"
+      }
+    ],
     "linux": {
-      "target": ["tar.gz"],
+      "target": [
+        "tar.gz"
+      ],
       "icon": "desktop/assets/icon.png",
       "category": "Office",
-      "desktop": {"entry": {"Name": "作家工作台", "Name[en]": "Writer's Desk", "Name[zh]": "作家工作台", "Name[zh_CN]": "作家工作台", "Comment": "本地小说写作与策划工作台", "Comment[en]": "Local writing studio", "Keywords": "作家工作台;作家;写作;小说;Writer's Desk;writer;desk;writing;novel;"}},
+      "desktop": {
+        "entry": {
+          "Name": "作家工作台",
+          "Name[en]": "Writer's Desk",
+          "Name[zh]": "作家工作台",
+          "Name[zh_CN]": "作家工作台",
+          "Comment": "本地小说写作与策划工作台",
+          "Comment[en]": "Local writing studio",
+          "Keywords": "作家工作台;作家;写作;小说;Writer's Desk;writer;desk;writing;novel;"
+        }
+      },
       "artifactName": "WriterDesk-${version}-linux-${arch}.${ext}"
     },
-    "win": {"target": ["nsis"], "artifactName": "WriterDesk-${version}-windows-${arch}.${ext}"},
-    "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false},
-    "mac": {"target": ["dmg"], "category": "public.app-category.productivity", "artifactName": "WriterDesk-${version}-mac-${arch}.${ext}"}
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "WriterDesk-${version}-windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity",
+      "artifactName": "WriterDesk-${version}-mac-${arch}.${ext}"
+    }
   }
 }

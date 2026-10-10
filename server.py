@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -33,6 +33,9 @@ MAX_BOOK = 25 * 1024 * 1024
 MAX_COVER = 2 * 1024 * 1024
 DESKTOP_TOKEN = os.environ.get("WRITER_DESKTOP_TOKEN", "")
 DEFAULT_EXAMPLE_MIGRATION = "default-tide-archive-v1"
+INITIAL_LIBRARY_MIGRATION = "initial-library-v1"
+TRASH_RETENTION = timedelta(days=30)
+TRASH_CLEANUP_SECONDS = 60
 FOLDER_MANIFEST = ".writer-desk-folder.json"
 FOLDER_FILES = ("正文.txt", "作品.yejian.json")
 FOLDER_WARNING = "作品已保存，但作品文件夹暂未同步。请重新打开文件夹后重试。"
@@ -167,11 +170,15 @@ def initialize():
                         conn.execute("ALTER TABLE books ADD COLUMN deleted_at TEXT")
                     conn.execute("CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
                     conn.execute("CREATE TABLE IF NOT EXISTS app_migrations(name TEXT PRIMARY KEY,applied_at TEXT NOT NULL)")
+                    conn.execute("CREATE TABLE IF NOT EXISTS pending_book_purges(book_id TEXT PRIMARY KEY)")
                     protection.initialize(conn)
-                    if not conn.execute("SELECT 1 FROM books LIMIT 1").fetchone():
+                    seeded = conn.execute("SELECT 1 FROM app_migrations WHERE name IN (?,?) LIMIT 1", (INITIAL_LIBRARY_MIGRATION, DEFAULT_EXAMPLE_MIGRATION)).fetchone()
+                    if not seeded and not conn.execute("SELECT 1 FROM books LIMIT 1").fetchone():
                         insert_book(conn, sample_book())
                         insert_book(conn, sample_short())
+                    conn.execute("INSERT OR IGNORE INTO app_migrations(name,applied_at) VALUES(?,?)", (INITIAL_LIBRARY_MIGRATION, now()))
                     install_default_example(conn)
+                cleanup_expired_books()
                 return
             except sqlite3.OperationalError as exc:
                 # Concurrent first connections can race while enabling WAL,
@@ -448,11 +455,11 @@ def book_summary(row):
 
 
 def change_book_trash(path, data):
-    match = re.fullmatch(r"/api/books/([^/]+)/(trash|restore)", path)
+    match = re.fullmatch(r"/api/books/([^/]+)/(trash|restore|purge)", path)
     if not match:
         return None
     if not isinstance(data, dict) or set(data) != {"revision"} or type(data["revision"]) is not int or data["revision"] < 1:
-        raise protection.ProtectionError("移入回收站或恢复作品时需要当前保存版本。")
+        raise protection.ProtectionError("彻底删除作品时需要当前保存版本。" if match[2] == "purge" else "移入回收站或恢复作品时需要当前保存版本。")
     book_id, operation = match.groups()
     with DB_LOCK, connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -463,22 +470,94 @@ def change_book_trash(path, data):
             require_active_book(row)
         elif row["deleted_at"] is None:
             raise protection.ProtectionError("这部作品不在回收站中，请刷新列表后重试。", 409, True)
-        stamp = now()
-        deleted_at = stamp if operation == "trash" else None
-        changed = conn.execute("UPDATE books SET deleted_at=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?",
-                               (deleted_at, stamp, book_id, row["revision"]))
-        if changed.rowcount != 1:
-            raise protection.ProtectionError(BOOK_STATE_CONFLICT, 409, True)
-        # Soft deletion only changes row metadata. Authored payloads, IDs, history,
-        # snapshots and opted-in exported folders all remain available for recovery.
-        if operation == "trash":
-            return {"bookId": book_id, "revision": row["revision"] + 1, "deletedAt": deleted_at, "updatedAt": stamp}
-        result = {**book_result(row), "revision": row["revision"] + 1, "updatedAt": stamp}
+        if operation == "purge":
+            purge_book_rows(conn, row["id"])
+            result = {"ok": True, "id": book_id}
+        else:
+            stamp = now()
+            deleted_at = stamp if operation == "trash" else None
+            changed = conn.execute("UPDATE books SET deleted_at=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?",
+                                   (deleted_at, stamp, book_id, row["revision"]))
+            if changed.rowcount != 1:
+                raise protection.ProtectionError(BOOK_STATE_CONFLICT, 409, True)
+            # Soft deletion changes metadata only; recovery keeps the authored payload.
+            if operation == "trash":
+                return {"bookId": book_id, "revision": row["revision"] + 1, "deletedAt": deleted_at, "updatedAt": stamp}
+            result = {**book_result(row), "revision": row["revision"] + 1, "updatedAt": stamp}
+    if operation == "purge":
+        if cleanup_pending_book_purges(book_id):
+            result["cleanupPending"] = True
+        return result
     try:
         sync_book_folder(book_id)
     except Exception:
         result["folderWarning"] = FOLDER_WARNING
     return result
+
+
+def trash_expiry(deleted_at):
+    """Unknown or timezone-less legacy dates never authorize destructive cleanup."""
+    if not isinstance(deleted_at, str) or not deleted_at or len(deleted_at) > 100:
+        return None
+    try:
+        stamp = datetime.fromisoformat(deleted_at.replace("Z", "+00:00"))
+        if stamp.tzinfo is None or stamp.utcoffset() is None:
+            return None
+        return stamp.astimezone(timezone.utc) + TRASH_RETENTION
+    except (ValueError, OverflowError):
+        return None
+
+
+def purge_book_rows(conn, book_id):
+    # The durable job survives crashes or filesystem failures after SQL commits.
+    conn.execute("INSERT OR IGNORE INTO pending_book_purges(book_id) VALUES(?)", (book_id,))
+    conn.execute("DELETE FROM history WHERE book_id=?", (book_id,))
+    conn.execute("DELETE FROM backup_runs WHERE book_id=?", (book_id,))
+    conn.execute("DELETE FROM books WHERE id=?", (book_id,))
+
+
+def cleanup_pending_book_purges(book_id=None):
+    with DB_LOCK, connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        rows = conn.execute("SELECT book_id FROM pending_book_purges" + (" WHERE book_id=?" if book_id is not None else ""), (book_id,) if book_id is not None else ()).fetchall()
+        for row in rows:
+            # Never clear files for any unexpectedly reintroduced active record.
+            if conn.execute("SELECT 1 FROM books WHERE id=?", (row[0],)).fetchone():
+                continue
+            try:
+                protection.purge_snapshots(DB_PATH, row[0], validate_book)
+            except (protection.ProtectionError, OSError):
+                continue
+            conn.execute("DELETE FROM pending_book_purges WHERE book_id=?", (row[0],))
+        return bool(conn.execute("SELECT 1 FROM pending_book_purges" + (" WHERE book_id=?" if book_id is not None else "") + " LIMIT 1", (book_id,) if book_id is not None else ()).fetchone())
+
+
+def cleanup_expired_books(moment=None):
+    moment = moment or datetime.now(timezone.utc)
+    if moment.tzinfo is None or moment.utcoffset() is None:
+        raise ValueError("cleanup time must include a timezone")
+    with DB_LOCK, connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        rows = conn.execute("SELECT id,deleted_at FROM books WHERE deleted_at IS NOT NULL").fetchall()
+        expired = [row["id"] for row in rows if (expiry := trash_expiry(row["deleted_at"])) is not None and expiry <= moment]
+        for book_id in expired:
+            purge_book_rows(conn, book_id)
+    cleanup_pending_book_purges()
+    return expired
+
+
+def start_trash_cleanup(interval=TRASH_CLEANUP_SECONDS):
+    stop = threading.Event()
+    def sweep():
+        while not stop.wait(interval):
+            try:
+                cleanup_expired_books()
+            except Exception:
+                # Retain the durable jobs and retry; never log a book's contents.
+                print("回收站自动清理暂未完成，将在后台重试。", file=sys.stderr, flush=True)
+    worker = threading.Thread(target=sweep, name="writer-trash-cleanup", daemon=True)
+    worker.start()
+    return stop, worker
 
 
 def restore_book(data):
@@ -881,7 +960,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/trash/books":
                 with connect() as conn:
                     rows = conn.execute("SELECT * FROM books WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC").fetchall()
-                self.send_json({"books": [{**book_summary(row), "deletedAt": row["deleted_at"]} for row in rows]})
+                self.send_json({"books": [{**book_summary(row), "deletedAt": row["deleted_at"], "expiresAt": expiry.isoformat() if (expiry := trash_expiry(row["deleted_at"])) else None} for row in rows]})
             elif path.startswith("/api/books/"):
                 with connect() as conn:
                     row = conn.execute("SELECT * FROM books WHERE id=?", (path[len("/api/books/"):],)).fetchone()
@@ -1015,7 +1094,7 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("BEGIN IMMEDIATE")
                 row = conn.execute("SELECT * FROM books WHERE id=?", (book_id,)).fetchone()
                 if not row:
-                    self.send_json({"error": "找不到这部作品"}, 404)
+                    self.send_json({"error": "找不到这部作品", "conflict": True, "deleted": True, "removed": True}, 404)
                     return
                 require_active_book(row)
                 if row["revision"] != data["revision"]:
@@ -1103,11 +1182,14 @@ def main():
     if args.open:
         import webbrowser
         webbrowser.open(url)
+    cleanup_stop, cleanup_worker = start_trash_cleanup()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        cleanup_stop.set()
+        cleanup_worker.join(timeout=1)
         server.server_close()
 
 

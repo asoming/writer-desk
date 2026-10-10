@@ -851,6 +851,27 @@ Object.assign(englishMessages,{
   "AI 上下文模式不正确。": "Invalid AI context mode.",
   "所选资料超出模型上下文，请减少章节后重试。": "The selected material exceeds the model context. Select fewer chapters and try again."
 });
+Object.assign(englishMessages,{
+  "导入备份": "Import backup",
+  "导出与备份 · {0}": "Export and backup · {0}",
+  "历史与备份 · {0}": "History and backups · {0}",
+  "完整备份已下载。": "Full backup downloaded.",
+  "正在读取作品…": "Loading book…",
+  "作品与目标不匹配，请重试。": "The book does not match the target. Try again.",
+  "整部作品保留 30 天，到期自动彻底删除。": "Books are kept for 30 days, then permanently deleted.",
+  "到期删除：{0}": "Expires: {0}",
+  "彻底删除": "Delete permanently",
+  "彻底删除作品": "Delete book permanently",
+  "彻底删除「{0}」？正文、关联、历史和本机备份将无法恢复。": "Permanently delete “{0}”? Its manuscript, links, history and local backups cannot be recovered.",
+  "删除结果与目标作品不匹配，请刷新回收站。": "The deletion result does not match the target book. Refresh trash.",
+  "作品已彻底删除。": "Book permanently deleted.",
+  "作品已删除，自动备份清理将在后台重试。": "Book deleted. Automatic backup cleanup will retry in the background.",
+  "作品已移入回收站，30 天内可恢复。": "Book moved to trash. Restore it within 30 days.",
+  "彻底删除作品时需要当前保存版本。": "The current saved revision is required to permanently delete a book.",
+  "原作品无法保存": "Original book unavailable",
+  "原作品已回收或删除。本页内容仍保留，可另存新作品或下载备份。": "The original book was trashed or deleted. Content on this page is kept; save it as a new book or download a backup.",
+  "草稿已保留在本机，可另存为新作品。": "Draft kept on this device. You can save it as a new book."
+});
 function T(source,...values){
   if(uiLanguage==='en'&&typeof source==='string'){
     const failure=source.match(/^AI 服务请求失败（HTTP (\d{3})）。请检查配置后重试。$/);

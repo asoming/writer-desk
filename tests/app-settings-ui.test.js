@@ -112,14 +112,15 @@ function harness({ desktop = true, language = 'zh', view = 'write', fullscreenEn
 }
 
 const checks = [], check = (name, test) => checks.push({ name, test });
-check('settings opens and closes without switching book, page, or selections; the rail keeps trash and export', async () => {
+check('settings opens and closes without switching book, page, or selections; the rail keeps trash and exports stay with books', async () => {
+  const html = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
   for (const language of ['zh', 'en']) for (const view of ['shelf', 'outline', 'write']) {
     const h = harness({ language, view }), before = copy(h.book);
     await h.run('showAppSettings()');
     assert.equal(h.get('settings-dialog').open, true); assert.equal(h.state.view, view); assert.equal(h.state.book, h.book); assert.deepEqual(h.book, before);
     assert.equal(h.get('settings-version').textContent, language === 'en' ? 'Version 0.3.5' : '版本 0.3.5'); assert.equal(h.get('settings-data-path').value, '/isolated/data');
     assert.equal(h.get('language-select').closest('#settings-dialog'), h.get('settings-dialog'));
-    assert.equal(h.get('open-settings').parentElement, h.get('open-trash').parentElement); assert.equal(h.get('open-settings').parentElement, h.get('open-backup').parentElement);
+    assert.equal(h.get('open-settings').parentElement, h.get('open-trash').parentElement); assert.ok(!html.includes('id="open-backup"')); assert.ok(html.includes('id="import-backup"'));
     h.run('closeAppSettings()'); assert.equal(h.get('settings-dialog').open, false);
     assert.equal(h.state.chapterId, 'chapter-1'); assert.equal(h.state.outlineId, 'outline-selection'); assert.equal(h.state.personId, 'person-selection'); assert.equal(h.state.dirty, false);
     if (view === 'write') { assert.equal(h.document.activeElement, h.get('editor')); assert.equal(h.get('editor').selectionStart, 3); assert.equal(h.get('editor').selectionEnd, 9); }

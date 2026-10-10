@@ -31,6 +31,7 @@ function harness(){
     addField:(form,title,input)=>form.append(new Element('label','',title),input),
     toast:message=>messages.push(message),
     requireSaved:async()=>allowSave,
+    transition:async task=>{if(state.transitioning)return false;state.transitioning=true;try{return await task();}finally{state.transitioning=false;}},
     closeAppSettings:()=>{get('settings-dialog').open=false;},
     showDialog:(title,content)=>{dialogs.push({title,content});get('dialog').open=true;},
     setBook:result=>{context.setCount++;state.book=result.book;state.revision=result.revision;},

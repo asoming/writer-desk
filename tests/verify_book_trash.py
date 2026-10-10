@@ -4,6 +4,7 @@ WRITER_DESK_SERVICE may point to a frozen service; no installed library is read.
 """
 import concurrent.futures
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -210,6 +211,58 @@ class BookTrashTests(unittest.TestCase):
         self.assertEqual(self.request(path + "/restore", "POST", {"revision": revision})[0], 409)
         self.assert_deleted(self.request(path + "/trash", "POST", {"revision": revision + 1}))
 
+    def test_purge_removes_saved_book_history_and_owned_snapshots_but_preserves_exports_and_other_books(self):
+        original, other = self.rich_book(), self.rich_book("short")
+        book, revision = original["book"], original["revision"]
+        path = "/api/books/" + book["id"]
+        self.request(path + "/checkpoint", "POST", {})
+        backups = self.request(path + "/backups")[1]["backups"]
+        self.assertTrue(backups)
+        folder = Path(self.request(path + "/folder", "POST", {})[1]["folder"])
+        exported = {file.name: file.read_bytes() for file in folder.iterdir()}
+        other_backups = self.request("/api/books/" + other["book"]["id"] + "/backups")[1]
+        self.request(path + "/trash", "POST", {"revision": revision})
+        code, result = self.request(path + "/purge", "POST", {"revision": revision + 1}, index=1)
+        self.assertEqual(code, 200)
+        self.assertEqual(result, {"ok": True, "id": book["id"]})
+        with sqlite3.connect(self.folder / "writer.sqlite3") as conn:
+            for table, column in (("books", "id"), ("history", "book_id"), ("backup_runs", "book_id"), ("pending_book_purges", "book_id")):
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM " + table + " WHERE " + column + "=?", (book["id"],)).fetchone()[0], 0)
+        backup_folder = self.folder / "backups" / ("book-" + hashlib.sha256(book["id"].encode()).hexdigest())
+        self.assertTrue(all(not (backup_folder / backup["token"]).exists() for backup in backups))
+        self.assertEqual({file.name: file.read_bytes() for file in folder.iterdir()}, exported)
+        self.assertEqual(self.request("/api/books/" + other["book"]["id"])[1], other)
+        self.assertEqual(self.request("/api/books/" + other["book"]["id"] + "/backups")[1], other_backups)
+        for suffix in ("", "/history", "/backups", "/history/1", "/backups/" + backups[0]["token"]):
+            self.assertEqual(self.request(path + suffix)[0], 404)
+        for suffix, data in (("/restore", {"revision": revision + 1}), ("/purge", {"revision": revision + 1}),
+                              ("/checkpoint", {}), ("/folder", {}), ("/backups/" + backups[0]["token"] + "/restore", {"revision": revision + 1})):
+            self.assertEqual(self.request(path + suffix, "POST", data)[0], 404)
+        code, missing = self.request(path, "PUT", {"book": book, "revision": revision + 1})
+        self.assertEqual(code, 404)
+        self.assertTrue(missing["deleted"] and missing["removed"] and missing["conflict"])
+
+    def test_purge_requires_a_recycled_current_revision_and_serializes_with_restore(self):
+        record = self.rich_book()
+        path, revision = "/api/books/" + record["book"]["id"], record["revision"]
+        for data in ({}, {"revision": True}, {"revision": 0}, {"revision": "2"}, {"revision": revision, "path": "/tmp"}, []):
+            self.assertEqual(self.request(path + "/purge", "POST", data)[0], 400)
+        self.assertEqual(self.request(path + "/purge", "POST", {"revision": revision})[0], 409)
+        self.assertEqual(self.request(path + "/purge", "POST", {"revision": revision}, origin="https://foreign.example")[0], 403)
+        self.request(path + "/trash", "POST", {"revision": revision})
+        self.assertEqual(self.request(path + "/purge", "POST", {"revision": revision})[0], 409)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            purge = pool.submit(self.request, path + "/purge", "POST", {"revision": revision + 1}, 0)
+            restore = pool.submit(self.request, path + "/restore", "POST", {"revision": revision + 1}, 1)
+            results = purge.result(), restore.result()
+        self.assertEqual(sum(code == 200 for code, _ in results), 1)
+        if results[0][0] == 200:
+            self.assertEqual(results[1][0], 404)
+            self.assertEqual(self.request(path)[0], 404)
+        else:
+            self.assertEqual(results[0][0], 409)
+            self.assertEqual(self.request(path)[1]["book"], record["book"])
+
     def test_legacy_schema_migrates_without_changing_existing_payload_or_history(self):
         original = self.rich_book()["book"]
         legacy = self.folder / "legacy"
@@ -239,6 +292,19 @@ class BookTrashTests(unittest.TestCase):
         self.assertEqual(self.request("/api/trash/books", index=index)[1]["books"], before)
         with sqlite3.connect(self.folder / "writer.sqlite3") as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM books").fetchone()[0], len(before))
+
+    def test_zzz_purging_the_entire_library_stays_empty_after_concurrent_initialization(self):
+        for book in self.request("/api/trash/books")[1]["books"]:
+            self.assertEqual(self.request("/api/books/" + book["id"] + "/purge", "POST", {"revision": book["revision"]})[0], 200)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            indices = list(pool.map(lambda _: self.start_service(self.folder), range(2)))
+        for index in indices:
+            self.assertEqual(self.request("/api/books", index=index)[1], {"books": [], "trashCount": 0})
+        with sqlite3.connect(self.folder / "writer.sqlite3") as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM books").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM history").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM backup_runs").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM app_migrations WHERE name IN ('initial-library-v1','default-tide-archive-v1')").fetchone()[0], 2)
 
 
 if __name__ == "__main__":

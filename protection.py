@@ -139,6 +139,21 @@ def get_snapshot(db_path, book_id, token, validate):
         return read_snapshot(folder, token, book_id, validate)
 
 
+def purge_snapshots(db_path, book_id, validate):
+    """Remove verified app snapshots only; exported/user files are never traversed."""
+    if not os.path.lexists(Path(db_path).parent / "backups"):
+        return
+    with directory(db_path, book_id) as folder:
+        if folder is None:
+            return
+        for item in entries(folder, book_id, validate):
+            try:
+                os.unlink(item["token"], dir_fd=folder)
+            except FileNotFoundError:
+                pass  # Another service may have completed this same cleanup.
+        os.fsync(folder)
+
+
 def checkpoint(conn, db_path, row, validate, force=False, reason="automatic"):
     config, tick = settings(conn), time.time()
     previous = conn.execute("SELECT last_success FROM backup_runs WHERE book_id=?", (row["id"],)).fetchone()

@@ -5,24 +5,25 @@ function protectionVersion(item){return T('版本 {0}',item.revision)+' · '+pro
 function protectionInfo(item){return T('{0} 章 · {1} 字',item.chapterCount,item.charCount.toLocaleString());}
 function protectionReason(item){return T(({automatic:'自动备份',manual:'手动备份','before-restore':'恢复前备份'})[item.reason]||'历史版本');}
 
+let historyRequest=0;
 async function showHistory(bookId=state.book?.id){
   if(!bookId){toast(T('请先从书架打开一本书。'));return;}
   if(state.transitioning||state.composing)return;
   if(!await requireSaved())return;
   if($('settings-dialog')?.open)closeAppSettings();
-  const content=el('div','protection-browser'),loading=el('p','empty-hint',T('正在读取版本…'));
+  const sequence=++historyRequest,content=el('div','protection-browser'),loading=el('p','empty-hint',T('正在读取版本…'));
   content.append(loading);showDialog(T('历史与备份'),content);
-  const visible=()=>content.isConnected&&$('dialog').open;
+  const visible=()=>sequence===historyRequest&&content.isConnected&&$('dialog').open;
   try{
     const [current,history,backups]=await Promise.all([
       api('/api/books/'+encodeURIComponent(bookId)),
       api('/api/books/'+encodeURIComponent(bookId)+'/history'),
       api('/api/books/'+encodeURIComponent(bookId)+'/backups')]);
-    if(!visible())return;
+    if(!visible())return;if(current.book?.id!==bookId)throw new Error(T('作品与目标不匹配，请重试。'));$('dialog-title').textContent=T('历史与备份 · {0}',current.book.title);
     const list=el('div','protection-version-list'),preview=el('div','protection-preview'),heading=el('div','protection-heading');let previewRequest=0;
     heading.append(el('strong',null,current.book.title),action(T('立即备份'),'secondary-button',async event=>{
       const button=event.currentTarget;if(button.disabled)return;button.disabled=true;
-      try{if(!await requireSaved())return;await api('/api/books/'+encodeURIComponent(bookId)+'/checkpoint','POST',{});toast(T('备份已保存。'));await showHistory(bookId);}catch(error){toast(error.message);}finally{button.disabled=false;}
+      try{const saved=await transition(async()=>{if(!visible()||!await requireSaved()||!visible())return false;await api('/api/books/'+encodeURIComponent(bookId)+'/checkpoint','POST',{});toast(T('备份已保存。'));return true;});if(saved&&visible())await showHistory(bookId);}catch(error){toast(error.message);}finally{button.disabled=false;}
     }));
     content.replaceChildren(heading,list,preview);
     function addGroup(title,items,kind){
@@ -32,7 +33,7 @@ async function showHistory(bookId=state.book?.id){
         const row=action('','protection-version',async()=>{
           const request=++previewRequest;
           const path='/api/books/'+encodeURIComponent(bookId)+'/'+kind+'/'+encodeURIComponent(kind==='history'?item.revision:item.token);
-          try{const snapshot=await api(path);if(!visible()||request!==previewRequest)return;renderPreview(snapshot,path);}catch(error){if(request===previewRequest)toast(error.message);}
+          try{const snapshot=await api(path);if(!visible()||request!==previewRequest)return;if(snapshot.book?.id!==bookId)throw new Error(T('作品与目标不匹配，请重试。'));renderPreview(snapshot,path);}catch(error){if(visible()&&request===previewRequest)toast(error.message);}
         });
         row.append(el('strong',null,protectionVersion(item)),el('small',null,(kind==='backups'?protectionReason(item)+' · ':'')+protectionInfo(item)));group.append(row);
       });list.append(group);
@@ -48,14 +49,16 @@ async function showHistory(bookId=state.book?.id){
       const restore=action(T('恢复此版本'),'primary-button',async()=>{
         if(restore.disabled)return;restore.disabled=true;
         try{
-          if(!await requireSaved())return;
-          const expected=state.book?.id===bookId?state.revision:current.revision;
-          const result=await api(path+'/restore','POST',{revision:expected});
-          if(state.book?.id===bookId){const view=state.view;setBook(result);state.view=view;renderShell();}
-          await refreshBooks();
-          renderShell();
-          if(result.folderWarning)toast(T(result.folderWarning));else toast(T('已恢复，恢复前的内容也已保留。'));
-          await showHistory(bookId);
+          const restored=await transition(async()=>{
+            if(!visible()||!await requireSaved()||!visible())return false;
+            const expected=state.book?.id===bookId?state.revision:current.revision;
+            const result=await api(path+'/restore','POST',{revision:expected});
+            if(result.book?.id!==bookId)throw new Error(T('作品与目标不匹配，请重试。'));
+            if(state.book?.id===bookId){const view=state.view;setBook(result);state.view=view;}
+            await refreshBooks();renderShell();
+            if(result.folderWarning)toast(T(result.folderWarning));else toast(T('已恢复，恢复前的内容也已保留。'));
+            return true;
+          });if(restored&&visible())await showHistory(bookId);
         }catch(error){toast(error.message);}finally{restore.disabled=false;}
       });
       heading.append(el('strong',null,protectionVersion(snapshot)),restore);
@@ -78,7 +81,7 @@ function appendProtectionSettings(content){
   addField(form,T('备份间隔（分钟）'),interval);addField(form,T('每部作品保留份数'),retention);
   form.append(el('p','subtle',T('保存后按间隔备份。历史版本保留最近 30 次保存。')));
   const buttons=el('div','dialog-actions'),save=el('button','secondary-button',T('保存备份设置'));save.type='submit';
-  buttons.append(action(T('历史与备份'),'secondary-button',()=>showHistory()),save);form.append(buttons,status);section.append(summary,form);content.append(section);
+  buttons.append(save);form.append(buttons,status);section.append(summary,form);content.append(section);
   function apply(value){enabled.checked=value.enabled;interval.value=String(value.intervalMinutes);retention.value=String(value.retentionCount);}
   form.inert=true;api('/api/protection/settings').then(result=>{if(section.isConnected)apply(result.settings);}).catch(error=>{status.textContent=error.message;}).finally(()=>{form.inert=false;});
   form.addEventListener('submit',async event=>{event.preventDefault();if(save.disabled)return;save.disabled=true;try{

@@ -216,6 +216,7 @@ dialog::backdrop{background:#27354b45;backdrop-filter:blur(2px)}
 .backup-section p{font-size:.875rem;line-height:1.9;color:var(--muted)}
 .trash-row{display:flex;align-items:center;gap:15px;justify-content:space-between;border-bottom:1px solid var(--line);padding:16px 0;font-size:.875rem}
 .trash-row small{display:block;color:var(--muted);font-size:.75rem;margin-top:6px}
+.trash-book-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;flex-shrink:0}.danger-button{color:#b54242}.primary-button.danger-button{background:#b54242;color:#fff}.primary-button.danger-button:hover{background:#9e3636}.trash-row>div:first-child{min-width:0;overflow-wrap:anywhere}@media(max-width:540px){.trash-row{align-items:flex-start;flex-wrap:wrap}.trash-book-actions{width:100%}}
 .checkbox-row{display:flex;align-items:flex-start;gap:11px;padding:13px 7px;border-bottom:1px solid var(--line);font-size:.875rem;line-height:1.8;cursor:pointer}
 .checkbox-row input{margin-top:5px;accent-color:var(--accent)}
 .checkbox-row small{display:block;font-size:.75rem;color:var(--muted)}

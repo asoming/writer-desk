@@ -66,7 +66,7 @@ function harness({ kind = 'long', current = true, dirty = false } = {}) {
   Object.assign(state, { book: active, revision: current ? 7 : 0, dirty, seq: 2, chapterId: active?.chapters[0].id, kind, view: 'shelf' });
   const summary = value => ({ id: value.book.id, title: value.book.title, kind: value.book.kind, cover: value.book.cover,
     volumeCount: value.book.volumes.length, chapterCount: value.book.chapters.filter(chapter => !chapter.deletedAt).length,
-    charCount: 30, revision: value.revision, updatedAt: '2026-10-10T00:00:00Z', deletedAt: value.deletedAt });
+    charCount: 30, revision: value.revision, updatedAt: '2026-10-10T00:00:00Z', deletedAt: value.deletedAt, expiresAt: value.deletedAt ? '2026-11-09T01:00:00Z' : null });
   const activeBooks = () => [...records.values()].filter(value => !value.deletedAt).map(summary);
   state.books = activeBooks();
   context.trashApi = async (endpoint, method = 'GET', data) => {
@@ -77,13 +77,14 @@ function harness({ kind = 'long', current = true, dirty = false } = {}) {
       const book = copy(data.book); book.id = randomUUID();
       const result = { book, revision: 1, deletedAt: null }; records.set(book.id, result); return copy(result);
     }
-    const match = endpoint.match(/^\/api\/books\/([^/]+)(?:\/(trash|restore))?$/);
+    const match = endpoint.match(/^\/api\/books\/([^/]+)(?:\/(trash|restore|purge))?$/);
     assert.ok(match, 'Unexpected endpoint: ' + endpoint);
-    const record = records.get(decodeURIComponent(match[1])); assert.ok(record);
+    const record = records.get(decodeURIComponent(match[1])); if (!record) throw Object.assign(new Error('原作品已删除。'), { conflict: true, deleted: true, removed: true });
     const deletedError = () => Object.assign(new Error('这部作品已移入回收站。'), { conflict: true, deleted: true });
     if (method === 'GET') { if (record.deletedAt) throw deletedError(); return copy(record); }
     if (method === 'PUT' && record.deletedAt) throw deletedError();
     if (record.revision !== data.revision) throw Object.assign(new Error('另一个窗口修改了作品状态。'), { conflict: true });
+    if (match[2] === 'purge') { assert.ok(record.deletedAt); records.delete(record.book.id); return { ok: true, id: record.book.id }; }
     if (method === 'PUT') record.book = copy(data.book);
     else if (match[2] === 'trash') { if (record.deletedAt) throw deletedError(); record.deletedAt = '2026-10-10T01:00:00Z'; }
     else if (match[2] === 'restore') { assert.ok(record.deletedAt); record.deletedAt = null; }
@@ -210,7 +211,7 @@ check('a dirty stale window keeps downloadable text and only leaves after the lo
   h.context.downloaded = saved; h.run('download=(name,body,type)=>downloaded.push({name,body,type})');
   assert.equal(await h.run("showCollection('shelf')"), false);
   assert.equal(h.state.book, h.active); assert.equal(h.state.dirty, true); assert.equal(h.state.conflict, true);
-  assert.equal(h.get('dialog-title').textContent, '作品已移入回收站');
+  assert.equal(h.get('dialog-title').textContent, '原作品无法保存');
   await h.click('下载本页备份');
   assert.equal(saved.length, 1); assert.deepEqual(JSON.parse(saved[0].body).book, before); assert.equal(h.state.book, h.active);
   const own = h.run("'yejian.draft.active.'+draftOwner"); h.storageData.delete(own);
@@ -249,6 +250,41 @@ check('API errors retain the deleted marker and committed recycling remains visi
   await h.click('移入回收站');
   assert.equal(h.state.book, null); assert.ok(!h.state.books.some(book => book.id === 'active')); assert.equal(h.state.trashBookCount, 1);
   assert.ok(!text(h.get('shelf-grid')).includes('作品 active')); assert.equal(h.get('dialog').open, false);
+});
+
+check('whole-book trash shows a 30-day expiry and irreversible deletion requires a separate confirmation', async () => {
+  const h = harness({ current: false }); h.recycleExternally('short-target'); await h.run('showTrash()');
+  assert.ok(text(h.get('dialog-body')).includes('整部作品保留 30 天')); assert.ok(text(h.get('dialog-body')).includes('到期删除：'));
+  await h.click('彻底删除'); assert.equal(h.get('dialog-title').textContent, '彻底删除作品');
+  assert.ok(text(h.get('dialog-body')).includes('正文、关联、历史和本机备份将无法恢复'));
+  assert.ok(!h.calls.some(call => call.endpoint.endsWith('/purge')));
+  const staleConfirm = h.findButton(h.get('dialog-body'), '彻底删除');
+  await h.click('取消'); await staleConfirm.listeners.click(); assert.ok(!h.calls.some(call => call.endpoint.endsWith('/purge')));
+  assert.ok(h.records.has('short-target')); assert.equal(h.get('dialog-title').textContent, '回收站');
+  await h.click('彻底删除'); await h.click('彻底删除');
+  const post = h.calls.find(call => call.endpoint.endsWith('/purge')); assert.deepEqual(post.data, { revision: 43 });
+  assert.equal(h.records.has('short-target'), false); assert.equal(h.state.book, null); assert.equal(h.state.trashBookCount, 0); assert.equal(h.get('dialog').open, false);
+});
+
+check('a stale or failed purge preserves the confirmation and never clears another book or recovery draft', async () => {
+  const h = harness(), before = copy(h.active); h.recycleExternally('short-target'); await h.run('showTrash()'); await h.click('彻底删除');
+  h.records.get('short-target').revision++; await h.click('彻底删除');
+  assert.equal(h.records.has('short-target'), true); assert.equal(h.get('dialog').open, true); assert.deepEqual(h.state.book, before);
+  assert.equal(h.state.conflict, false); assert.equal(h.state.error, null); assert.equal(h.findButton(h.get('dialog-body'), '彻底删除').disabled, false);
+  await h.click('取消'); await h.click('彻底删除'); h.storageData.set('yejian.draft.short-target.other-window', 'retain unsaved recovery');
+  let release; const api = h.context.trashApi; h.context.trashApi = (endpoint, ...args) => endpoint.endsWith('/purge') ? new Promise(resolve => { release = () => resolve(api(endpoint, ...args)); }) : api(endpoint, ...args);
+  const first = h.click('彻底删除'); await Promise.resolve(); await Promise.resolve(); await h.click('彻底删除'); release(); await first;
+  assert.equal(h.calls.filter(call => call.endpoint.endsWith('/purge')).length, 2, 'One failed stale request and one successful request, no double submission');
+  assert.deepEqual(h.state.book, before); assert.equal(h.storageData.get('yejian.draft.short-target.other-window'), 'retain unsaved recovery');
+});
+
+check('a permanently deleted original with unsaved local prose can download, keep a draft and leave without resurrection', async () => {
+  const h = harness({ dirty: true }), before = copy(h.active), saved = []; h.records.delete('active');
+  h.context.downloaded = saved; h.run('download=(name,body)=>downloaded.push({name,body})');
+  assert.equal(await h.run("showCollection('shelf')"), false); assert.ok(text(h.get('dialog-body')).includes('原作品已回收或删除'));
+  await h.click('下载本页备份'); assert.deepEqual(JSON.parse(saved[0].body).book, before); assert.equal(h.state.book, h.active);
+  await h.click('保留草稿并返回书架'); assert.equal(h.state.book, null); assert.equal(h.state.view, 'shelf');
+  assert.equal(h.records.has('active'), false); assert.ok([...h.storageData.values()].some(value => value.includes('当前未保存的文字')));
 });
 
 (async () => {
