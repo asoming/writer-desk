@@ -126,7 +126,9 @@ jobs:
           pattern: native-*
           path: native-output
       - name: Check reports and installer checksums
-        run: python scripts/collect-native-release.py native-output release-assets
+        run: |
+          python tests/verify_native_release.py
+          python scripts/collect-native-release.py native-output release-assets
       - name: Create or update draft only
         shell: bash
         env:

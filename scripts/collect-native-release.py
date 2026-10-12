@@ -17,7 +17,7 @@ def main():
     args = parser.parse_args()
     version = json.loads((ROOT / "package.json").read_text("utf-8"))["version"]
     expected = {
-        f"WriterDesk-{version}-linux-x64.deb", f"WriterDesk-{version}-linux-x64.tar.gz",
+        f"WriterDesk-{version}-linux-amd64.deb", f"WriterDesk-{version}-linux-x64.tar.gz",
         f"WriterDesk-{version}-windows-x64.exe", f"WriterDesk-{version}-mac-arm64.dmg",
         f"WriterDesk-{version}-mac-x64.dmg",
     }

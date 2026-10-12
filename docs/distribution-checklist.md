@@ -4,7 +4,7 @@
 
 | 系统 | 安装包 | 要求 |
 | --- | --- | --- |
-| Linux | `WriterDesk-0.5.0-linux-x64.deb` | Ubuntu 22.04+ / 兼容 Debian 系统，amd64 |
+| Linux | `WriterDesk-0.5.0-linux-amd64.deb` | Ubuntu 22.04+ / 兼容 Debian 系统，amd64 |
 | Windows | `WriterDesk-0.5.0-windows-x64.exe` | Windows 10 / 11，64 位 |
 | Mac，Apple 芯片 | `WriterDesk-0.5.0-mac-arm64.dmg` | macOS 13+，M 系列芯片 |
 | Mac，Intel | `WriterDesk-0.5.0-mac-x64.dmg` | macOS 13+，Intel 芯片 |

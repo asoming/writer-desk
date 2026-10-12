@@ -6,7 +6,7 @@
 
 安装包内已包含保存服务，无需另装 Python 或 Node.js。
 
-- Ubuntu / Debian：安装 `WriterDesk-0.5.0-linux-x64.deb`。便携版仍可解压 `WriterDesk-0.5.0-linux-x64.tar.gz`，运行 `install-linux.sh` 注册固定菜单入口。
+- Ubuntu / Debian：安装 `WriterDesk-0.5.0-linux-amd64.deb`。便携版仍可解压 `WriterDesk-0.5.0-linux-x64.tar.gz`，运行 `install-linux.sh` 注册固定菜单入口。
 - Windows 10 / 11：打开 `WriterDesk-0.5.0-windows-x64.exe`，按向导安装。
 - macOS 13+：Apple 芯片选择 `mac-arm64.dmg`，Intel 选择 `mac-x64.dmg`，打开后将 App 拖到 Applications，从 Applications 启动。
 
