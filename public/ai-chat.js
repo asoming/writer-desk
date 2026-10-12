@@ -48,7 +48,7 @@ function syncAIChat(){
 
 function createAIChatView(panel,book,channel){
   const saved=aiChatRead(book.id,channel),key=aiChatStorageKey(book.id,channel),root=el('div','ai-chat-inner');
-  let disposed=false,active=false,requestSeq=0,previewSeq=0,loadSeq=0,preview=null,previewKey='',previewDelay=null,writeDelay=null,pending=null,configuration=null,skills=[],ready=false,composing=false,scopeKey='',storageError=false;
+  let disposed=false,active=false,requestSeq=0,previewSeq=0,loadSeq=0,modelSeq=0,preview=null,previewKey='',previewDelay=null,writeDelay=null,pending=null,configuration=null,skills=[],ready=false,composing=false,scopeKey='',storageError=false,modelIds=[],modelSaving=false,modelsLoading=false,configurationLoading=false;
   const candidates=new Map(),bubbles=new Map(),deferredCandidates=new Set();
   const header=el('header','ai-chat-header'),heading=el('strong',null,'AI'),headerActions=el('div','ai-chat-header-actions');
   const fresh=action('＋','icon-button',newConversation),close=action('×','icon-button',()=>controller.close());fresh.setAttribute('aria-label',T('新对话'));fresh.title=T('新对话');close.setAttribute('aria-label',T('关闭 AI 对话'));close.title=T('关闭 AI 对话');headerActions.append(fresh,close);header.append(heading,headerActions);
@@ -57,8 +57,8 @@ function createAIChatView(panel,book,channel){
   const transcript=el('div','ai-chat-transcript');transcript.setAttribute('role','log');transcript.setAttribute('aria-label',T('AI 对话'));transcript.setAttribute('aria-live','polite');
   const footer=el('div','ai-chat-footer'),material=el('details','ai-chat-material'),materialSummary=el('summary'),materialBody=el('div','ai-chat-material-body'),chapterChoices=el('div','ai-chat-chapters'),skillChoices=el('div','ai-chat-skills'),skillMode=writingSkillModeSelect('ai-chat-skill-mode'),materialCount=el('span','ai-chat-material-count');
   const chapterTools=el('div','ai-chat-material-tools'),selectAll=action(T('全选'),'text-button',()=>chooseChapters(true)),clearChapters=action(T('清空'),'text-button',()=>chooseChapters(false));chapterTools.append(selectAll,clearChapters);materialBody.append(chapterTools,chapterChoices,el('div','ai-chat-skill-label',T('写作 Skill')),skillChoices,skillMode,materialCount);material.append(materialSummary,materialBody);
-  const composer=el('div','ai-chat-composer'),input=el('textarea'),send=action('↑','ai-chat-send',()=>run());input.id='ai-chat-prompt';input.rows=3;input.maxLength=10000;input.value=saved.prompt;input.placeholder=T('输入提示词…');input.setAttribute('aria-label',T('提示词'));send.setAttribute('aria-label',T('发送'));send.title=T('发送');composer.append(input,send);
-  const composerTools=el('div','ai-chat-composer-tools'),reset=action(T('恢复默认提示词'),'text-button',()=>chooseTask(task.value,true)),status=el('p','ai-chat-status'),configure=action(T('打开 AI 设置'),'text-button',()=>showAppSettings());configure.hidden=true;composerTools.append(reset);footer.append(material,status,configure,composer,composerTools);root.append(header,context,transcript,footer);panel.replaceChildren(root);
+  const composer=el('div','ai-chat-composer'),input=el('textarea'),send=action('↑','ai-chat-send',()=>run()),composerBar=el('div','ai-chat-composer-bar'),modelGroup=el('div','ai-chat-model-group'),modelChoice=el('select','ai-chat-model'),refreshModels=action('↻','ai-chat-model-refresh',()=>loadModels(true));modelChoice.id='ai-chat-model';modelChoice.setAttribute('aria-label',T('模型'));refreshModels.setAttribute('aria-label',T('刷新模型'));refreshModels.title=T('刷新模型');input.id='ai-chat-prompt';input.rows=3;input.maxLength=10000;input.value=saved.prompt;input.placeholder=T('输入提示词…');input.setAttribute('aria-label',T('提示词'));send.setAttribute('aria-label',T('发送'));send.title=T('发送');modelGroup.append(modelChoice,refreshModels);composerBar.append(modelGroup,send);composer.append(input,composerBar);
+  const composerTools=el('div','ai-chat-composer-tools'),reset=action(T('恢复默认提示词'),'text-button',()=>chooseTask(task.value,true)),status=el('p','ai-chat-status'),configure=action(T('打开 AI 设置'),'text-button',()=>showAppSettings('ai'));configure.hidden=true;composerTools.append(reset);footer.append(material,status,configure,composer,composerTools);root.append(header,context,transcript,footer);panel.replaceChildren(root);
 
   const current=()=>!disposed&&state.book===book&&state.view===channel;
   const visible=()=>current()&&active&&!panel.hidden;
@@ -66,7 +66,7 @@ function createAIChatView(panel,book,channel){
   function persist(){
     clearTimeout(writeDelay);
     saved.prompt=input.value;saved.action=task.value;
-    try{clientStorage.setItem(key,JSON.stringify(saved));storageError=false;}catch{storageError=true;status.textContent=T('对话未能保存到本机。');}
+    try{clientStorage.setItem(key,JSON.stringify(saved));storageError=false;if(status.textContent===T('对话未能保存到本机。'))status.textContent='';}catch{storageError=true;status.textContent=T('对话未能保存到本机。');}
   }
   function persistLater(){saved.prompt=input.value;saved.action=task.value;clearTimeout(writeDelay);writeDelay=setTimeout(persist,250);}
   function validChapters(){return book.chapters.filter(chapter=>!chapter.deletedAt);}
@@ -81,15 +81,35 @@ function createAIChatView(panel,book,channel){
   }
   function payload(turn=null){
     const history=saved.turns.filter(item=>item.status==='complete').flatMap(item=>[{role:'user',content:item.user},{role:'assistant',content:item.reply+(item.data?'\n\n'+JSON.stringify(item.data):'')}]);
-    return{action:turn?.action||task.value,chapterIds:turn?turn.chapterIds:validChapters().filter(chapter=>saved.chapterIds.includes(chapter.id)).map(chapter=>chapter.id),instruction:turn?.user??input.value,skillIds:turn&&Array.isArray(turn.skillIds)?turn.skillIds:skills.filter(skill=>skill.imported&&(saved.skillIds||[]).includes(skill.id)).map(skill=>skill.id),skillMode:turn&&Object.hasOwn(writingSkillModes,turn.skillMode)?turn.skillMode:saved.skillMode,chat:true,history};
+    return{action:turn?.action||task.value,chapterIds:turn?turn.chapterIds:validChapters().filter(chapter=>saved.chapterIds.includes(chapter.id)).map(chapter=>chapter.id),instruction:turn?.user??input.value,skillIds:turn&&Array.isArray(turn.skillIds)?turn.skillIds:skills.filter(skill=>skill.imported&&(saved.skillIds||[]).includes(skill.id)).map(skill=>skill.id),skillMode:turn&&Object.hasOwn(writingSkillModes,turn.skillMode)?turn.skillMode:saved.skillMode,...(configuration?.model?{model:configuration.model}:{}),chat:true,history};
   }
   function available(){return ready&&configuration?.enabled&&configuration.endpoint&&configuration.model;}
   function controls(){
-    send.disabled=!!pending||!available()||!input.value.trim()||!preview||preview.overLimit||previewKey!==JSON.stringify(payload())||(['relationships','consistency'].includes(task.value)&&!saved.chapterIds.length);
+    send.disabled=!!pending||modelSaving||configurationLoading||!!aiModelChangePending||!available()||!input.value.trim()||!preview||preview.overLimit||previewKey!==JSON.stringify(payload())||(['relationships','consistency'].includes(task.value)&&!saved.chapterIds.length);
     task.disabled=reset.disabled=selectAll.disabled=clearChapters.disabled=!!pending;skillMode.disabled=!!pending||!ready;
     chapterChoices.querySelectorAll('input').forEach(box=>box.disabled=!!pending);skillChoices.querySelectorAll('input').forEach(box=>box.disabled=!!pending||box.dataset.available!=='true');
     configure.hidden=!!available();reset.hidden=task.value==='custom';
+    modelChoice.disabled=!!pending||modelSaving||!ready;refreshModels.disabled=!!pending||modelSaving||modelsLoading||!configuration?.endpoint;
   }
+  function renderModels(){
+    modelChoice.replaceChildren();const selected=configuration?.model||'',ids=selected?[selected,...modelIds.filter(id=>id!==selected)]:modelIds;
+    if(!selected){const placeholder=el('option',null,T('选择模型'));placeholder.value='';modelChoice.append(placeholder);}ids.forEach(id=>{const option=el('option',null,id);option.value=id;modelChoice.append(option);});const custom=el('option',null,T('自定义模型'));custom.value='';modelChoice.append(custom);modelChoice.value=selected;modelChoice.title=selected||T('模型');controls();
+  }
+  async function loadModels(refresh=false){
+    const sequence=++modelSeq;if(!configuration?.endpoint){modelIds=[];renderModels();return;}modelsLoading=true;controls();
+    try{const ids=await aiReadModels(configuration,refresh);if(!current()||disposed||sequence!==modelSeq)return;modelIds=ids;renderModels();modelChoice.title=configuration.model||T('模型');}
+    catch(error){if(current()&&!disposed&&sequence===modelSeq){modelChoice.title=T(error.message);if(refresh)toast(T(error.message));}}
+    finally{if(!disposed&&sequence===modelSeq){modelsLoading=false;controls();}}
+  }
+  modelChoice.addEventListener('change',async()=>{
+    const selected=modelChoice.value;if(pending||modelSaving||!ready){modelChoice.value=configuration?.model||'';return;}
+    if(!selected){modelChoice.value=configuration?.model||'';showAppSettings('ai');return;}
+    if(selected===configuration.model)return;if(!modelIds.includes(selected)){renderModels();return;}
+    modelSaving=true;++loadSeq;++modelSeq;modelsLoading=configurationLoading=false;controls();
+    try{const settings=await aiSaveModelChoice(selected);if(disposed)return;configuration=settings;renderModels();if(current())schedulePreview();}
+    catch(error){if(!disposed){renderModels();status.textContent=T(error.message);}}
+    finally{modelSaving=false;if(current()&&!disposed)controls();}
+  });
   function renderChoices(){
     const chapters=validChapters();saved.chapterIds=saved.chapterIds.filter(id=>chapters.some(chapter=>chapter.id===id));materialSummary.textContent=saved.chapterIds.length?T('资料 · {0} 章',saved.chapterIds.length):T('资料');chapterChoices.replaceChildren();chapterTools.hidden=!chapters.length;
     chapters.forEach(chapter=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.value=chapter.id;box.checked=saved.chapterIds.includes(chapter.id);box.addEventListener('change',()=>{if(pending)return;saved.manualChapters=true;saved.chapterIds=box.checked?[...new Set([...saved.chapterIds,chapter.id])]:saved.chapterIds.filter(id=>id!==chapter.id);renderChoices();persist();schedulePreview();});row.append(box,el('span',null,chapter.title||T('未命名章节')));chapterChoices.append(row);});
@@ -137,7 +157,7 @@ function createAIChatView(panel,book,channel){
     if(!pending)return;const turn=pending;pending=null;++requestSeq;++previewSeq;turn.status='cancelled';turn.error=T('已停止等待');if(!input.value)input.value=turn.user;renderAnswer(turn);persist();renderChoices();schedulePreview();
   }
   async function run(retry=null){
-    if(pending||!visible()||modalOpen()||!ready||!available()||composing||state.composing||state.transitioning)return;
+    if(pending||modelSaving||configurationLoading||aiModelChangePending||!visible()||modalOpen()||!ready||!available()||composing||state.composing||state.transitioning)return;
     const last=saved.turns.at(-1),matched=retry||(last?.status!=='complete'&&last?.user===input.value&&last?.action===task.value?last:null);
     if(retry&&(last!==retry||retry.status==='complete'))return;
     if(!retry&&(!input.value.trim()||send.disabled))return;
@@ -160,8 +180,8 @@ function createAIChatView(panel,book,channel){
     if(!visible()||modalOpen()||!await requireSaved()||!visible())return;cancelPending();candidates.forEach(renderer=>renderer.dispose());candidates.clear();deferredCandidates.clear();bubbles.clear();saved.turns=[];saved.action=task.value='custom';saved.prompts={};input.value='';transcript.replaceChildren();status.textContent='';persist();schedulePreview();input.focus();
   }
   async function load(){
-    const sequence=++loadSeq;
-    try{const [settings,value]=await Promise.all([api('/api/ai/settings'),api('/api/skills')]);if(disposed||sequence!==loadSeq)return;configuration=settings;skills=writingSkillList(value);if(saved.skillIds===null)saved.skillIds=(value.defaults?.skillIds||[]).filter(id=>skills.some(skill=>skill.id===id&&skill.imported));if(!Object.hasOwn(writingSkillModes,saved.skillMode))saved.skillMode=Object.hasOwn(writingSkillModes,value.defaults?.skillMode)?value.defaults.skillMode:'auto';ready=true;renderChoices();persist();resumeCandidates();if(current()){status.textContent=available()?'':T('请先在设置中启用并配置 AI。');if(input.value.trim())await updatePreview();}}catch(error){if(!disposed&&sequence===loadSeq){status.textContent=T(error.message);controls();}}
+    const sequence=++loadSeq;configurationLoading=true;controls();
+    try{if(aiModelChangePending)await aiModelChangePending.catch(()=>{});const [settings,value]=await Promise.all([api('/api/ai/settings'),api('/api/skills')]);if(disposed||sequence!==loadSeq)return;configuration=settings;configurationLoading=false;modelIds=[];skills=writingSkillList(value);if(saved.skillIds===null)saved.skillIds=(value.defaults?.skillIds||[]).filter(id=>skills.some(skill=>skill.id===id&&skill.imported));if(!Object.hasOwn(writingSkillModes,saved.skillMode))saved.skillMode=Object.hasOwn(writingSkillModes,value.defaults?.skillMode)?value.defaults.skillMode:'auto';ready=true;renderModels();renderChoices();persist();resumeCandidates();loadModels();if(current()){status.textContent=available()?(storageError?T('对话未能保存到本机。'):''):T('请先在设置中启用并配置 AI。');if(input.value.trim())await updatePreview();}}catch(error){if(!disposed&&sequence===loadSeq){configurationLoading=false;ready=false;status.textContent=T(error.message);controls();}}
   }
   const controller={book,channel,visible:()=>active&&!panel.hidden,
     open(initialAction){saved.open=true;active=true;panel.hidden=false;if(typeof toggleNotes==='function')toggleNotes(false);persist();resumeCandidates();if(initialAction)chooseTask(initialAction);else if(ready&&input.value.trim())updatePreview();if(!ready)load();controls();input.focus();},

@@ -19,10 +19,15 @@ function makeDOM() {
       this.tagName = tag.toUpperCase(); this.children = []; this.parentElement = null; this.attributes = {}; this.dataset = {}; this.listeners = new Map();
       this.hidden = false; this.disabled = false; this.readOnly = false; this.open = false; this.inert = false; this.value = ''; this.isConnected = true;
       this.selectionStart = 0; this.selectionEnd = 0; this.selectionDirection = 'none'; this.scrollTop = 0; this.scrollLeft = 0; this.scrollHeight = 500;
-      this.style = { setProperty() {} }; const classes = new Set();
+      this.style = { setProperty() {} }; const classes = new Set();let id='',className='';
+      Object.defineProperty(this,'id',{get:()=>id,set:value=>{id=String(value);ids.set(id,this);}});
+      Object.defineProperty(this,'className',{get:()=>className,set:value=>{className=String(value);classes.clear();for(const name of className.split(/\s+/))if(name)classes.add(name);}});
       this.classList = { add: name => classes.add(name), remove: name => classes.delete(name), contains: name => classes.has(name), toggle: (name, force) => { const enabled = force ?? !classes.has(name); if (enabled) classes.add(name); else classes.delete(name); return enabled; } };
     }
-    append(...children) { for (const child of children) { this.children.push(child); if (typeof child === 'object') child.parentElement = this; } }
+    append(...children) { for (const child of children) { if(typeof child==='object'&&child.parentElement)child.parentElement.children=child.parentElement.children.filter(item=>item!==child);this.children.push(child); if (typeof child === 'object') child.parentElement = this; } }
+    insertBefore(child,before){if(!before){this.append(child);return;}if(child.parentElement)child.parentElement.children=child.parentElement.children.filter(item=>item!==child);const index=this.children.indexOf(before);assert.ok(index>=0);this.children.splice(index,0,child);child.parentElement=this;}
+    get previousElementSibling(){if(!this.parentElement)return null;const siblings=this.parentElement.children.filter(child=>typeof child==='object');return siblings[siblings.indexOf(this)-1]||null;}
+    contains(target){return this===target||this.children.some(child=>typeof child==='object'&&child.contains(target));}
     replaceChildren(...children) { this.children = []; this.append(...children); }
     set textContent(value) { this.children = [String(value)]; }
     get textContent() { return this.children.map(value => typeof value === 'string' ? value : value.textContent).join(''); }
@@ -42,6 +47,7 @@ function makeDOM() {
       return selector.split(',').some(part => {
         const query = part.trim();
         if (query.startsWith('#')) return this.id === query.slice(1);
+        if (query.startsWith('.')) return this.classList.contains(query.slice(1));
         if (query === '[hidden]') return this.hidden;
         const match = query.match(/^([a-z]+)?(?:\[([^=\]]+)(?:="([^"]*)")?\])?$/i);
         return !!match && (!match[1] || this.tagName === match[1].toUpperCase()) && (!match[2] || this.hasAttribute(match[2]) && (match[3] === undefined || this.getAttribute(match[2]) === match[3]));
@@ -94,7 +100,7 @@ function harness({ desktop = true, language = 'zh', view = 'write', fullscreenEn
   });
   context.window = context; if (desktop) context.WriterDesktop = native;
   document.fullscreenEnabled = fullscreenEnabled;
-  for (const file of ['public/i18n.js', 'public/app.js', 'public/workspace.js']) {
+  for (const file of ['public/i18n.js', 'public/app.js', 'public/workspace.js','public/settings.js']) {
     let source = fs.readFileSync(path.join(root, file), 'utf8');
     if (file.endsWith('workspace.js')) source = source.replace(/\ninitialize\(\);\s*$/, '\n');
     vm.runInContext(source, context, { filename: file });
@@ -221,7 +227,7 @@ check('language switching holds the settings dialog inert while saving and nativ
   assert.equal(h.values.get('writer-desk.language'), 'en'); assert.equal(h.state.revision, 8); assert.equal(h.state.chapterId, 'chapter-1'); assert.deepEqual(h.book, original);
 });
 
-(async () => {
+if(require.main===module)(async () => {
   let failed = 0;
   for (const { name, test } of checks) {
     try { await test(); console.log('PASS:', name); }
@@ -229,3 +235,4 @@ check('language switching holds the settings dialog inert while saving and nativ
   }
   if (failed) process.exitCode = 1;
 })().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports={harness,makeDOM,tick,deferred};

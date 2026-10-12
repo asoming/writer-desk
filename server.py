@@ -882,6 +882,10 @@ def sync_book_folder(book_id, create=False):
 
 def handle_ai_request(path, data):
     service = AIService(DB_PATH.parent)
+    if path == "/api/ai/models":
+        if not isinstance(data, dict):
+            raise AIError(400, "模型读取参数不正确。")
+        return service.list_models(data)
     if path == "/api/ai/cover-image":
         if not isinstance(data, dict) or set(data) != {"prompt"}:
             raise AIError(400, "封面图片请求只接受文字提示词。")
@@ -905,8 +909,10 @@ def handle_ai_request(path, data):
     match = re.fullmatch(r"/api/books/([^/]+)/ai(/preview)?", path)
     if not match:
         return None
-    if not isinstance(data, dict) or set(data) - {"action", "chapterIds", "instruction", "skillIds", "skillMode", "chat", "history"}:
+    if not isinstance(data, dict) or set(data) - {"action", "chapterIds", "instruction", "skillIds", "skillMode", "chat", "history", "model"}:
         raise AIError(400, "AI 请求参数不正确。")
+    if "model" in data and (not isinstance(data["model"], str) or not data["model"].strip()):
+        raise AIError(400, "模型名称格式不正确或过长。")
     if "skillIds" in data and data["skillIds"] is None or "skillMode" in data and data["skillMode"] is None:
         raise AIError(400, "AI 写作技能参数不正确。")
     if type(data.get("chat", False)) is not bool or "history" in data and (not data.get("chat", False) or not isinstance(data["history"], list)):
@@ -919,7 +925,7 @@ def handle_ai_request(path, data):
     book = book_result(row)["book"]
     operation = service.preview if match.group(2) else service.run
     # Never hold a database transaction while waiting for an external service.
-    return operation(book, data.get("action"), data.get("chapterIds"), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"), chat=data.get("chat", False), history=data.get("history"))
+    return operation(book, data.get("action"), data.get("chapterIds"), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"), chat=data.get("chat", False), history=data.get("history"), model=data.get("model"))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -972,6 +978,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(protected)
             elif path == "/api/ai/settings":
                 self.send_json(AIService(DB_PATH.parent).get_settings())
+            elif path == "/api/ai/models":
+                self.send_json(AIService(DB_PATH.parent).list_models())
             elif path == "/api/skills":
                 self.send_json(SkillsService(DB_PATH.parent).list())
             elif path.startswith("/api/skills/"):
@@ -1005,6 +1013,10 @@ class Handler(BaseHTTPRequestHandler):
                          "/continuation.js": "continuation.js", "/ai.js": "ai.js", "/ai.css": "ai.css",
                          "/ai-chat.js": "ai-chat.js", "/ai-chat.css": "ai-chat.css"}
                 files["/book-covers.js"] = "book-covers.js"
+                files["/panel-resize.js"] = "panel-resize.js"
+                files["/panel-resize.css"] = "panel-resize.css"
+                files["/settings.js"] = "settings.js"
+                files["/settings.css"] = "settings.css"
                 filename = files.get(path)
                 if not filename:
                     self.send_json({"error": "找不到这个页面"}, 404)

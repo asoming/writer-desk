@@ -1,0 +1,21 @@
+/* Keep the splitters on the existing borders; they take no writing space. */
+.panel-resize-handle{position:absolute;top:0;bottom:0;width:9px;z-index:3;cursor:col-resize;touch-action:none;user-select:none;outline:none}
+.panel-resize-handle::after{content:"";position:absolute;top:0;bottom:0;left:4px;width:1px;background:transparent;transition:background .12s,width .12s}
+.panel-resize-handle:hover::after,.panel-resize-handle:focus-visible::after,.panel-resize-handle.is-dragging::after{left:3px;width:3px;background:#7d9dea}
+.panel-resize-handle:focus-visible{background:#3168e00b}
+.panel-resize-active,.panel-resize-active *{cursor:col-resize!important;user-select:none!important}
+#outline-view .outline-layout.panels-resizable{position:relative}
+.panel-resize-outline{left:calc(var(--outline-panel-width,276px) - 5px)}
+.panel-resize-chapters{left:calc(var(--chapters-panel-width,228px) - 5px)}
+.panel-resize-notes{right:calc(var(--notes-panel-width,300px) - 5px);z-index:12}
+.panel-resize-ai{right:calc(var(--ai-panel-width,360px) - 5px);z-index:14}
+.focus .panel-resize-handle{display:none!important}
+@media(min-width:681px){#outline-view .outline-layout.panels-resizable{grid-template-columns:var(--outline-panel-width,276px) minmax(0,1fr)}}
+@media(min-width:541px){
+  .write-view.panels-resizable .chapter-panel{width:var(--chapters-panel-width,228px)}
+  .write-view.panels-resizable .notes-panel{width:var(--notes-panel-width,300px)}
+  .workspace-body.panels-resizable .ai-chat-panel{width:var(--ai-panel-width,360px);min-width:0;max-width:none}
+}
+@media(max-width:680px){.panel-resize-outline{display:none!important}}
+@media(max-width:540px){.panel-resize-handle{display:none!important}}
+@media(prefers-reduced-motion:reduce){.panel-resize-handle::after{transition:none}}

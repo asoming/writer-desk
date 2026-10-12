@@ -10,6 +10,22 @@ function writingSkillName(id){return T(writingSkillDefinitions.find(skill=>skill
 function writingSkillList(value){return writingSkillDefinitions.map(skill=>({...value?.skills?.find(item=>item.id===skill.id),...skill}));}
 function writingSkillModeSelect(id){const select=el('select','text-field');select.id=id;Object.entries(writingSkillModes).forEach(([value,label])=>{const option=el('option',null,T(label));option.value=value;select.append(option);});select.value='auto';return select;}
 
+let aiModelCatalog=null,aiModelChangePending=null;
+function aiValidateModels(value){
+  if(!Array.isArray(value?.models)||value.models.length>10000||value.models.some(item=>!item||typeof item.id!=='string'||!item.id.trim()||item.id.length>200||/[\x00-\x1f\x7f]/.test(item.id)))throw Error(T('无法读取模型列表，可手动填写模型名称。'));
+  return [...new Set(value.models.map(item=>item.id))];
+}
+function aiReadModels(settings,refresh=false){
+  const signature=JSON.stringify([settings.endpoint,settings.hasKey]);
+  if(!refresh&&aiModelCatalog?.signature===signature&&Date.now()-aiModelCatalog.time<300000)return aiModelCatalog.promise;
+  const promise=api('/api/ai/models').then(aiValidateModels);aiModelCatalog={signature,time:Date.now(),promise};return promise;
+}
+function aiSaveModelChoice(model){
+  if(aiModelChangePending)return aiModelChangePending;
+  const request=api('/api/ai/settings','PUT',{model});aiModelChangePending=request;
+  return request.finally(()=>{if(aiModelChangePending===request)aiModelChangePending=null;});
+}
+
 function aiDefaultPrompt(action){
   const prompts={
     relationships:T('请仅根据所选正文提取人物与关系。优先使用已登记姓名，区分真名、别名和称呼。每个人物与关系都给出可逐字核对的原文证据；同章提及不等于确认关系。不要根据常识补全亲属、阵营或感情，不确定的内容请略去。保留人物动机与关系变化中有证据的具体细节。'),
@@ -58,16 +74,29 @@ function appendAISettings(content){
   enabled.type='checkbox';enabled.id='ai-enabled';endpoint.type='url';endpoint.id='ai-endpoint';endpoint.placeholder='https://api.openai.com/v1';model.id='ai-model';model.placeholder=T('填写服务支持的模型名称');key.type='password';key.id='ai-api-key';key.autocomplete='new-password';clear.type='checkbox';clear.id='ai-clear-key';manual.type='checkbox';manual.id='ai-context-manual';limit.type='number';limit.id='ai-context-limit';limit.min='1';limit.max='26214400';limit.step='1';timeout.type='number';timeout.id='ai-timeout';timeout.min='1';timeout.max='180';
   const enableRow=el('label','checkbox-row');enableRow.append(enabled,el('span',null,T('启用 AI 辅助')));body.append(status,enableRow);
   imageModel.id='ai-image-model';imageModel.maxLength=200;imageModel.placeholder=T('选填，填写服务支持的图像模型');
-  [[T('服务地址'),endpoint],[T('模型名称'),model],[T('图像模型'),imageModel],[T('API Key（本机服务可留空）'),key]].forEach(([label,input])=>addField(body,label,input));
+  const modelGroup=el('div','ai-model-settings'),modelChoice=el('select','text-field'),modelStatus=el('span','ai-model-status'),modelTools=el('div','ai-model-tools'),refreshModels=action(T('刷新模型'),'text-button',()=>loadModels(true,true));modelChoice.id='ai-model-choice';modelChoice.setAttribute('aria-label',T('模型'));modelTools.append(refreshModels,modelStatus);modelGroup.append(modelChoice,model,modelTools);
+  [[T('服务地址'),endpoint],[T('模型'),modelGroup],[T('图像模型'),imageModel],[T('API Key（本机服务可留空）'),key]].forEach(([label,input])=>addField(body,label,input));
   const advanced=el('details','ai-advanced'),advancedBody=el('div','ai-advanced-body'),manualRow=el('label','checkbox-row'),limitField=el('div'),clearRow=el('label','checkbox-row');advanced.append(el('summary',null,T('高级')),advancedBody);manualRow.append(manual,el('span',null,T('手动限制资料字符数')));addField(limitField,T('字符上限'),limit);clearRow.append(clear,el('span',null,T('清除已保存密钥')));advancedBody.append(manualRow,limitField);addField(advancedBody,T('请求超时（秒）'),timeout);advancedBody.append(clearRow);body.append(advanced);
-  const buttons=el('div','dialog-actions'),save=action(T('保存 AI 设置'),'primary-button',persist),test=action(T('测试连接'),'secondary-button',testConnection);buttons.append(test,save);body.append(buttons);let pending=false,ready=false;
-  function controls(){[enabled,endpoint,model,imageModel,key,clear,manual,timeout,save,test].forEach(input=>input.disabled=pending||!ready);limit.disabled=pending||!ready||!manual.checked;limitField.hidden=!manual.checked;}
+  const buttons=el('div','dialog-actions'),save=action(T('保存 AI 设置'),'primary-button',persist),test=action(T('测试连接'),'secondary-button',testConnection);buttons.append(test,save);body.append(buttons);let pending=false,ready=false,modelLoading=false,modelSeq=0,modelDelay=null,modelIds=[],manualModel=true,settingsSnapshot=null;
+  const current=()=>content.contains(section);
+  function controls(){[enabled,endpoint,model,imageModel,key,clear,manual,timeout,save,test,modelChoice].forEach(input=>input.disabled=pending||!ready);refreshModels.disabled=pending||!ready||modelLoading||!endpoint.value.trim();limit.disabled=pending||!ready||!manual.checked;limitField.hidden=!manual.checked;model.hidden=!manualModel;}
   manual.addEventListener('change',controls);
-  function fill(settings){enabled.checked=settings.enabled;endpoint.value=settings.endpoint;model.value=settings.model;imageModel.value=settings.imageModel||'';manual.checked=settings.contextMode==='manual';limit.value=settings.maxContextChars;timeout.value=settings.timeoutSeconds;key.value='';clear.checked=false;key.placeholder=settings.hasKey?T('已保存；留空保留原密钥'):T('未保存密钥');status.textContent='';ready=true;controls();}
+  function renderModels(){modelChoice.replaceChildren();if(!model.value&&modelIds.length){const placeholder=el('option',null,T('选择模型'));placeholder.value='';modelChoice.append(placeholder);}modelIds.forEach(id=>{const option=el('option',null,id);option.value=id;modelChoice.append(option);});const custom=el('option',null,T('自定义模型'));custom.value='';modelChoice.append(custom);manualModel=model.value?!modelIds.includes(model.value):!modelIds.length;modelChoice.value=modelIds.includes(model.value)?model.value:'';controls();}
+  function fill(settings){settingsSnapshot=settings;enabled.checked=settings.enabled;endpoint.value=settings.endpoint;model.value=settings.model;imageModel.value=settings.imageModel||'';manual.checked=settings.contextMode==='manual';limit.value=settings.maxContextChars;timeout.value=settings.timeoutSeconds;key.value='';clear.checked=false;key.placeholder=settings.hasKey?T('已保存；留空保留原密钥'):T('未保存密钥');status.textContent='';ready=true;renderModels();}
+  async function loadModels(refresh=false,draft=false){
+    clearTimeout(modelDelay);const sequence=++modelSeq;if(!ready||!endpoint.value.trim()){modelIds=[];modelStatus.textContent='';renderModels();return;}
+    modelLoading=true;modelStatus.textContent=T('正在读取模型…');controls();
+    try{const ids=draft?aiValidateModels(await api('/api/ai/models','POST',{endpoint:endpoint.value,apiKey:key.value,clearKey:clear.checked,timeoutSeconds:Number(timeout.value)})):await aiReadModels(settingsSnapshot,refresh);if(sequence!==modelSeq||!current())return;modelIds=ids;modelStatus.textContent=ids.length?'':T('暂无可用模型，可手动填写。');renderModels();}
+    catch(error){if(sequence===modelSeq&&current()){modelIds=[];modelStatus.textContent=T(error.message);renderModels();}}
+    finally{if(sequence===modelSeq&&current()){modelLoading=false;controls();}}
+  }
+  function changedService(){++modelSeq;clearTimeout(modelDelay);modelLoading=false;modelIds=[];modelStatus.textContent='';renderModels();if(endpoint.value.trim())modelDelay=setTimeout(()=>loadModels(true,true),350);}
+  [endpoint,key,clear].forEach(input=>input.addEventListener('change',changedService));
+  modelChoice.addEventListener('change',()=>{if(pending)return;manualModel=!modelChoice.value;if(!manualModel)model.value=modelChoice.value;controls();if(manualModel)model.focus();});
   function payload(){return{enabled:enabled.checked,endpoint:endpoint.value,model:model.value,imageModel:imageModel.value,apiKey:key.value,clearKey:clear.checked,contextMode:manual.checked?'manual':'auto',...(manual.checked?{maxContextChars:Number(limit.value)}:{}),timeoutSeconds:Number(timeout.value)};}
-  async function persist(){if(pending||!ready)return false;pending=true;controls();try{fill(await api('/api/ai/settings','PUT',payload()));toast(T('AI 设置已保存。'));return true;}catch(error){status.textContent=T(error.message);return false;}finally{pending=false;controls();}}
+  async function persist(){if(pending||!ready)return false;pending=true;++modelSeq;clearTimeout(modelDelay);modelLoading=false;controls();try{fill(await api('/api/ai/settings','PUT',payload()));aiModelCatalog=null;await loadModels(true);toast(T('AI 设置已保存。'));return true;}catch(error){status.textContent=T(error.message);return false;}finally{pending=false;controls();}}
   async function testConnection(){if(!await persist())return;pending=true;controls();status.textContent=T('正在测试连接…');try{await api('/api/ai/test','POST',{});status.textContent=T('连接成功。测试未发送作品内容。');}catch(error){status.textContent=T(error.message);}finally{pending=false;controls();}}
-  controls();api('/api/ai/settings').then(fill).catch(error=>{status.textContent=T(error.message);});
+  controls();(async()=>{if(aiModelChangePending)await aiModelChangePending.catch(()=>{});return api('/api/ai/settings');})().then(settings=>{if(current()){fill(settings);loadModels();}}).catch(error=>{status.textContent=T(error.message);});
   return section;
 }
 

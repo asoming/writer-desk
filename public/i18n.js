@@ -4,6 +4,29 @@ const clientStorage=window.WriterDesktop?.storage||window.localStorage;
 let uiLanguage='zh';
 try{uiLanguage=clientStorage.getItem('writer-desk.language')==='en'?'en':'zh';}catch{}
 const englishMessages={
+  "设置分类": "Settings categories",
+  "AI 服务": "AI service",
+  "快捷操作": "Quick actions",
+  "连接": "Connection",
+  "保存": "Saving",
+  "刷新模型": "Refresh models",
+  "模型": "Model",
+  "选择模型": "Select a model",
+  "模型名称不能包含控制字符。": "Model names cannot contain control characters.",
+  "自定义模型": "Custom model",
+  "正在读取模型…": "Loading models…",
+  "暂无可用模型，可手动填写。": "No models available. Enter a model manually.",
+  "无法读取模型列表，可手动填写模型名称。": "Could not load models. Enter a model name manually.",
+  "模型列表连接失败或超时，可手动填写模型名称。": "Model discovery failed or timed out. Enter a model name manually.",
+  "模型读取参数不正确。": "Invalid model discovery parameters.",
+  "无法读取模型列表（HTTP {0}），可手动填写模型名称。": "Could not load models (HTTP {0}). Enter a model name manually.",
+  "请先填写 AI 服务地址。": "Enter the AI service address first.",
+  "调整大纲目录宽度": "Resize outline navigation",
+  "调整章节目录宽度": "Resize chapter navigation",
+  "调整资料栏宽度": "Resize reference panel",
+  "调整 AI 对话栏宽度": "Resize AI conversation panel",
+  "拖动或方向键调整，双击或 Enter 恢复默认": "Drag or use arrow keys to resize; double-click or press Enter to reset",
+  "{0} 像素": "{0} pixels",
   "待采用书名：{0}": "Proposed title: {0}",
   "生成封面与书名": "Cover & title",
   "书名": "Title",
@@ -945,6 +968,10 @@ Object.assign(englishMessages,{
   "对话答复不能为空。": "The conversation reply cannot be empty."
 });
 function T(source,...values){
+  if(typeof source==='string'){
+    const modelFailure=source.match(/^无法读取模型列表（HTTP (\d{3})），可手动填写模型名称。$/);
+    if(modelFailure)return T('无法读取模型列表（HTTP {0}），可手动填写模型名称。',modelFailure[1]);
+  }
   if(uiLanguage==='en'&&typeof source==='string'){
     const failure=source.match(/^AI 服务请求失败（HTTP (\d{3})）。请检查配置后重试。$/);
     if(failure)return T('AI 服务请求失败（HTTP {0}）。请检查配置后重试。',failure[1]);

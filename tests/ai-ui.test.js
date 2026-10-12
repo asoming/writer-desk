@@ -36,6 +36,7 @@ function harness(){
   context.localAPI=async(url,method='GET',data)=>{
     h.calls.push({url,method,data:structuredClone(data)});
     if(url==='/api/ai/settings'){if(method==='PUT'){const {apiKey,clearKey,...settings}=data;h.settings={...h.settings,...settings,hasKey:clearKey?false:!!apiKey||h.settings.hasKey};}return h.settings;}
+    if(url==='/api/ai/models')return h.models?h.models(data):{models:[{id:'stub-model'},{id:'second-model'}]};
     if(url==='/api/skills'){if(h.skillError)throw h.skillError;return structuredClone(h.skills);}
     if(url==='/api/skills/import'){data.skillIds.forEach(id=>h.skills.skills.find(skill=>skill.id===id).imported=true);return structuredClone(h.skills);}
     if(url==='/api/skills/settings'){h.skills.defaults=structuredClone(data);return structuredClone(h.skills);}
@@ -57,6 +58,24 @@ test('default settings stay collapsed, redact existing key, and clear the passwo
   const section=container.children[0],key=find(section,node=>node.id==='ai-api-key');assert.equal(section.open,false);assert.equal(key.type,'password');assert.equal(key.value,'');assert.match(key.placeholder,/留空保留/);
   key.value='stub-only-secret';await find(section,node=>node.textContent==='保存 AI 设置').listeners.click();
   assert.equal(key.value,'');assert.ok(h.calls.some(call=>call.method==='PUT'&&call.data.apiKey==='stub-only-secret'));
+});
+
+test('AI settings automatically discover model choices and retain editable custom names',async()=>{
+  const h=harness(),container=new Element();h.context.container=container;h.run('appendAISettings(container)');await new Promise(resolve=>setImmediate(resolve));const model=find(container,node=>node.id==='ai-model'),choice=find(container,node=>node.id==='ai-model-choice');
+  assert.ok(h.calls.some(call=>call.url==='/api/ai/models'));assert.equal(choice.value,'stub-model');assert.equal(model.hidden,true);choice.value='second-model';choice.listeners.change();assert.equal(model.value,'second-model');choice.value='';choice.listeners.change();assert.equal(model.hidden,false);model.value='my-custom-model';await find(container,node=>node.textContent==='保存 AI 设置').listeners.click();assert.equal(h.settings.model,'my-custom-model');assert.equal(model.hidden,false);
+});
+
+test('an empty model stays empty after discovery until the user explicitly chooses and saves one',async()=>{
+  const h=harness(),container=new Element();h.context.container=container;h.settings.model='';h.settings.hasKey=true;h.run('appendAISettings(container)');await new Promise(resolve=>setImmediate(resolve));const model=find(container,node=>node.id==='ai-model'),choice=find(container,node=>node.id==='ai-model-choice');assert.equal(model.value,'');assert.equal(choice.value,'');assert.equal(choice.children[0].textContent,'选择模型');assert.equal(model.hidden,true);assert.equal(find(container,node=>node.id==='ai-api-key').value,'');assert.ok(!h.calls.some(call=>call.method==='PUT'));choice.value='second-model';choice.listeners.change();await find(container,node=>node.textContent==='保存 AI 设置').listeners.click();assert.equal(h.settings.model,'second-model');assert.ok(h.calls.filter(call=>call.url==='/api/ai/models').every(call=>!call.data||!call.data.apiKey));
+});
+
+test('editing provider credentials automatically reads a draft list without saving them',async()=>{
+  const h=harness(),container=new Element();h.context.container=container;let timer;h.context.setTimeout=fn=>{timer=fn;return 1;};h.run('appendAISettings(container)');await new Promise(resolve=>setImmediate(resolve));const endpoint=find(container,node=>node.id==='ai-endpoint'),key=find(container,node=>node.id==='ai-api-key');endpoint.value='http://127.0.0.1:9555/new';key.value='fake-unsaved-key';endpoint.listeners.change();await timer();
+  const request=h.calls.find(call=>call.url==='/api/ai/models'&&call.method==='POST');assert.equal(request.data.endpoint,endpoint.value);assert.equal(request.data.apiKey,'fake-unsaved-key');assert.ok(!h.calls.some(call=>call.method==='PUT'));assert.equal(key.value,'fake-unsaved-key');
+});
+
+test('unavailable provider model lists keep manual configuration and do not block saving',async()=>{
+  const h=harness(),container=new Element();h.context.container=container;h.models=()=>{throw Error('无法读取模型列表，可手动填写模型名称。');};h.settings.model='custom-provider-model';h.run('appendAISettings(container)');await new Promise(resolve=>setImmediate(resolve));const model=find(container,node=>node.id==='ai-model');assert.equal(model.hidden,false);assert.equal(model.value,'custom-provider-model');assert.ok(find(container,node=>node.textContent==='无法读取模型列表，可手动填写模型名称。'));await find(container,node=>node.textContent==='保存 AI 设置').listeners.click();assert.equal(h.settings.model,'custom-provider-model');
 });
 
 test('automatic context is the default; manual character protection is optional, collapsed and preserves its saved value',async()=>{

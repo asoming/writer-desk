@@ -21,8 +21,9 @@ function harness(storage=new Map()){
   const localStorage={getItem:key=>storage.get(key)??null,setItem(key,value){if(h.storageFails)throw Error('quota');storage.set(key,value);},removeItem:key=>storage.delete(key)};
   h.preview=request=>({bookId:h.state.book.id,action:request.action,chapterIds:request.chapterIds,chat:true,historyMessages:request.history.length,historyChars:request.history.reduce((sum,message)=>sum+Array.from(message.content).length,0),counts:{chapters:request.chapterIds.length,outlines:1,people:0,relationships:0},contextChars:1000+JSON.stringify(request.history).length+request.instruction.length,contextMode:'auto',maxContextChars:null,overLimit:false,selectedSkillIds:request.skillIds,skillMode:request.skillMode});
   h.response=request=>({bookId:h.state.book.id,action:request.action,chapterIds:request.chapterIds,chat:true,reply:'收到：'+request.instruction,data:null});
+  h.models=()=>({models:[{id:'stub'},{id:'second-model'}]});h.saveModel=async request=>(h.settings={...h.settings,...request});
   h.events={};const context=vm.createContext({console,structuredClone,crypto:{randomUUID},state:h.state,clientStorage:localStorage,$:get,addEventListener:(event,callback)=>h.events[event]=callback,T:(text,...args)=>String(text).replace(/\{(\d+)\}/g,(_,index)=>args[index]??''),setTimeout(fn){const id=++nextTimer;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id),requestAnimationFrame:fn=>fn(),uid:randomUUID,toast:text=>h.toasts.push(text),preference:(key,value)=>value===undefined?localStorage.getItem(key):localStorage.setItem(key,value),el(tag,className,text){const element=new Element(tag);if(className)element.className=className;if(text!==undefined)element.textContent=text;return element;},action(text,className,handler){const button=new Element('button');button.textContent=text;button.className=className;button.listeners.click=handler;return button;},requireSaved:async()=>h.saves.length?h.saves.shift():true,toggleNotes:value=>h.notes.push(value),showAppSettings:()=>{h.settingsOpened=true;},jumpToChapter:id=>{h.state.chapterId=id;h.state.view='write';},renderShell:()=>h.renders++});context.window=context;
-  context.api=async(url,method='GET',request)=>{h.calls.push({url,method,request:structuredClone(request)});if(url==='/api/ai/settings')return h.settings;if(url==='/api/skills')return{skills:[{id:'novelskill',imported:true}],defaults:{skillIds:['novelskill'],skillMode:'outline'}};if(url.endsWith('/preview'))return h.preview(request);if(url.endsWith('/ai'))return h.response(request);throw Error('Unexpected API '+url);};
+  context.api=async(url,method='GET',request)=>{h.calls.push({url,method,request:structuredClone(request)});if(url==='/api/ai/settings')return method==='PUT'?h.saveModel(request):h.readSettings?h.readSettings():h.settings;if(url==='/api/ai/models')return h.models();if(url==='/api/skills')return{skills:[{id:'novelskill',imported:true}],defaults:{skillIds:['novelskill'],skillMode:'outline'}};if(url.endsWith('/preview'))return h.preview(request);if(url.endsWith('/ai'))return h.response(request);throw Error('Unexpected API '+url);};
   for(const file of ['public/ai.js','public/ai-chat.js'])vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
   const realRenderer=context.renderAIResult;h.useRealRenderer=()=>{context.renderAIResult=realRenderer;};
   context.addField=(container,label,control)=>container.append(context.el('label',null,label),control);context.markDirty=()=>{h.mutations=(h.mutations||0)+1;h.state.dirty=true;};context.activeVolumes=()=>[];
@@ -108,4 +109,47 @@ test('storage quota failures are visible and permanent book deletion clears both
 });
 test('interrupted conversation restores without silently repeating an AI call',async()=>{
   const storage=new Map([['yejian.ai-chat.one.write',JSON.stringify({version:1,open:true,action:'custom',prompt:'',turns:[{id:'interrupted',user:'待处理',action:'custom',chapterIds:['a'],status:'pending'}]})]]),h=harness(storage);await h.open();assert.ok(h.button('重试'));assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));await h.button('重试').listeners.click();assert.equal(h.records().turns.length,1);assert.equal(h.records().turns[0].status,'complete');
+});
+
+test('composer discovers models, saves only the chosen model and sends its snapshot',async()=>{
+  const h=harness();await h.open();assert.equal(h.field('ai-chat-model').value,'stub');assert.deepEqual(h.field('ai-chat-model').children.map(option=>option.value),['stub','second-model','']);
+  const select=h.field('ai-chat-model');select.value='second-model';await select.listeners.change();await h.prompt('换个模型继续讨论');await h.send();
+  assert.deepEqual(h.calls.find(call=>call.url==='/api/ai/settings'&&call.method==='PUT').request,{model:'second-model'});assert.equal(h.settings.model,'second-model');assert.equal(h.calls.find(call=>call.url.endsWith('/ai')).request.model,'second-model');
+  h.state.view='outline';h.run('syncAIChat()');await h.tick();assert.equal(h.field('ai-chat-model').value,'second-model');assert.equal(h.calls.filter(call=>call.url==='/api/ai/models').length,1);
+});
+
+test('model lists failing or omitting a custom model preserve the existing configuration and manual fallback',async()=>{
+  const h=harness();h.settings.model='my-private-compatible-model';h.models=()=>{throw Error('无法读取模型列表，可手动填写模型名称。');};await h.open();assert.equal(h.field('ai-chat-model').value,'my-private-compatible-model');await h.prompt('照常使用自定义模型');assert.equal(h.button('发送').disabled,false);
+  h.field('ai-chat-model').value='';await h.field('ai-chat-model').listeners.change();assert.equal(h.settingsOpened,true);assert.ok(!h.calls.some(call=>call.method==='PUT'));assert.equal(h.field('ai-chat-model').value,'my-private-compatible-model');
+  h.models=()=>({models:[{id:'fresh-model'}]});await h.button('刷新模型').listeners.click();assert.deepEqual(h.field('ai-chat-model').children.map(option=>option.value),['my-private-compatible-model','fresh-model','']);
+});
+
+test('pending sends lock model changes and keep the selected request model despite settings reload',async()=>{
+  const h=harness();await h.open();let finish;h.response=request=>new Promise(resolve=>{finish=()=>resolve({bookId:'one',action:request.action,chapterIds:request.chapterIds,chat:true,reply:'原模型完成',data:null});});await h.prompt('当前模型的问题');const pending=h.send();await h.tick();const select=h.field('ai-chat-model');assert.equal(select.disabled,true);select.value='second-model';await select.listeners.change();assert.equal(select.value,'stub');assert.ok(!h.calls.some(call=>call.method==='PUT'));
+  h.settings={...h.settings,model:'second-model'};await h.run('refreshAIChatSettings()');finish();await pending;assert.equal(h.calls.find(call=>call.url.endsWith('/ai')).request.model,'stub');assert.equal(h.records().turns[0].reply,'原模型完成');
+});
+
+test('a model save crossing a book switch cannot update the old view or let the new book send with stale settings',async()=>{
+  const h=harness();await h.open();let finish;h.saveModel=request=>new Promise(resolve=>{finish=()=>{h.settings={...h.settings,...request};resolve(h.settings);};});const select=h.field('ai-chat-model');select.value='second-model';const pending=select.listeners.change();await h.tick();assert.equal(select.disabled,true);h.state.book={...structuredClone(h.state.book),id:'two'};h.run('syncAIChat()');await h.tick();await h.prompt('第二本书的问题');assert.equal(h.button('发送').disabled,true);finish();await pending;await h.tick();await h.flush();assert.equal(h.field('ai-chat-model').value,'second-model');assert.equal(h.records().turns.length,0);await h.send();assert.equal(h.calls.find(call=>call.url.endsWith('/ai')).url,'/api/books/two/ai');assert.equal(h.calls.find(call=>call.url.endsWith('/ai')).request.model,'second-model');
+});
+
+test('successful persistence clears a prior storage warning without clearing unrelated errors',async()=>{
+  const h=harness();await h.open();h.storageFails=true;await h.prompt('暂时未保存');assert.equal(find(h.panel(),node=>node.className==='ai-chat-status').textContent,'对话未能保存到本机。');h.storageFails=false;h.events.pagehide();assert.equal(find(h.panel(),node=>node.className==='ai-chat-status').textContent,'');assert.equal(h.records().prompt,'暂时未保存');
+  h.response=()=>{throw Error('AI 服务连接失败。');};await h.prompt('服务失败保留');await h.send();const status=find(h.panel(),node=>node.className==='ai-chat-status');status.textContent='另一条重要提示';h.events.pagehide();assert.equal(status.textContent,'另一条重要提示');
+});
+
+test('a model saved while this conversation is suspended stays selected when returning from the shelf or characters',async()=>{
+  for(const view of ['shelf','characters']){const h=harness();await h.open();let finish;h.saveModel=request=>new Promise(resolve=>{finish=()=>{h.settings={...h.settings,...request};resolve(h.settings);};});h.field('ai-chat-model').value='second-model';const pending=h.field('ai-chat-model').listeners.change();await h.tick();h.state.view=view;h.run('syncAIChat()');finish();await pending;h.state.view='write';h.run('syncAIChat()');await h.tick();await h.prompt('返回继续讨论');assert.equal(h.field('ai-chat-model').value,'second-model');await h.send();assert.equal(h.calls.find(call=>call.url.endsWith('/ai')).request.model,'second-model');}
+});
+
+test('an older settings reload arriving after a model save cannot replace the new model',async()=>{
+  const h=harness();await h.open();await h.prompt('使用新模型');let finish;const stale={...h.settings};h.readSettings=()=>new Promise(resolve=>{finish=()=>resolve(stale);});const reload=h.run('refreshAIChatSettings()');await h.tick();assert.equal(h.button('发送').disabled,true);await h.send();assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));h.field('ai-chat-model').value='second-model';await h.field('ai-chat-model').listeners.change();finish();await reload;assert.equal(h.field('ai-chat-model').value,'second-model');await h.flush();await h.send();assert.equal(h.calls.find(call=>call.url.endsWith('/ai')).request.model,'second-model');
+});
+
+test('composer leaves an unconfigured model empty until an explicit list selection saves it',async()=>{
+  const h=harness();h.settings.model='';await h.open();const select=h.field('ai-chat-model');assert.equal(select.value,'');assert.equal(select.children[0].textContent,'选择模型');assert.ok(!h.calls.some(call=>call.method==='PUT'));await h.prompt('选定后再讨论');assert.equal(h.button('发送').disabled,true);select.value='second-model';await select.listeners.change();await h.flush();assert.equal(h.settings.model,'second-model');assert.equal(h.field('ai-chat-model').value,'second-model');await h.send();assert.equal(h.calls.find(call=>call.url.endsWith('/ai')).request.model,'second-model');
+});
+
+test('a model save failing while suspended restores the saved selection before returning to writing',async()=>{
+  const h=harness();await h.open();let fail;h.saveModel=()=>new Promise((resolve,reject)=>{fail=()=>reject(Error('无法保存模型选择。'));});h.field('ai-chat-model').value='second-model';const pending=h.field('ai-chat-model').listeners.change();await h.tick();h.state.view='people';h.run('syncAIChat()');fail();await pending;h.state.view='write';h.run('syncAIChat()');await h.tick();assert.equal(h.settings.model,'stub');assert.equal(h.field('ai-chat-model').value,'stub');await h.prompt('仍使用已保存的模型');await h.send();assert.equal(h.calls.find(call=>call.url.endsWith('/ai')).request.model,'stub');
 });

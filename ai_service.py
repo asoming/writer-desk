@@ -73,6 +73,13 @@ def _compact(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def _model_name(value):
+    value = _text(value, 200, "模型名称", True).strip()
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise AIError(400, "模型名称不能包含控制字符。")
+    return value
+
+
 def _context_rejected(value):
     error = value.get("error") if isinstance(value, dict) else None
     return isinstance(error, dict) and any(isinstance(error.get(key), str) and error[key].strip().lower() in CONTEXT_ERROR_CODES
@@ -265,6 +272,68 @@ class AIService:
         settings["endpoint"] = _endpoint(settings["endpoint"])
         return settings
 
+    def list_models(self, data=None):
+        """Read only model IDs; neither save drafts nor relay provider metadata."""
+        with self.lock:
+            settings = self._read()
+        if data is not None:
+            if not isinstance(data, dict) or set(data) - {"endpoint", "apiKey", "clearKey", "timeoutSeconds"}:
+                raise AIError(400, "模型读取参数不正确。")
+            if type(data.get("clearKey", False)) is not bool:
+                raise AIError(400, "模型读取参数不正确。")
+            settings["endpoint"] = data.get("endpoint", settings["endpoint"])
+            key = _text(data.get("apiKey", ""), 8192, "API Key").strip()
+            if any(ord(char) < 32 or ord(char) == 127 for char in key):
+                raise AIError(400, "API Key 不能包含控制字符。")
+            settings["apiKey"] = "" if data.get("clearKey") else key or settings.get("apiKey", "")
+            settings["timeoutSeconds"] = data.get("timeoutSeconds", settings["timeoutSeconds"])
+        if type(settings["timeoutSeconds"]) is not int or not 1 <= settings["timeoutSeconds"] <= 180:
+            raise AIError(400, "AI 数值设置超出允许范围。")
+        endpoint = _endpoint(settings["endpoint"])
+        if not endpoint:
+            raise AIError(400, "请先填写 AI 服务地址。")
+        endpoint = endpoint[:-len("/chat/completions")] + "/models"
+        headers = {"Accept": "application/json"}
+        if settings.get("apiKey"):
+            headers["Authorization"] = "Bearer " + settings["apiKey"]
+        request = urllib.request.Request(endpoint, headers=headers, method="GET")
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+        try:
+            with opener.open(request, timeout=min(settings["timeoutSeconds"], 15)) as response:
+                raw = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(raw) > MAX_RESPONSE_BYTES:
+                raise ValueError("model list too large")
+            value = json.loads(raw.decode("utf-8"))
+            if not isinstance(value, dict) or not isinstance(value.get("data"), list) or len(value["data"]) > 10000:
+                raise ValueError("invalid models response")
+            models, seen = [], set()
+            for item in value["data"]:
+                if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                    raise ValueError("invalid model ID")
+                model = _model_name(item["id"])
+                # Provider bodies are untrusted. Even a malicious ID must not
+                # reflect a credential into the renderer or application logs.
+                if settings.get("apiKey") and settings["apiKey"] in model:
+                    continue
+                if model not in seen:
+                    models.append({"id": model})
+                    seen.add(model)
+            return {"models": models}
+        except AIError as error:
+            if error.status == 400:
+                raise AIError(502, "无法读取模型列表，可手动填写模型名称。") from None
+            raise
+        except urllib.error.HTTPError as error:
+            code = error.code
+            error.close()
+            if 300 <= code < 400:
+                raise AIError(502, "AI 服务要求重定向，已停止请求。请填写最终服务地址。") from None
+            raise AIError(502, "无法读取模型列表（HTTP " + str(code) + "），可手动填写模型名称。") from None
+        except (TimeoutError, OSError, urllib.error.URLError):
+            raise AIError(502, "模型列表连接失败或超时，可手动填写模型名称。") from None
+        except (ValueError, UnicodeError, TypeError, AttributeError):
+            raise AIError(502, "无法读取模型列表，可手动填写模型名称。") from None
+
     def _post_json(self, settings, endpoint, payload, limit=MAX_RESPONSE_BYTES, image=False):
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if settings.get("apiKey"):
@@ -417,15 +486,19 @@ class AIService:
         return encoded, clean, len(encoded) + history_chars + len(instruction), {
             "chat": True, "historyMessages": len(clean), "historyChars": history_chars}
 
-    def preview(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None):
+    def preview(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None, model=None):
+        if model is not None:
+            _model_name(model)
         context, summary = self._skill_context(book, action, chapter_ids, instruction, skill_ids, skill_mode)
         _, _, count, conversation = self._conversation(context, action, instruction, chat, history)
         settings = self.get_settings()
         limit = settings["maxContextChars"] if settings["contextMode"] == "manual" else None
         return {"bookId": book["id"], "action": action, "chapterIds": chapter_ids, "contextChars": count, "contextMode": settings["contextMode"], "maxContextChars": limit, "overLimit": limit is not None and count > limit, "counts": {"chapters": len(context["chapters"]), "outlines": len(context["outlines"]), "people": len(context["people"]), "relationships": len(context["relationships"])}, **summary, **conversation}
 
-    def run(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None):
+    def run(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None, model=None):
         settings = self._configured()
+        if model is not None:
+            settings["model"] = _model_name(model)
         context, summary = self._skill_context(book, action, chapter_ids, instruction, skill_ids, skill_mode)
         _, active = self._context(book, action, chapter_ids, instruction)
         encoded, turns, count, conversation = self._conversation(context, action, instruction, chat, history)

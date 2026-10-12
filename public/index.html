@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="作家工作台，本地写作工作室。长篇与短篇分别管理，大纲、人物脉络和正文相互关联。">
   <title>作家工作台 · 本地写作工作室</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/outline.css"><link rel="stylesheet" href="/atlas.css"><link rel="stylesheet" href="/protection.css"><link rel="stylesheet" href="/ai.css"><link rel="stylesheet" href="/ai-chat.css"><script src="/i18n.js" defer></script><script src="/app.js" defer></script><script src="/book-covers.js" defer></script><script src="/story-analysis.js" defer></script><script src="/vendor/dagre.min.js" defer></script><script src="/atlas-layout.js" defer></script><script src="/atlas-ui.js" defer></script><script src="/protection.js" defer></script><script src="/ai.js" defer></script><script src="/ai-chat.js" defer></script><script src="/continuation.js" defer></script><script src="/workspace.js" defer></script>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/outline.css"><link rel="stylesheet" href="/atlas.css"><link rel="stylesheet" href="/protection.css"><link rel="stylesheet" href="/ai.css"><link rel="stylesheet" href="/ai-chat.css"><link rel="stylesheet" href="/panel-resize.css"><link rel="stylesheet" href="/settings.css"><script src="/i18n.js" defer></script><script src="/app.js" defer></script><script src="/book-covers.js" defer></script><script src="/story-analysis.js" defer></script><script src="/vendor/dagre.min.js" defer></script><script src="/atlas-layout.js" defer></script><script src="/atlas-ui.js" defer></script><script src="/protection.js" defer></script><script src="/ai.js" defer></script><script src="/ai-chat.js" defer></script><script src="/continuation.js" defer></script><script src="/settings.js" defer></script><script src="/workspace.js" defer></script><script src="/panel-resize.js" defer></script>
 </head>
 <body>
 <div class="workspace" id="workspace">
@@ -84,20 +84,49 @@
 <button id="exit-focus" class="exit-focus" hidden>退出专注 <kbd>Esc</kbd></button>
 <dialog id="dialog" aria-labelledby="dialog-title"><div class="dialog-heading"><h2 id="dialog-title"></h2><button class="icon-button" id="close-dialog" aria-label="关闭对话框">×</button></div><div id="dialog-body"></div></dialog>
 <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
-  <div class="dialog-heading"><h2 id="settings-title">设置</h2><button class="icon-button" id="close-settings" aria-label="关闭设置">×</button></div>
-  <section class="settings-section"><label class="settings-row" for="language-select"><span>界面语言</span><select id="language-select" class="text-field" aria-label="界面语言"><option value="zh">中文</option><option value="en">English</option></select></label></section>
-  <section class="settings-section"><h3>编辑</h3><div id="settings-edit-actions" class="settings-edit-actions">
-    <button class="settings-command" data-settings-edit="undo"><span>撤销</span><kbd>Ctrl+Z</kbd></button><button class="settings-command" data-settings-edit="redo"><span>重做</span><kbd>Ctrl+Shift+Z</kbd></button>
-    <button class="settings-command" data-settings-edit="cut"><span>剪切</span><kbd>Ctrl+X</kbd></button><button class="settings-command" data-settings-edit="copy"><span>复制</span><kbd>Ctrl+C</kbd></button>
-    <button class="settings-command" data-settings-edit="paste"><span>粘贴</span><kbd>Ctrl+V</kbd></button><button class="settings-command" data-settings-edit="selectAll"><span>全选</span><kbd>Ctrl+A</kbd></button>
-  </div></section>
-  <section class="settings-section" id="settings-display"><h3>视图</h3><div class="settings-row" data-desktop-only hidden><span>界面缩放</span><div class="settings-zoom"><button id="settings-zoom-out" class="icon-button" data-settings-action="zoomOut" aria-label="缩小界面">−</button><button id="settings-zoom-reset" class="text-button" data-settings-action="resetZoom" aria-label="恢复实际大小"><span id="settings-zoom-value">100%</span></button><button id="settings-zoom-in" class="icon-button" data-settings-action="zoomIn" aria-label="放大界面">＋</button></div></div><div class="settings-row"><span>全屏</span><button id="settings-fullscreen" class="secondary-button" data-settings-action="toggleFullscreen">进入全屏</button></div></section>
-  <div id="settings-protection"></div>
-  <div id="settings-ai"></div>
-  <div id="settings-skills"></div>
-  <details class="settings-section" id="settings-updates" data-desktop-only hidden><summary>安装与升级</summary><div class="settings-update-content"><p class="subtle" id="settings-update-status"></p><div class="settings-row"><button class="secondary-button" id="settings-install-update">安装升级包</button><button class="primary-button" id="settings-restart-update" hidden>重启完成升级</button></div><p class="subtle">选择下载的 Linux 升级包，校验文件需放在同一文件夹。</p></div></details>
-  <section class="settings-section" data-desktop-only hidden><div class="settings-row"><h3>关于</h3><span class="settings-version" id="settings-version"></span></div><div class="settings-row"><label for="settings-data-path">本机数据目录</label><button class="text-button" id="settings-open-data" data-settings-action="openDataFolder"><span data-icon="folder"></span>打开文件夹</button></div><input class="settings-data-path text-field" id="settings-data-path" aria-label="本机数据目录" readonly></section>
-  <div class="settings-footer" data-desktop-only hidden><button id="settings-quit" class="text-button" data-settings-action="quit">退出作家工作台</button></div>
+  <div class="settings-layout">
+    <aside class="settings-sidebar">
+      <h2 id="settings-title">设置</h2>
+      <nav id="settings-nav" class="settings-nav" role="tablist" aria-label="设置分类" aria-orientation="vertical">
+        <button id="settings-tab-general" type="button" role="tab" data-settings-page-target="general" aria-controls="settings-page-general" aria-selected="true"><span data-icon="settings" aria-hidden="true"></span><span>通用</span></button>
+        <button id="settings-tab-ai" type="button" role="tab" data-settings-page-target="ai" aria-controls="settings-page-ai" aria-selected="false" tabindex="-1"><span data-icon="sparkles" aria-hidden="true"></span><span>AI 服务</span></button>
+        <button id="settings-tab-skills" type="button" role="tab" data-settings-page-target="skills" aria-controls="settings-page-skills" aria-selected="false" tabindex="-1"><span data-icon="book" aria-hidden="true"></span><span>写作 Skill</span></button>
+        <button id="settings-tab-protection" type="button" role="tab" data-settings-page-target="protection" aria-controls="settings-page-protection" aria-selected="false" tabindex="-1"><span data-icon="shield" aria-hidden="true"></span><span>保存</span></button>
+        <button id="settings-tab-shortcuts" type="button" role="tab" data-settings-page-target="shortcuts" aria-controls="settings-page-shortcuts" aria-selected="false" tabindex="-1"><span data-icon="keyboard" aria-hidden="true"></span><span>快捷操作</span></button>
+        <button id="settings-tab-updates" type="button" role="tab" data-settings-page-target="updates" aria-controls="settings-page-updates" aria-selected="false" tabindex="-1" hidden><span data-icon="download" aria-hidden="true"></span><span>安装与升级</span></button>
+        <button id="settings-tab-about" type="button" role="tab" data-settings-page-target="about" aria-controls="settings-page-about" aria-selected="false" tabindex="-1"><span data-icon="info" aria-hidden="true"></span><span>关于</span></button>
+      </nav>
+      <span class="settings-sidebar-brand">作家工作台</span>
+    </aside>
+    <div class="settings-main">
+      <button class="icon-button settings-close" id="close-settings" aria-label="关闭设置">×</button>
+      <div class="settings-content" id="settings-content">
+        <section id="settings-page-general" class="settings-page" role="tabpanel" aria-labelledby="settings-tab-general" data-settings-page="general">
+          <h2>通用</h2>
+          <section class="settings-section settings-card"><label class="settings-row" for="language-select"><span>界面语言</span><select id="language-select" class="text-field" aria-label="界面语言"><option value="zh">中文</option><option value="en">English</option></select></label></section>
+          <section class="settings-section settings-group" id="settings-display"><h3>视图</h3><div class="settings-card"><div class="settings-row" data-desktop-only hidden><span>界面缩放</span><div class="settings-zoom"><button id="settings-zoom-out" class="icon-button" data-settings-action="zoomOut" aria-label="缩小界面">−</button><button id="settings-zoom-reset" class="text-button" data-settings-action="resetZoom" aria-label="恢复实际大小"><span id="settings-zoom-value">100%</span></button><button id="settings-zoom-in" class="icon-button" data-settings-action="zoomIn" aria-label="放大界面">＋</button></div></div><div class="settings-row"><span>全屏</span><button id="settings-fullscreen" class="secondary-button" data-settings-action="toggleFullscreen">进入全屏</button></div></div></section>
+        </section>
+        <section id="settings-page-ai" class="settings-page" role="tabpanel" aria-labelledby="settings-tab-ai" data-settings-page="ai" hidden><h2>AI 服务</h2><div id="settings-ai"></div></section>
+        <section id="settings-page-skills" class="settings-page" role="tabpanel" aria-labelledby="settings-tab-skills" data-settings-page="skills" hidden><h2>写作 Skill</h2><div id="settings-skills"></div></section>
+        <section id="settings-page-protection" class="settings-page" role="tabpanel" aria-labelledby="settings-tab-protection" data-settings-page="protection" hidden><h2>保存</h2><div id="settings-protection"></div></section>
+        <section id="settings-page-shortcuts" class="settings-page" role="tabpanel" aria-labelledby="settings-tab-shortcuts" data-settings-page="shortcuts" hidden>
+          <h2>快捷操作</h2><section class="settings-section settings-card"><div id="settings-edit-actions" class="settings-edit-actions">
+            <button class="settings-command" data-settings-edit="undo"><span>撤销</span><kbd>Ctrl+Z</kbd></button><button class="settings-command" data-settings-edit="redo"><span>重做</span><kbd>Ctrl+Shift+Z</kbd></button>
+            <button class="settings-command" data-settings-edit="cut"><span>剪切</span><kbd>Ctrl+X</kbd></button><button class="settings-command" data-settings-edit="copy"><span>复制</span><kbd>Ctrl+C</kbd></button>
+            <button class="settings-command" data-settings-edit="paste"><span>粘贴</span><kbd>Ctrl+V</kbd></button><button class="settings-command" data-settings-edit="selectAll"><span>全选</span><kbd>Ctrl+A</kbd></button>
+          </div></section>
+        </section>
+        <section id="settings-page-updates" class="settings-page" role="tabpanel" aria-labelledby="settings-tab-updates" data-settings-page="updates" hidden>
+          <h2>安装与升级</h2><section class="settings-section settings-card" id="settings-updates" data-desktop-only hidden><div class="settings-update-content"><p class="subtle" id="settings-update-status"></p><div class="settings-row"><button class="secondary-button" id="settings-install-update">安装升级包</button><button class="primary-button" id="settings-restart-update" hidden>重启完成升级</button></div><p class="subtle">选择下载的 Linux 升级包，校验文件需放在同一文件夹。</p></div></section>
+        </section>
+        <section id="settings-page-about" class="settings-page" role="tabpanel" aria-labelledby="settings-tab-about" data-settings-page="about" hidden>
+          <h2>关于</h2><section class="settings-section settings-card settings-product"><strong>作家工作台</strong><span>Writer's Desk</span><span class="settings-version" id="settings-version" data-desktop-only hidden></span></section>
+          <section class="settings-section settings-group" data-desktop-only hidden><h3>本机数据目录</h3><div class="settings-card"><div class="settings-row"><input class="settings-data-path text-field" id="settings-data-path" aria-label="本机数据目录" readonly><button class="text-button" id="settings-open-data" data-settings-action="openDataFolder"><span data-icon="folder"></span>打开文件夹</button></div></div></section>
+          <div class="settings-footer" data-desktop-only hidden><button id="settings-quit" class="text-button" data-settings-action="quit">退出作家工作台</button></div>
+        </section>
+      </div>
+    </div>
+  </div>
 </dialog>
 <input type="file" id="import-file" accept=".json,application/json" hidden><div class="toast" id="toast" role="status" hidden></div>
 </body></html>

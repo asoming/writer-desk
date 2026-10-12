@@ -222,13 +222,17 @@ function updateAppSettings(info={}){
   $('settings-fullscreen').textContent=T(appSettingsState.fullscreen?'退出全屏':'进入全屏');
   $('settings-fullscreen').setAttribute('aria-pressed',String(appSettingsState.fullscreen));
   const maximize=$('window-maximize'),label=T(appSettingsState.maximized?'还原窗口':'最大化');maximize.title=label;maximize.setAttribute('aria-label',label);maximize.querySelector('[data-icon]').innerHTML=svgIcon(appSettingsState.maximized?'restore':'maximize');
+  if(typeof syncSettingsLayout==='function')syncSettingsLayout();
 }
-async function showAppSettings(){
-  if(state.composing){toast(T('请先完成当前输入。'));return;}if(state.transitioning||$('dialog').open||$('settings-dialog').open)return;
+async function showAppSettings(page){
+  if(state.composing){toast(T('请先完成当前输入。'));return;}if(state.transitioning||$('dialog').open)return;
+  if($('settings-dialog').open){if(typeof selectSettingsPage==='function')selectSettingsPage(typeof page==='string'?page:undefined);return;}
   rememberSettingsEditor();settingsEditor=lastSettingsEditor?{...lastSettingsEditor}:null;settingsFocusRestored=false;
   $('settings-edit-actions').querySelectorAll('[data-settings-edit]').forEach(button=>{const saved=currentSettingsEditor();button.disabled=!saved||(saved.target.readOnly&&!['copy','selectAll'].includes(button.dataset.settingsEdit));});
   closeNav();updateAppSettings();$('settings-dialog').showModal();const request=++settingsRequest;
-  if(typeof buildContinuationSettings==='function')buildContinuationSettings();
+  if(typeof buildContinuationSettings==='function')Promise.resolve(buildContinuationSettings()).then(()=>{if(typeof syncSettingsLayout==='function')syncSettingsLayout();});
+  if(typeof syncSettingsLayout==='function')syncSettingsLayout();
+  if(typeof selectSettingsPage==='function')selectSettingsPage(typeof page==='string'?page:undefined);
   if(hasDesktopSettings())try{const info=await window.WriterDesktop.getAppSettings();if(request===settingsRequest&&$('settings-dialog').open)updateAppSettings(info);}catch(error){if(request===settingsRequest)toast(error.message||T('无法读取设置。'));}
 }
 function closeAppSettings(){
@@ -263,6 +267,7 @@ function bindAppSettingsEvents(){
   const native=hasDesktopSettings();document.body.classList.toggle('desktop-app',native);$('window-controls').hidden=!native;
   document.querySelectorAll('[data-desktop-only]').forEach(element=>{element.hidden=!native;});
   if(!native&&!document.fullscreenEnabled)$('settings-display').hidden=true;
+  if(typeof bindSettingsLayout==='function')bindSettingsLayout();
   document.addEventListener('focusin',event=>rememberSettingsEditor(event.target));document.addEventListener('selectionchange',()=>rememberSettingsEditor());document.addEventListener('input',event=>rememberSettingsEditor(event.target));
   $('open-settings').addEventListener('pointerdown',()=>rememberSettingsEditor());$('open-settings').addEventListener('click',showAppSettings);$('close-settings').addEventListener('click',closeAppSettings);
   $('settings-dialog').addEventListener('cancel',event=>{event.preventDefault();closeAppSettings();});
@@ -313,7 +318,7 @@ const activeOutline=()=>state.book?.outline.filter(o=>!o.deletedAt)||[];
 const people=()=>state.book?.notes.filter(n=>n.type==='人物'&&!n.deletedAt)||[];
 const currentOutline=()=>activeOutline().find(o=>o.id===state.outlineId);
 const currentPerson=()=>people().find(n=>n.id===state.personId);
-function svgIcon(name){const paths={settings:'M9 3h6l1 4 4 1v6l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0',minimize:'M5 12h14',maximize:'M5 5h14v14H5z',restore:'M8 8h11v11H8zM5 16V5h11',close:'M6 6l12 12M18 6 6 18',folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
+function svgIcon(name){const paths={sparkles:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM19 3v4M17 5h4',book:'M3 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-3H3zM21 4h-6a3 3 0 0 0-3 3v14a4 4 0 0 1 4-3h5z',shield:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6',keyboard:'M3 6h18v13H3zM7 10h.01M11 10h.01M15 10h.01M18 10h.01M7 13h.01M11 13h.01M15 13h.01M7 16h10',download:'M12 3v12M7 10l5 5 5-5M4 16v5h16v-5',info:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 11v6M12 7h.01',settings:'M9 3h6l1 4 4 1v6l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0',minimize:'M5 12h14',maximize:'M5 5h14v14H5z',restore:'M8 8h11v11H8zM5 16V5h11',close:'M6 6l12 12M18 6 6 18',folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
 async function refreshBooks(){const result=await api('/api/books');state.books=result.books.map(book=>({...book,kind:book.kind||'long'}));state.trashBookCount=Number.isSafeInteger(result.trashCount)?result.trashCount:0;renderTrashCount();}
 function clearBook(){clearTimeout(state.timer);state.book=null;state.chapterId=null;state.outlineId=null;state.personId=null;state.noteId=null;state.dirty=false;state.conflict=false;state.error=null;state.trail=null;$('error-banner').hidden=true;$('editor').disabled=true;$('chapter-title').disabled=true;$('book-name').textContent='';$('book-name').hidden=true;$('chapter-list').replaceChildren();renderTrashCount();saveStatus(T('本机保存'));document.title=T('作家工作台 · {0}书架',kindName());}
 async function loadKind(kind){
