@@ -11,7 +11,7 @@
 
 Linux 仍提供 `WriterDesk-0.5.0-linux-x64.tar.gz`，供既有用户使用本机离线升级器。
 
-Windows 安装向导可选择安装位置和快捷方式；卸载保留作品数据。Mac 打开 DMG 后，将 App 拖到 Applications，再从 Applications 启动，升级时先保存退出旧版。Mac 的最低系统要求依据 [Electron 44 支持范围](https://www.electronjs.org/blog/electron-44-0)。
+Windows 安装向导可选择安装位置，安装后创建桌面与开始菜单入口；卸载保留作品数据。Mac 打开 DMG 后，将 App 拖到 Applications，再从 Applications 启动，升级时先保存退出旧版。Mac 的最低系统要求依据 [Electron 44 支持范围](https://www.electronjs.org/blog/electron-44-0)。
 
 本轮是未配置发布者证书的测试发行。Windows 安装包未作 Authenticode 签名；Mac 使用本机临时签名，未作 Developer ID 签名和 Apple 公证。测试机能够启动，不代表下载后已通过 Gatekeeper 或 SmartScreen。公开分发前需接入相应证书，并在下载的新副本上验证系统检查。[Apple 的 App 打开与安全说明](https://support.apple.com/en-gb/102445)解释了签名与公证的作用。
 
