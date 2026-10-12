@@ -1122,6 +1122,8 @@ class Handler(BaseHTTPRequestHandler):
                 files["/panel-resize.css"] = "panel-resize.css"
                 files["/settings.js"] = "settings.js"
                 files["/settings.css"] = "settings.css"
+                files["/theme.js"] = "theme.js"
+                files["/theme.css"] = "theme.css"
                 filename = files.get(path)
                 if not filename:
                     self.send_json({"error": "找不到这个页面"}, 404)

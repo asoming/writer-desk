@@ -132,6 +132,7 @@ function renderAtlas(){
   list.forEach(person=>{
     const box=positions.get(person.id);if(!box)return;const color=atlasColor(person),outside=state.graphGroup&&(person.profile.group||T('未分组'))!==state.graphGroup;
     const node=svgElement('g',{class:'graph-node'+(person.id===state.personId?' selected':'')+(focus&&!neighbors.has(person.id)?' dimmed':'')+(outside?' context-node':''),role:'button',tabindex:0,'aria-label':T('查看人物 ')+(person.title||T('未命名人物'))});
+    node.style.setProperty('--group-color',color);
     node.append(svgElement('title',{},person.title),svgElement('rect',{x:box.x-box.width/2,y:box.y-box.height/2,width:box.width,height:box.height,rx:10,class:'person-node-card',style:'stroke:'+color}),svgElement('rect',{x:box.x-box.width/2+1,y:box.y-box.height/2+12,width:4,height:box.height-24,rx:2,fill:color}),svgElement('text',{x:box.x,y:box.y-4,'text-anchor':'middle',style:'fill:'+color},Array.from(person.title||T('未命名')).slice(0,9).join('')),svgElement('text',{x:box.x,y:box.y+19,'text-anchor':'middle',class:'node-meta'},person.profile.group||T('未分组')));
     graphActivate(node,()=>selectAtlasPerson(person.id));graph.append(node);
   });

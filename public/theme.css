@@ -1,0 +1,105 @@
+/* Theme tokens are optional: light keeps each surface's original fallback color. */
+html[data-theme=dark]{
+  color-scheme:dark;
+  --theme-ink:#e3e8f0;
+  --theme-muted:#afbacb;
+  --theme-faint:#a0adbf;
+  --theme-surface:#20252e;
+  --theme-surface-soft:#252c36;
+  --theme-bg:#171c23;
+  --theme-panel:#1b2028;
+  --theme-hover:#2d3745;
+  --theme-selected:#283b58;
+  --theme-line:#37414f;
+  --theme-line-soft:#303946;
+  --theme-line-strong:#566e90;
+  --theme-accent:#9bbcff;
+  --theme-accent-fill:#3967c9;
+  --theme-link:#a5bad8;
+  --theme-graph-dot:#3c4656;
+  --theme-danger:#eea2a2;
+  --theme-danger-fill:#a9494f;
+  --theme-danger-fill-hover:#983d43;
+  --theme-focus-tint:#9bbcff14;
+  --theme-danger-bg:#39282c;
+  --theme-danger-border:#70464b;
+  --theme-warning:#e9c88e;
+  --theme-warning-bg:#3b3224;
+  --theme-warning-border:#6c5938;
+  --blue:var(--theme-accent-fill);
+}
+html[data-eye-comfort=true]{
+  --theme-ink:#3e3b34;
+  --theme-muted:#676154;
+  --theme-faint:#6c6558;
+  --theme-surface:#faf6ed;
+  --theme-surface-soft:#f5f0e5;
+  --theme-bg:#efeadd;
+  --theme-panel:#f3eee2;
+  --theme-hover:#eae3d4;
+  --theme-selected:#e4e7e7;
+  --theme-line:#ded6c7;
+  --theme-line-soft:#e8e1d3;
+  --theme-line-strong:#b5bbc4;
+  --theme-accent:#446196;
+  --theme-accent-fill:#526faf;
+  --theme-link:#5c6e87;
+  --theme-graph-dot:#d3cbbb;
+  --theme-danger:#a94d4d;
+  --theme-danger-fill:#aa4b45;
+  --theme-danger-fill-hover:#993f39;
+  --theme-focus-tint:#44619614;
+  --theme-danger-bg:#f6e9e3;
+  --theme-danger-border:#ddc1b6;
+  --theme-warning:#82602a;
+  --theme-warning-bg:#f5ebd7;
+  --theme-warning-border:#e0cfab;
+  --blue:var(--theme-accent-fill);
+}
+html[data-theme=dark][data-eye-comfort=true]{
+  --theme-ink:#e7e0d4;
+  --theme-muted:#bdb3a3;
+  --theme-faint:#b0a694;
+  --theme-surface:#272622;
+  --theme-surface-soft:#2e2c26;
+  --theme-bg:#1e1d1a;
+  --theme-panel:#22211e;
+  --theme-hover:#38352e;
+  --theme-selected:#343d4a;
+  --theme-line:#464237;
+  --theme-line-soft:#3b382f;
+  --theme-line-strong:#6b6d70;
+  --theme-accent:#adc0e2;
+  --theme-accent-fill:#526fa2;
+  --theme-link:#bdc7d8;
+  --theme-graph-dot:#474338;
+  --theme-danger:#e3a493;
+  --theme-danger-fill:#a35243;
+  --theme-danger-fill-hover:#914638;
+  --theme-focus-tint:#adc0e214;
+  --theme-danger-bg:#3d2e28;
+  --theme-danger-border:#735043;
+  --theme-warning:#ddc496;
+  --theme-warning-bg:#3b3224;
+  --theme-warning-border:#6c5938;
+}
+html[data-theme=dark],html[data-eye-comfort=true]{
+  scrollbar-color:var(--theme-line-strong) var(--theme-panel);
+}
+html[data-theme=dark] .profile-tags>span{
+  color:color-mix(in srgb,var(--group-color) 60%,white);
+}
+html[data-theme=dark] .atlas-workspace .graph-node text:not(.node-meta){
+  fill:color-mix(in srgb,var(--group-color) 60%,white)!important;
+}
+/* The control stays beside the save state and uses the same quiet toolbar rhythm. */
+#theme-toggle{display:inline-grid;place-items:center;width:32px;height:32px;min-width:32px;min-height:32px;padding:6px;border-radius:6px;color:var(--muted);line-height:1;flex:none}
+#theme-toggle:hover{background:var(--theme-hover,#f0f4f9);color:var(--ink)}
+#theme-toggle [data-icon]{display:inline-flex}
+#theme-toggle svg{width:16px;height:16px;stroke-width:1.6}
+.settings-row #eye-comfort{appearance:none;position:relative;width:34px;height:20px;margin:0;flex:none;border:1px solid var(--theme-line-strong,#cdd5e1);border-radius:12px;background:var(--theme-hover,#d8dee8);cursor:pointer}
+.settings-row #eye-comfort::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0002}
+.settings-row #eye-comfort:checked{background:var(--theme-accent-fill,#4b65d9);border-color:var(--theme-accent-fill,#4b65d9)}
+.settings-row #eye-comfort:checked::after{left:16px}
+@media(max-width:540px){#theme-toggle{width:30px;height:30px;min-width:30px;min-height:30px}}
+@media(forced-colors:active){.settings-row #eye-comfort{appearance:auto}.settings-row #eye-comfort::after{display:none}}
