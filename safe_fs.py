@@ -16,6 +16,58 @@ def __getattr__(name):
     return getattr(_os, name)
 
 
+def _close_pinned_descriptor(descriptor, closer, parents):
+    # Remove ownership while the CRT descriptor is still open. Closing it can
+    # immediately let another thread reuse this integer for a different file.
+    parent = parents.pop(descriptor, None)
+    try:
+        closer(descriptor)
+    finally:
+        if parent is not None:
+            parent._release()
+
+
+class _PinnedFile:
+    def __init__(self, stream, parent):
+        self._stream, self._parent = stream, parent
+
+    def _release(self):
+        parent, self._parent = self._parent, None
+        if parent is not None:
+            parent._release()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+    def __iter__(self):
+        return iter(self._stream)
+
+    def __enter__(self):
+        self._stream.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        try:
+            return self._stream.__exit__(*args)
+        finally:
+            self._release()
+
+    def close(self):
+        try:
+            self._stream.close()
+        finally:
+            self._release()
+
+    def __del__(self):
+        self.close()
+
+
+def _pin_stream(stream, descriptor, parents):
+    # The wrapper owns this exact parent object, never a reusable descriptor ID.
+    parent = parents.pop(descriptor, None)
+    return _PinnedFile(stream, parent) if parent is not None else stream
+
+
 if _os.name == "nt":
     import ctypes
     from ctypes import wintypes
@@ -157,11 +209,6 @@ if _os.name == "nt":
 
     _file_parents = {}
 
-    def _release_file_parent(descriptor):
-        parent = _file_parents.pop(descriptor, None)
-        if parent is not None:
-            parent._release()
-
     def open(path, flags, mode=0o777, *, dir_fd=None):
         if flags & O_DIRECTORY:
             return _open_directory(path, dir_fd)
@@ -214,49 +261,11 @@ if _os.name == "nt":
         if isinstance(descriptor, _DirectoryHandle):
             descriptor._release()
         else:
-            try:
-                _os.close(descriptor)
-            finally:
-                _release_file_parent(descriptor)
-
-    class _PinnedFile:
-        def __init__(self, stream, descriptor):
-            self._stream, self._descriptor = stream, descriptor
-            self._released = False
-
-        def _release(self):
-            if not self._released:
-                self._released = True
-                _release_file_parent(self._descriptor)
-
-        def __getattr__(self, name):
-            return getattr(self._stream, name)
-
-        def __iter__(self):
-            return iter(self._stream)
-
-        def __enter__(self):
-            self._stream.__enter__()
-            return self
-
-        def __exit__(self, *args):
-            try:
-                return self._stream.__exit__(*args)
-            finally:
-                self._release()
-
-        def close(self):
-            try:
-                self._stream.close()
-            finally:
-                self._release()
-
-        def __del__(self):
-            self.close()
+            _close_pinned_descriptor(descriptor, _os.close, _file_parents)
 
     def fdopen(descriptor, *args, **kwargs):
         stream = _os.fdopen(descriptor, *args, **kwargs)
-        return _PinnedFile(stream, descriptor) if descriptor in _file_parents and kwargs.get("closefd", True) else stream
+        return _pin_stream(stream, descriptor, _file_parents) if kwargs.get("closefd", True) else stream
 
     def fstat(descriptor):
         if isinstance(descriptor, _DirectoryHandle):

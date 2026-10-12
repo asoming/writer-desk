@@ -1,5 +1,6 @@
 """Data protection against disposable databases; no user library is accessed."""
 import copy
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -51,6 +52,40 @@ class ProtectionTests(unittest.TestCase):
         with server.connect() as conn:
             row = server.saved_book_row(conn, self.book["id"])
             return server.book_result(row)
+
+    def test_connection_context_commits_or_rolls_back_and_closes_without_gc(self):
+        committed = server.connect()
+        with committed:
+            committed.execute("CREATE TABLE lifetime_fixture(value TEXT)")
+            committed.execute("INSERT INTO lifetime_fixture VALUES('committed')")
+        with self.assertRaises(sqlite3.ProgrammingError):
+            committed.execute("SELECT 1")
+        rolled_back = server.connect()
+        with self.assertRaisesRegex(RuntimeError, "simulated"):
+            with rolled_back:
+                rolled_back.execute("INSERT INTO lifetime_fixture VALUES('rolled back')")
+                raise RuntimeError("simulated transaction failure")
+        with self.assertRaises(sqlite3.ProgrammingError):
+            rolled_back.execute("SELECT 1")
+        with server.connect() as checked:
+            self.assertEqual([row[0] for row in checked.execute("SELECT value FROM lifetime_fixture")], ["committed"])
+        # Keep all connection objects alive: Windows still must allow rename.
+        moved = server.DB_PATH.with_suffix(".closed.sqlite3")
+        server.DB_PATH.rename(moved)
+        moved.rename(server.DB_PATH)
+
+    def test_connection_closes_even_when_commit_fails(self):
+        with server.connect() as setup:
+            setup.execute("CREATE TABLE lifetime_parent(id INTEGER PRIMARY KEY)")
+            setup.execute("CREATE TABLE lifetime_child(parent INTEGER REFERENCES lifetime_parent(id) DEFERRABLE INITIALLY DEFERRED)")
+        rejected = server.connect()
+        with self.assertRaises(sqlite3.IntegrityError):
+            with rejected:
+                rejected.execute("INSERT INTO lifetime_child VALUES(123)")
+        with self.assertRaises(sqlite3.ProgrammingError):
+            rejected.execute("SELECT 1")
+        with server.connect() as checked:
+            self.assertEqual(checked.execute("SELECT count(*) FROM lifetime_child").fetchone()[0], 0)
 
     def test_defaults_settings_and_per_book_throttle_persist(self):
         self.assertEqual(server.read_protection("/api/protection/settings")["settings"], protection.DEFAULTS)
@@ -214,7 +249,7 @@ class ProtectionApiTests(unittest.TestCase):
                 self.assertEqual(restored["book"], original["book"])
                 self.assertEqual(restored["revision"], 3)
                 self.assertEqual(request(path + "/backups/" + backup["token"] + "/restore", "POST", {"revision": 3})["book"], book)
-                with sqlite3.connect(Path(directory) / "writer.sqlite3") as conn:
+                with closing(sqlite3.connect(Path(directory) / "writer.sqlite3")) as conn, conn:
                     self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
             finally:
                 process.terminate()

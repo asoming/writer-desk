@@ -1,5 +1,6 @@
 """Verify one-time demo seeding only against disposable SQLite databases."""
 import copy
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -37,7 +38,7 @@ class DefaultDemoTests(unittest.TestCase):
 
     def legacy_library(self, books):
         """Create the pre-migration schema with authored revisions/history."""
-        with sqlite3.connect(self.db) as conn:
+        with closing(sqlite3.connect(self.db)) as conn, conn:
             conn.execute("CREATE TABLE books(id TEXT PRIMARY KEY,title TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)")
             conn.execute("CREATE TABLE history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
             for index, book in enumerate(books):
@@ -46,12 +47,12 @@ class DefaultDemoTests(unittest.TestCase):
                 conn.execute("INSERT INTO history(book_id,revision,payload,saved_at) VALUES(?,?,?,?)", (book["id"], 3, payload, "history-original"))
 
     def snapshot(self):
-        with sqlite3.connect(self.db) as conn:
+        with closing(sqlite3.connect(self.db)) as conn, conn:
             return (dict((row[0], row) for row in conn.execute("SELECT id,title,payload,revision,created_at,updated_at FROM books")),
                     list(conn.execute("SELECT * FROM history ORDER BY id")))
 
     def marker_count(self):
-        with sqlite3.connect(self.db) as conn:
+        with closing(sqlite3.connect(self.db)) as conn, conn:
             return conn.execute("SELECT count(*) FROM app_migrations WHERE name=?", (server.DEFAULT_EXAMPLE_MIGRATION,)).fetchone()[0]
 
     def demos(self):
@@ -107,7 +108,7 @@ class DefaultDemoTests(unittest.TestCase):
         damaged = server.new_book("受损旧行仍保留")
         damaged["chapters"] = [{"id": [], "body": "不能被覆盖的旧数据"}]
         self.legacy_library([damaged])
-        with sqlite3.connect(self.db) as conn:
+        with closing(sqlite3.connect(self.db)) as conn, conn:
             conn.execute("INSERT INTO books(id,title,payload,revision,created_at,updated_at) VALUES(?,?,?,?,?,?)", ("invalid-json", "原始损坏行", "{not-json", 9, "old-created", "old-updated"))
         before = self.snapshot()
         server.initialize()
@@ -163,7 +164,7 @@ class DefaultDemoTests(unittest.TestCase):
             server.initialize()
         self.assertEqual(self.snapshot(), initial)
         demo, = self.demos()
-        with sqlite3.connect(self.db) as conn:
+        with closing(sqlite3.connect(self.db)) as conn, conn:
             conn.execute("DELETE FROM books WHERE id=?", (demo["id"],))
         after_removal = self.snapshot()
         server.initialize()
@@ -194,7 +195,7 @@ class DefaultDemoTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "模拟示例写入中断"):
                 server.initialize()
         self.assertEqual(self.snapshot(), before)
-        with sqlite3.connect(self.db) as conn:
+        with closing(sqlite3.connect(self.db)) as conn, conn:
             self.assertIsNone(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_migrations'").fetchone())
         server.initialize()
         self.assert_preserved(before)

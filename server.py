@@ -3,7 +3,7 @@
 import argparse
 import base64
 import binascii
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import errno
 import hashlib
 import json
@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from types import SimpleNamespace
 from urllib.parse import unquote, urlparse
 import protection
@@ -236,12 +237,28 @@ def sample_short():
     return upgrade_book(book)
 
 
+class StorageConnection(sqlite3.Connection):
+    """A request transaction owns its connection until the with block exits."""
+    def __exit__(self, *args):
+        try:
+            return super().__exit__(*args)
+        finally:
+            # sqlite3.Connection's default context manager never closes it.
+            # Explicit closure avoids accumulating handles until cyclic GC and
+            # releases the database/WAL files immediately on Windows.
+            self.close()
+
+
 def connect():
-    conn = sqlite3.connect(DB_PATH, timeout=15)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA secure_delete=ON")
-    return conn
+    conn = sqlite3.connect(DB_PATH, timeout=15, factory=StorageConnection)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA secure_delete=ON")
+        return conn
+    except BaseException:
+        conn.close()
+        raise
 
 
 def insert_book(conn, book):
@@ -1378,6 +1395,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "暂时无法保存，编辑内容仍留在本页。请重试或下载备份。"}, 500)
 
 
+class LocalHTTPServer(ThreadingHTTPServer):
+    """The loopback-only service must not wait for reverse DNS at startup."""
+    def server_bind(self):
+        TCPServer.server_bind(self)
+        self.server_name = "localhost"
+        self.server_port = self.server_address[1]
+
+
 def main():
     global DB_PATH
     parser = argparse.ArgumentParser(description="启动作家工作台 / Writer's Desk")
@@ -1396,10 +1421,10 @@ def main():
             DB_PATH.parent.mkdir(parents=True, exist_ok=True)
             temporary = DB_PATH.with_suffix(".migration.sqlite3")
             try:
-                with sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True) as old:
+                with closing(sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)) as old:
                     if not old.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='books'").fetchone():
                         continue
-                    with sqlite3.connect(temporary) as fresh:
+                    with closing(sqlite3.connect(temporary)) as fresh:
                         old.backup(fresh)
                 temporary.replace(DB_PATH)
                 print("已复制旧版作品库，原数据库仍保留。", file=sys.stderr, flush=True)
@@ -1409,7 +1434,7 @@ def main():
                     temporary.unlink()
     initialize()
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        server = LocalHTTPServer(("127.0.0.1", args.port), Handler)
     except OSError as exc:
         print(f"无法启动: {exc}\n可使用 --port 8766 指定其他端口。", file=sys.stderr)
         sys.exit(1)

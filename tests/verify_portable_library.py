@@ -26,7 +26,16 @@ def verify(service=None):
     with tempfile.TemporaryDirectory(prefix="writer-native-library-") as temporary:
         data = Path(temporary).resolve() / "data"
         token = uuid.uuid4().hex
-        command = [str(service)] if service else [sys.executable, str(ROOT / "server.py")]
+        # Keep a stack trace when a native runner blocks before WRITER_READY.
+        # runpy changes only the test launcher, not the shipped service.
+        diagnostic_launcher = (
+            "import faulthandler,runpy,sys; "
+            "faulthandler.dump_traceback_later(15); "
+            "sys.argv=sys.argv[1:]; "
+            "runpy.run_path(sys.argv[0],run_name='__main__')"
+        )
+        command = ([str(service)] if service else
+                   [sys.executable, "-u", "-c", diagnostic_launcher, str(ROOT / "server.py")])
         command += ["--desktop", "--port", "0", "--data-dir", str(data)]
         env = {**os.environ, "WRITER_DESKTOP_TOKEN": token, "PYTHONUTF8": "1"}
         with open(Path(temporary) / "service.log", "w+b") as errors:
@@ -103,8 +112,11 @@ def verify(service=None):
                 assert process.returncode == 0, process.returncode
                 print("Native library verified: assets, save, backup, folder, images, history, restore, purge and EOF shutdown")
             except BaseException:
+                print(f"Native service failure: pid={process.pid}, exit={process.poll()}, executable={command[0]}",
+                      file=sys.stderr, flush=True)
                 errors.seek(0)
-                print(errors.read().decode("utf-8", errors="replace")[-6000:], file=sys.stderr)
+                diagnostic = errors.read().decode("utf-8", errors="replace")[-12000:]
+                print(diagnostic or "Native service stderr is empty.", file=sys.stderr, flush=True)
                 raise
             finally:
                 if process.poll() is None:

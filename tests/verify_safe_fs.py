@@ -12,6 +12,79 @@ sys.path.insert(0, str(ROOT))
 import safe_fs
 
 
+class DescriptorOwnershipTests(unittest.TestCase):
+    class Parent:
+        def __init__(self):
+            self.releases = 0
+
+        def _release(self):
+            self.releases += 1
+
+    def test_descriptor_close_cannot_release_a_reused_descriptors_parent(self):
+        old, new = self.Parent(), self.Parent()
+        parents = {7: old}
+
+        def close_and_reuse(descriptor):
+            self.assertEqual(descriptor, 7)
+            self.assertNotIn(7, parents, "Ownership must be detached before the CRT close")
+            self.assertEqual(old.releases, 0, "Ancestors stay pinned throughout close")
+            parents[7] = new  # Another thread immediately receives this integer.
+
+        safe_fs._close_pinned_descriptor(7, close_and_reuse, parents)
+        self.assertIs(parents[7], new)
+        self.assertEqual(old.releases, 1)
+        self.assertEqual(new.releases, 0)
+
+    def test_stream_exit_and_close_keep_their_exact_parent_after_descriptor_reuse(self):
+        for operation in ("close", "context"):
+            with self.subTest(operation=operation):
+                old, new = self.Parent(), self.Parent()
+                parents = {7: old}
+                test = self
+
+                class ReusingStream:
+                    closed = False
+
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *args):
+                        self.close()
+
+                    def close(self):
+                        if not self.closed:
+                            self.closed = True
+                            test.assertNotIn(7, parents)
+                            test.assertEqual(old.releases, 0)
+                            parents[7] = new
+
+                stream = safe_fs._pin_stream(ReusingStream(), 7, parents)
+                self.assertNotIn(7, parents, "The stream now owns the parent directly")
+                if operation == "context":
+                    with stream:
+                        self.assertEqual(old.releases, 0)
+                else:
+                    stream.close()
+                stream.close()  # Includes the later destructor's idempotent path.
+                self.assertIs(parents[7], new)
+                self.assertEqual(old.releases, 1)
+                self.assertEqual(new.releases, 0)
+
+    def test_failed_close_still_releases_only_the_original_parent(self):
+        old, new = self.Parent(), self.Parent()
+        parents = {7: old}
+
+        def fail_and_reuse(descriptor):
+            parents[descriptor] = new
+            raise OSError("simulated close failure")
+
+        with self.assertRaises(OSError):
+            safe_fs._close_pinned_descriptor(7, fail_and_reuse, parents)
+        self.assertIs(parents[7], new)
+        self.assertEqual(old.releases, 1)
+        self.assertEqual(new.releases, 0)
+
+
 class SafeStorageTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="writer-safe-fs-")
