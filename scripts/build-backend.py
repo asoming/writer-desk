@@ -4,9 +4,9 @@ import os
 import json
 from pathlib import Path
 import platform
-import shutil
 import subprocess
 import sys
+from native_bundle import copy_service_bundle
 
 root = Path(__file__).resolve().parents[1]
 python = os.environ.get("WRITER_DESK_BUILD_PYTHON", sys.executable)
@@ -23,9 +23,7 @@ for extra in ("sample-library.py", "sample_library.py"):
 command += [str(root / "server.py")]
 subprocess.run(command, cwd=root, check=True)
 target = build / "backend"
-if target.exists():
-    shutil.rmtree(target)
-shutil.copytree(build / "service-dist" / "writer-service", target)
+copy_service_bundle(build / "service-dist" / "writer-service", target, sys.platform)
 machine = platform.machine().lower()
 arch = {"x86_64": "x64", "amd64": "x64", "arm64": "arm64", "aarch64": "arm64"}.get(machine)
 if arch is None:

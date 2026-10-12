@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise only disposable data with the packaged native service and desktop."""
 import argparse
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -160,7 +161,7 @@ def desktop_smoke(executable, data):
     try:
         process.until(lambda line: "Desktop window loaded; local storage service is ready." in line)
         database = data / "data/writer.sqlite3"
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection:
             assert connection.execute("select count(*) from books").fetchone()[0] >= 3
         return ["native Electron window loaded", "packaged child service", "isolated desktop data seeded"]
     finally:
