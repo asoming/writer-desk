@@ -456,7 +456,8 @@ function showRelation(relation=null){
 }
 function bindPlanningEvents(){
   $('nav-shelf').addEventListener('click',()=>showCollection('shelf'));$('nav-outline').addEventListener('click',()=>navigate('outline'));$('nav-people').addEventListener('click',()=>navigate('people'));
-  ['long','short'].forEach(kind=>{$('nav-write-'+kind).addEventListener('click',()=>navigate('write',kind));$('shelf-'+kind).addEventListener('click',()=>showCollection('shelf',kind));});
+  $('nav-write').addEventListener('click',()=>navigate('write'));
+  ['long','short'].forEach(kind=>$('shelf-'+kind).addEventListener('click',()=>showCollection('shelf',kind)));
   $('new-book').addEventListener('click',()=>showBookName(false));$('empty-new-book').addEventListener('click',()=>showBookName(false));
   $('toggle-nav').addEventListener('click',()=>{$('workspace').classList.add('nav-open');$('nav-backdrop').hidden=false;});$('close-nav').addEventListener('click',closeNav);$('nav-backdrop').addEventListener('click',closeNav);
   $('add-outline').addEventListener('click',()=>showNewOutline());$('outline-child').addEventListener('click',()=>showNewOutline(state.outlineId));$('trash-outline').addEventListener('click',()=>confirmTrash('outline'));

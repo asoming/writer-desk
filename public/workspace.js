@@ -57,12 +57,11 @@ function renderWorkspaceShell(){
   const missing=!state.book&&state.view!=='shelf';
   ['shelf','outline','people','write'].forEach(view=>{$(view+'-view').hidden=missing||state.view!==view;});
   $('no-book').hidden=!missing;$('no-book-title').textContent=T('还没有{0}作品',kindName());$('empty-new-book').textContent=T('＋ 新建{0}',kindName());
-  const names={shelf:T('书架'),outline:T('故事大纲'),people:T('人物脉络'),write:T('{0}写作台',kindName())};
+  const names={shelf:T('书架'),outline:T('故事大纲'),people:T('人物脉络'),write:T('写作')};
   $('page-title').textContent=names[state.view];$('book-name').textContent=state.book?.title||'';$('book-name').hidden=state.view==='shelf'||!state.book;
   document.title=state.view==='shelf'?T('作家工作台 · {0}书架',kindName()):(state.book?.title||'')+T(' · 作家工作台');
   if(state.book)renderStats();else renderTrashCount();
-  ['shelf','outline','people'].forEach(view=>{const active=state.view===view;$('nav-'+view).classList.toggle('active',active);$('nav-'+view).setAttribute('aria-current',active?'page':'false');});
-  ['long','short'].forEach(kind=>{const active=state.view==='write'&&state.kind===kind;$('nav-write-'+kind).classList.toggle('active',active);$('nav-write-'+kind).setAttribute('aria-current',active?'page':'false');});
+  ['shelf','outline','people','write'].forEach(view=>{const active=state.view===view;$('nav-'+view).classList.toggle('active',active);$('nav-'+view).setAttribute('aria-current',active?'page':'false');});
   $('link-current-chapter').disabled=!currentChapter();$('backlinks-edit').disabled=!currentChapter();$('toggle-notes').hidden=state.view!=='write'||missing;$('toggle-focus').hidden=state.view!=='write'||missing||!currentChapter();$('open-trash').disabled=false;
   $('chapter-list-label').textContent=state.kind==='short'?T('正文'):T('卷与章节');$('add-volume').hidden=state.kind==='short';
   $('sidebar').hidden=state.kind==='short';$('toggle-sidebar').hidden=state.kind==='short';$('add-chapter').hidden=state.kind==='short';$('write-view').classList.toggle('short-manuscript',state.kind==='short');
@@ -79,8 +78,8 @@ function renderCollection(){
   ['long','short'].forEach(kind=>{$('shelf-'+kind).classList.toggle('active',state.kind===kind);$('shelf-'+kind).setAttribute('aria-pressed',String(state.kind===kind));$(kind+'-count').textContent=state.books.filter(b=>b.kind===kind).length;});
   const grid=$('shelf-grid');grid.replaceChildren();
   books.forEach(book=>{
-    const card=el('article','shelf-book'),coverButton=action('','cover-open',()=>openBook(book.id,'outline'));coverButton.setAttribute('aria-label',T('打开')+book.title);coverButton.append(buildBookCover(book));
-    const info=el('div','shelf-book-info'),titleButton=action(book.title,'shelf-book-title',()=>openBook(book.id,'outline'));
+    const card=el('article','shelf-book'),coverButton=action('','cover-open',()=>openBook(book.id,'write'));coverButton.setAttribute('aria-label',T('打开')+book.title);coverButton.append(buildBookCover(book));
+    const info=el('div','shelf-book-info'),titleButton=action(book.title,'shelf-book-title',()=>openBook(book.id,'write'));
     const meta=book.kind==='short'?T`${book.charCount.toLocaleString()} 字`:T`${book.volumeCount||0} 卷 · ${book.chapterCount} 章 · ${book.charCount.toLocaleString()} 字`;
     info.append(titleButton);if(book.kind==='long')info.append(el('p','shelf-book-progress',book.latestChapterTitle?T('最近章节：')+book.latestChapterTitle:T('构思中')));
     const bottom=el('div','shelf-book-bottom');bottom.append(el('span',null,meta));

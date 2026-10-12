@@ -229,9 +229,11 @@ function navigationHarness() {
 (async () => {
   await checkAsync('removed book switcher IDs are absent and all navigation listeners bind against the real HTML IDs', async () => {
     const h = navigationHarness();
-    for (const id of ['open-library', 'book-context', 'context-book', 'context-outline', 'context-people', 'context-write', 'context-count', 'book-kind', 'book-meta', 'breadcrumb', 'mobile-context', 'page-kicker']) {
+    for (const id of ['open-library', 'book-context', 'context-book', 'context-outline', 'context-people', 'context-write', 'context-count', 'book-kind', 'book-meta', 'breadcrumb', 'mobile-context', 'page-kicker', 'nav-write-long', 'nav-write-short']) {
       assert.equal(h.htmlIds.has(id), false, `Removed switcher/header element ${id} must not remain in the real UI`);
     }
+    assert.ok(h.htmlIds.has('nav-write'), 'There is one writing entry for the selected book');
+    assert.equal(typeof h.get('nav-write').listeners.click, 'function');
     assert.ok(h.htmlIds.has('book-name'));
     assert.ok(h.htmlIds.has('outline-breadcrumbs'), 'Outline node navigation is independent of the removed book switcher');
     h.run("renderOutline=()=>{};renderPeople=()=>{};renderShelf=()=>{};selectChapter=()=>{};renderBacklinks=()=>{};state.view='outline';renderWorkspaceShell();state.view='shelf';renderWorkspaceShell();");
@@ -239,7 +241,7 @@ function navigationHarness() {
 
   await checkAsync('left workspace navigation keeps the current book; shelf and legacy library action share one book selection surface', async () => {
     const h = navigationHarness(); h.state.view = 'write';
-    for (const [id, view] of [['nav-outline', 'outline'], ['nav-people', 'people'], ['nav-write-long', 'write'], ['nav-shelf', 'shelf']]) {
+    for (const [id, view] of [['nav-outline', 'outline'], ['nav-people', 'people'], ['nav-write', 'write'], ['nav-shelf', 'shelf']]) {
       await h.get(id).listeners.click();
       assert.equal(h.state.view, view, id); assert.equal(h.state.book.id, 'book-one', `${id} must not open another book`);
     }
@@ -249,26 +251,53 @@ function navigationHarness() {
     assert.ok(h.context.navRequests.every(request => request === '/api/books'), 'Navigation may refresh shelf summaries but must not fetch an implicit book');
   });
 
-  await checkAsync('cross-kind writing and shelf tabs wait for explicit cover selection even when another kind already has books', async () => {
+  await checkAsync('one writing entry keeps both long and short selections without fetching another book', async () => {
+    for (const kind of ['long', 'short']) {
+      const h = navigationHarness(); h.state.kind = kind; h.state.book.kind = kind;
+      h.state.book.id = kind === 'long' ? 'book-one' : 'book-short'; h.state.view = 'outline';
+      const selected = h.state.book, before = JSON.stringify(selected);
+      await h.get('nav-write').listeners.click();
+      assert.equal(h.state.view, 'write'); assert.equal(h.state.kind, kind); assert.equal(h.state.book, selected);
+      assert.equal(JSON.stringify(h.state.book), before, 'Entering writing must preserve all existing prose and planning');
+      assert.equal(h.context.navRequests.length, 0, 'The common writing entry acts on the selected book');
+      h.run('renderStats=()=>{};renderOutline=()=>{};renderBacklinks=()=>{};selectChapter=()=>{};ensureShortManuscript=()=>activeChapters()[0];renderWorkspaceShell()');
+      assert.equal(h.get('nav-write').attributes['aria-current'], 'page');
+      assert.equal(h.get('nav-outline').attributes['aria-current'], 'false');
+      assert.equal(h.get('page-title').textContent, '写作', 'The writing header is shared across book kinds');
+      h.state.view='outline';h.run('renderWorkspaceShell()');
+      assert.equal(h.get('nav-write').attributes['aria-current'], 'false');
+      assert.equal(h.get('nav-outline').attributes['aria-current'], 'page');
+    }
+  });
+
+  await checkAsync('shelf kind tabs clear the previous selection and writing waits for explicit cover selection', async () => {
     const h = navigationHarness(); h.state.view = 'write';
-    await h.get('nav-write-short').listeners.click();
+    await h.get('shelf-short').listeners.click();
     assert.equal(h.state.kind, 'short'); assert.equal(h.state.view, 'shelf'); assert.equal(h.state.book, null);
     assert.equal(h.state.collection, null);
-    await h.get('nav-people').listeners.click();
-    assert.equal(h.state.view, 'shelf'); assert.equal(h.state.kind, 'short'); assert.equal(h.state.book, null);
+    for (const entry of ['nav-write', 'nav-people']) {
+      await h.get(entry).listeners.click();
+      assert.equal(h.state.view, 'shelf'); assert.equal(h.state.kind, 'short'); assert.equal(h.state.book, null);
+    }
     await h.get('shelf-long').listeners.click();
+    assert.equal(h.state.kind, 'long'); assert.equal(h.state.view, 'shelf'); assert.equal(h.state.book, null);
+    await h.get('nav-write').listeners.click();
     assert.equal(h.state.kind, 'long'); assert.equal(h.state.view, 'shelf'); assert.equal(h.state.book, null);
     assert.ok(h.context.navRequests.every(request => request === '/api/books'), 'Available last/first books cannot be opened by a kind tab');
   });
 
-  await checkAsync('empty-kind navigation and a failed save never silently switch or discard the current work', async () => {
-    const h = navigationHarness(); h.state.view = 'write'; h.context.navBooks = h.context.navBooks.filter(item => item.kind === 'long');
+  await checkAsync('failed saving blocks the common writing entry and shelf kind switches while retaining dirty text', async () => {
+    const h = navigationHarness(); h.state.view = 'outline'; h.state.dirty = true;
+    h.state.book.chapters[0].body = '这段未保存的正文必须保留。';
+    const selected = h.state.book, before = JSON.stringify(selected), seq = h.state.seq;
     h.run('requireSaved=async()=>false');
-    await h.get('nav-write-short').listeners.click();
-    assert.equal(h.state.book.id, 'book-one'); assert.equal(h.state.kind, 'long'); assert.equal(h.state.view, 'write');
+    for (const entry of ['nav-write', 'shelf-short']) {
+      await h.get(entry).listeners.click();
+      assert.equal(h.state.book, selected); assert.equal(h.state.kind, 'long'); assert.equal(h.state.view, 'outline');
+      assert.equal(h.state.dirty, true); assert.equal(JSON.stringify(h.state.book), before); assert.equal(h.state.seq, seq);
+    }
     assert.equal(h.context.navRequests.length, 0, 'A failed save must stop navigation before any state changes');
-    h.run('requireSaved=async()=>true'); await h.get('nav-write-short').listeners.click();
-    assert.equal(h.state.kind, 'short'); assert.equal(h.state.view, 'shelf'); assert.equal(h.state.book, null);
+    assert.equal(h.get('workspace').inert, false); assert.equal(h.get('dialog').inert, false);
   });
 
   await checkAsync('startup recovery with a missing last book opens the shelf instead of another book', async () => {

@@ -39,7 +39,7 @@ function book(id, kind = 'long') {
     notes: [{ id: id + '-person', title: '张岚', type: '人物', body: '人物履历', chapterIds: [id + '-chapter'], aliases: [], profile: {}, deletedAt: null }],
     relations: [], atlasViews: [] };
 }
-function harness({ language = 'zh', kind = 'long', current = true, dirty = false } = {}) {
+function harness({ language = 'zh', kind = 'long', current = true, dirty = false, navigation = false } = {}) {
   const elements = new Map(), storageData = new Map([['writer-desk.language', language]]), removedKeys = [];
   const get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const storage = { getItem: key => storageData.get(key) ?? null, setItem: (key, value) => storageData.set(key, value),
@@ -61,7 +61,9 @@ function harness({ language = 'zh', kind = 'long', current = true, dirty = false
   const renderCalls = [], covers = context.WriterCovers;
   context.WriterCovers = { templates: covers.templates, randomTitle: covers.randomTitle,
     render(id, title, kind) { renderCalls.push({ id, title, kind }); return 'data:image/jpeg;base64,' + Buffer.from([id, title, kind].join('|')).toString('base64'); } };
-  vm.runInContext('renderBacklinks=()=>{};openBook=()=>{throw new Error("Metadata editing must not navigate into a book")};setBook=()=>{throw new Error("Metadata editing must not replace the current book")};', context);
+  vm.runInContext('renderBacklinks=()=>{};', context);
+  if(navigation)vm.runInContext('renderShell=()=>{};renderNotes=()=>{};selectChapter=id=>{state.chapterId=id;};',context);
+  else vm.runInContext('openBook=()=>{throw new Error("Metadata editing must not navigate into a book")};setBook=()=>{throw new Error("Metadata editing must not replace the current book")};',context);
   const state = vm.runInContext('state', context), books = new Map();
   for (const [id, type, revision] of [['active', 'long', 7], ['long-target', 'long', 31], ['short-target', 'short', 42]]) books.set(id, { book: book(id, type), revision });
   const active = current ? copy(books.get('active').book) : null;
@@ -101,6 +103,29 @@ function harness({ language = 'zh', kind = 'long', current = true, dirty = false
 
 const checks = [];
 const check = (name, test) => checks.push({ name, test });
+
+check('long and short shelf covers and titles open their own manuscript while outline and people actions stay explicit', async () => {
+  for(const kind of ['long','short'])for(const entry of ['cover-open','shelf-book-title']){
+    const h=harness({kind,dirty:true,navigation:true}),id=kind+'-target',before=copy(h.books.get(id).book),currentBefore=copy(h.active);
+    h.run('renderCollection()');
+    const card=h.get('shelf-grid').children.find(node=>descendants(node).some(child=>child.className==='shelf-book-title'&&child.textContent===before.title));
+    const button=descendants(card).find(node=>node.className===entry);
+    await button.listeners.click();
+    assert.equal(h.state.book.id,id);assert.equal(h.state.book.kind,kind);assert.equal(h.state.kind,kind);assert.equal(h.state.view,'write');
+    assert.equal(h.state.chapterId,id+'-chapter');assert.equal(h.state.dirty,false);
+    assert.deepEqual(copy(h.state.book).chapters,before.chapters,'Opening a shelf cover or title must retain the selected manuscript');
+    assert.equal(h.calls[0].endpoint,'/api/books/active');assert.equal(h.calls[0].method,'PUT');
+    assert.deepEqual(h.books.get('active').book,currentBefore,'The previous dirty manuscript must save before opening another book');
+    assert.equal(h.calls.filter(call=>call.endpoint==='/api/books/'+id&&call.method==='GET').length,1);
+    assert.equal(h.get('dialog').open,false);
+  }
+  for(const [label,view] of [['大纲','outline'],['人物脉络','people']]){
+    const h=harness({navigation:true}),id='long-target';h.run('renderCollection()');
+    const card=h.get('shelf-grid').children.find(node=>descendants(node).some(child=>child.className==='shelf-book-title'&&child.textContent==='作品 '+id));
+    await h.findButton(card,label).listeners.click();
+    assert.equal(h.state.book.id,id);assert.equal(h.state.view,view);
+  }
+});
 
 check('long and short shelf metadata opens a dialog and cancellation stays on the shelf in Chinese and English', async () => {
   for (const language of ['zh', 'en']) for (const kind of ['long', 'short']) {
