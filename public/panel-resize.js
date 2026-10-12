@@ -1,8 +1,8 @@
 'use strict';
 
 (function(global){
-  const STORAGE_KEY='yejian.panel-widths',NAMES={outline:['outline','ai'],write:['chapters','notes','ai']};
-  const LIMITS={outline:[180,620],chapters:[160,520],notes:[240,640],ai:[280,720]};
+  const STORAGE_KEY='yejian.panel-widths',NAMES={outline:['outline','ai'],write:['chapters','notes','plan','ai']};
+  const LIMITS={outline:[180,620],chapters:[160,520],notes:[240,640],plan:[260,680],ai:[280,720]};
   const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
   function readPreferences(raw){
     const result={version:1,outline:{},write:{}};let value;
@@ -18,6 +18,7 @@
   function defaultWidth(name,viewport){
     if(name==='outline')return viewport>1100?276:viewport>850?236:210;
     if(name==='chapters')return viewport>=1600?248:viewport>1320?228:viewport>1100?208:190;
+    if(name==='plan')return 360;
     if(name==='notes')return viewport<=1320?320:viewport>=1600?330:300;
     return viewport<=1250?350:viewport>=1800?390:360;
   }
@@ -28,7 +29,7 @@
     if(!NAMES[view]||!(width>0))return result;
     for(const name of NAMES[view]){
       if(!visible[name]||viewport<=(name==='outline'?680:540))continue;
-      const [min,max]=LIMITS[name],overlay=name==='ai'&&viewport<=1250||name==='notes'&&viewport<=1320;
+      const [min,max]=LIMITS[name],overlay=name==='ai'&&viewport<=1250||name==='notes'&&viewport<=1320||name==='plan'&&viewport<=1100;
       const desired=clamp(preferences[name]??defaultWidth(name,viewport),min,max);
       result[name]={min,max,desired,width:desired,overlay};
       if(overlay){result[name].max=Math.max(min,Math.min(max,width-60));result[name].width=clamp(desired,min,result[name].max);}
@@ -50,6 +51,7 @@
       {name:'outline',parent:outlineLayout,panel:byId('outline-tree'),side:'left',label:'调整大纲目录宽度',view:'outline'},
       {name:'chapters',parent:writeView,panel:byId('sidebar'),side:'left',label:'调整章节目录宽度',view:'write'},
       {name:'notes',parent:writeView,panel:byId('notes-panel'),side:'right',label:'调整资料栏宽度',view:'write'},
+      {name:'plan',parent:writeView,panel:byId('work-plan-panel'),side:'right',label:'调整作品大纲宽度',view:'write'},
       {name:'ai',parent:body,panel:byId('ai-chat-panel'),side:'right',label:'调整 AI 对话栏宽度'},
     ].filter(item=>item.parent&&item.panel);
     for(const item of definitions){
@@ -65,7 +67,7 @@
     function setStyle(node,name,value){if(node.style.getPropertyValue(name)===value)return false;node.style.setProperty(name,value);return true;}
     function sync(){
       if(disposed)return;currentView=view();const focused=workspace.classList.contains('focus'),viewport=win.innerWidth;
-      const visible={outline:currentView==='outline',chapters:currentView==='write'&&!byId('sidebar')?.hidden&&!workspace.classList.contains('sidebar-hidden'),notes:currentView==='write'&&!byId('notes-panel')?.hidden,ai:!byId('ai-chat-panel')?.hidden};
+      const visible={outline:currentView==='outline',chapters:currentView==='write'&&!byId('sidebar')?.hidden&&!workspace.classList.contains('sidebar-hidden'),notes:currentView==='write'&&!byId('notes-panel')?.hidden,plan:currentView==='write'&&!!byId('work-plan-panel')&&!byId('work-plan-panel').hidden,ai:!byId('ai-chat-panel')?.hidden};
       layout=focused?{}:calculateLayout({view:currentView,width:body.getBoundingClientRect().width,viewport,preferences:preferences[currentView],visible});
       let changed=false;
       for(const item of definitions){
@@ -105,7 +107,7 @@
       if(finished.item.handle.hasPointerCapture?.(finished.pointerId))finished.item.handle.releasePointerCapture(finished.pointerId);sync();
     }
     const observer=new win.MutationObserver(schedule);
-    for(const node of [workspace,outlineView,writeView,byId('notes-panel'),byId('ai-chat-panel')])if(node)observer.observe(node,{attributes:true,attributeFilter:['hidden','class']});
+    for(const node of [workspace,outlineView,writeView,byId('notes-panel'),byId('work-plan-panel'),byId('ai-chat-panel')])if(node)observer.observe(node,{attributes:true,attributeFilter:['hidden','class']});
     const resizeObserver=typeof win.ResizeObserver==='function'?new win.ResizeObserver(schedule):null;resizeObserver?.observe(body);
     win.addEventListener('resize',schedule);win.addEventListener('languagechange',schedule);sync();
     return{sync,schedule,destroy(){if(disposed)return;if(drag)finishDrag({pointerId:drag.pointerId},false);disposed=true;if(frame!==null)win.cancelAnimationFrame(frame);observer.disconnect();resizeObserver?.disconnect();win.removeEventListener('resize',schedule);win.removeEventListener('languagechange',schedule);for(const item of definitions)item.handle.remove();},getPreferences:()=>JSON.parse(JSON.stringify(preferences))};

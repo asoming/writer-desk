@@ -6,6 +6,7 @@ never forwards provider error bodies (which may contain secrets or source text).
 import json
 import base64
 import binascii
+from contextlib import nullcontext
 import os
 from pathlib import Path
 import re
@@ -195,6 +196,7 @@ class AIService:
         self.data_dir = Path(data_dir)
         self.path = self.data_dir / "ai-settings.json"
         self.lock = _CONFIG_LOCK
+        self.chat_image_guard = None
 
     def _read(self):
         if not self.path.exists() and not self.path.is_symlink():
@@ -439,6 +441,13 @@ class AIService:
 
     def _chat_reply_images(self, book_id, values):
         """Save compatible providers' inline images without making extra calls."""
+        # The server may install a per-request guard that prevents an old AI
+        # response from recreating images after its book content was purged.
+        # This scope covers local decoding/storage only, never the HTTP call.
+        with self.chat_image_guard(book_id) if self.chat_image_guard else nullcontext():
+            return self._save_chat_reply_images(book_id, values)
+
+    def _save_chat_reply_images(self, book_id, values):
         warning = "部分 AI 图片无法显示；仅支持有效的内联 PNG、JPEG 或 WebP 图片，远程链接未下载。"
         if not isinstance(values, list):
             return [], warning

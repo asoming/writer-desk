@@ -20,8 +20,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import unquote, urlparse
 import protection
+import chapter_history
 from ai_service import AIService, AIError
 from chat_images import ChatImageStore
 from skills import SkillsService, SkillError
@@ -48,6 +50,12 @@ FOLDER_REQUEST = "打开作品文件夹只接受作品编号，不接受文件�
 FOLDER_UNSUPPORTED = "当前系统不支持安全打开作品文件夹。作品仍已保存在本机。"
 BOOK_TRASHED = "这部作品已移入回收站。请从回收站恢复，或将本页内容另存为新作品。"
 BOOK_STATE_CONFLICT = "作品状态已在另一个窗口变化。请刷新书架或回收站后重试。"
+
+
+def chapter_history_context():
+    # Callers may load this file with importlib without registering its module
+    # in sys.modules. Use the live globals instead of assuming registration.
+    return SimpleNamespace(**globals())
 
 
 def now():
@@ -232,6 +240,7 @@ def connect():
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA secure_delete=ON")
     return conn
 
 
@@ -258,6 +267,7 @@ def initialize():
                     conn.execute("CREATE TABLE IF NOT EXISTS app_migrations(name TEXT PRIMARY KEY,applied_at TEXT NOT NULL)")
                     conn.execute("CREATE TABLE IF NOT EXISTS pending_book_purges(book_id TEXT PRIMARY KEY)")
                     protection.initialize(conn)
+                    chapter_history.initialize(conn)
                     seeded = conn.execute("SELECT 1 FROM app_migrations WHERE name IN (?,?) LIMIT 1", (INITIAL_LIBRARY_MIGRATION, DEFAULT_EXAMPLE_MIGRATION)).fetchone()
                     if not seeded and not conn.execute("SELECT 1 FROM books LIMIT 1").fetchone():
                         insert_book(conn, sample_book())
@@ -626,6 +636,7 @@ def purge_book_rows(conn, book_id):
     conn.execute("DELETE FROM history WHERE book_id=?", (book_id,))
     conn.execute("DELETE FROM backup_runs WHERE book_id=?", (book_id,))
     conn.execute("DELETE FROM books WHERE id=?", (book_id,))
+    conn.execute("DELETE FROM pending_chapter_purges WHERE book_id=?", (book_id,))
 
 
 def cleanup_pending_book_purges(book_id=None):
@@ -656,6 +667,7 @@ def cleanup_expired_books(moment=None):
         for book_id in expired:
             purge_book_rows(conn, book_id)
     cleanup_pending_book_purges()
+    chapter_history.cleanup(chapter_history_context())
     return expired
 
 
@@ -692,8 +704,11 @@ def restore_book(data):
 
 
 def preserve_history(conn, row, stamp):
+    removed = chapter_history.purged_ids(conn, row["id"])
+    payload = (json.dumps(validate_book(chapter_history.sanitize(json.loads(row["payload"]), removed)), ensure_ascii=False)
+               if removed else row["payload"])
     conn.execute("INSERT INTO history(book_id,revision,payload,saved_at) VALUES(?,?,?,?)",
-                 (row["id"], row["revision"], row["payload"], stamp))
+                 (row["id"], row["revision"], payload, stamp))
     conn.execute("DELETE FROM history WHERE book_id=? AND id NOT IN (SELECT id FROM history WHERE book_id=? ORDER BY id DESC LIMIT 30)",
                  (row["id"], row["id"]))
 
@@ -729,6 +744,8 @@ def read_protection(path):
         raise protection.ProtectionError("找不到这个操作", 404)
     with connect() as conn:
         current = saved_book_row(conn, book_id)
+        removed = chapter_history.purged_ids(conn, book_id)
+        clean = lambda value: validate_book(chapter_history.sanitize(value, removed))
         if kind == "history":
             if token:
                 if not token.isdecimal() or int(token) < 1:
@@ -736,13 +753,13 @@ def read_protection(path):
                 row = conn.execute("SELECT * FROM history WHERE book_id=? AND revision=? ORDER BY id DESC LIMIT 1", (book_id, int(token))).fetchone()
                 if row is None:
                     raise protection.ProtectionError("这个历史版本已不存在，请刷新列表", 404)
-                book = validate_book(json.loads(row["payload"]))
+                book = clean(json.loads(row["payload"]))
                 return {"book": book, **protection.summary(book, row["revision"], row["saved_at"]), "currentRevision": current["revision"]}
             rows = conn.execute("SELECT * FROM history WHERE book_id=? ORDER BY id DESC LIMIT 30", (book_id,)).fetchall()
-            versions = [protection.summary(validate_book(json.loads(row["payload"])), row["revision"], row["saved_at"]) for row in rows]
+            versions = [protection.summary(clean(json.loads(row["payload"])), row["revision"], row["saved_at"]) for row in rows]
             return {"versions": versions, "currentRevision": current["revision"]}
-        result = (protection.get_snapshot(DB_PATH, book_id, token, validate_book) if token
-                  else {"backups": protection.list_snapshots(DB_PATH, book_id, validate_book)})
+        result = (protection.get_snapshot(DB_PATH, book_id, token, clean) if token
+                  else {"backups": protection.list_snapshots(DB_PATH, book_id, clean)})
         return {**result, "currentRevision": current["revision"]}
 
 
@@ -765,15 +782,17 @@ def write_protection(path, data):
         require_active_book(current)
         if current["revision"] != data["revision"]:
             raise protection.ProtectionError("作品已在另一个窗口更新，请重新查看版本后恢复", 409, True)
+        removed = chapter_history.purged_ids(conn, book_id)
+        clean = lambda value: validate_book(chapter_history.sanitize(value, removed))
         if kind == "history":
             if not token.isdecimal() or int(token) < 1:
                 raise protection.ProtectionError("历史版本编号不正确")
             source = conn.execute("SELECT payload FROM history WHERE book_id=? AND revision=? ORDER BY id DESC LIMIT 1", (book_id, int(token))).fetchone()
             if source is None:
                 raise protection.ProtectionError("这个历史版本已不存在，请刷新列表", 404)
-            book = validate_book(json.loads(source["payload"]))
+            book = clean(json.loads(source["payload"]))
         else:
-            book = protection.get_snapshot(DB_PATH, book_id, token, validate_book)["book"]
+            book = protection.get_snapshot(DB_PATH, book_id, token, clean)["book"]
         if book["id"] != book_id:
             raise protection.ProtectionError("版本与当前作品不一致")
         # If preserving the current book fails, do not start the restoration.
@@ -1022,6 +1041,8 @@ def handle_ai_request(path, data):
             if not row:
                 raise AIError(404, "找不到这部作品")
             require_active_book(row)
+            if chapter_history.image_cleanup_pending(conn, row["id"]):
+                raise AIError(409, "本机副本清理尚未完成，请在历史记录中重试清理后再添加图片。")
             return ChatImageStore(DB_PATH.parent).save(row["id"], data["name"], data["dataUrl"])
     match = re.fullmatch(r"/api/books/([^/]+)/ai(/preview)?", path)
     if not match:
@@ -1038,10 +1059,25 @@ def handle_ai_request(path, data):
         raise AIError(400, "图片附件只能用于 AI 对话。")
     with connect() as conn:
         row = conn.execute("SELECT * FROM books WHERE id=?", (match.group(1),)).fetchone()
+        purge_generation = chapter_history.purged_ids(conn, match.group(1))
+        if chapter_history.image_cleanup_pending(conn, match.group(1)):
+            raise AIError(409, "本机副本清理尚未完成，请在历史记录中重试清理后再使用 AI。")
     if not row:
         raise AIError(404, "找不到这部作品")
     require_active_book(row)
     book = book_result(row)["book"]
+    @contextmanager
+    def guard_chat_images(book_id):
+        with DB_LOCK, connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if not conn.execute("SELECT 1 FROM books WHERE id=?", (book_id,)).fetchone():
+                raise AIError(404, "找不到这部作品")
+            if chapter_history.purged_ids(conn, book_id) != purge_generation:
+                raise AIError(409, "作品内容已被彻底删除，请重新发起对话。")
+            if chapter_history.image_cleanup_pending(conn, book_id):
+                raise AIError(409, "本机副本清理尚未完成，请在历史记录中重试清理。")
+            yield
+    service.chat_image_guard = guard_chat_images
     operation = service.preview if match.group(2) else service.run
     # Never hold a database transaction while waiting for an external service.
     result = operation(book, data.get("action"), short_chapter_ids(book, data.get("chapterIds")), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"), chat=data.get("chat", False), history=data.get("history"), model=data.get("model"), attachments=data.get("attachments"))
@@ -1052,6 +1088,11 @@ def handle_ai_request(path, data):
             if not conn.execute("SELECT 1 FROM books WHERE id=?", (book["id"],)).fetchone():
                 ChatImageStore(DB_PATH.parent).purge(book["id"])
                 raise AIError(404, "找不到这部作品")
+    with DB_LOCK, connect() as conn:
+        if not conn.execute("SELECT 1 FROM books WHERE id=?", (book["id"],)).fetchone():
+            raise AIError(404, "找不到这部作品")
+        if chapter_history.purged_ids(conn, book["id"]) != purge_generation:
+            raise AIError(409, "作品内容已被彻底删除，请重新发起对话。")
     return result
 
 
@@ -1116,6 +1157,10 @@ class Handler(BaseHTTPRequestHandler):
             if image is not None:
                 self.send_bytes(image[0], content_type=image[1])
                 return
+            chapter_result = chapter_history.read(chapter_history_context(), path)
+            if chapter_result is not None:
+                self.send_json(chapter_result)
+                return
             protected = read_protection(path)
             if protected is not None:
                 self.send_json(protected)
@@ -1164,6 +1209,11 @@ class Handler(BaseHTTPRequestHandler):
                 files["/theme.css"] = "theme.css"
                 files["/textarea-autosize.js"] = "textarea-autosize.js"
                 files["/chat-images.js"] = "chat-images.js"
+                files["/work-plan.js"] = "work-plan.js"
+                files["/work-plan.css"] = "work-plan.css"
+                files["/chapter-history.js"] = "chapter-history.js"
+                files["/chapter-history.css"] = "chapter-history.css"
+                files["/content-cleanup.js"] = "content-cleanup.js"
                 filename = files.get(path)
                 if not filename:
                     self.send_json({"error": "找不到这个页面"}, 404)
@@ -1183,6 +1233,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            chapter_result = chapter_history.write(chapter_history_context(), path, data)
+            if chapter_result is not None:
+                self.send_json(chapter_result)
+                return
             if path == "/api/skills/import":
                 if not isinstance(data, dict) or set(data) != {"skillIds"}:
                     raise SkillError("写作技能导入参数不正确。")
@@ -1288,6 +1342,9 @@ class Handler(BaseHTTPRequestHandler):
                 require_active_book(row)
                 if row["revision"] != data["revision"]:
                     self.send_json({"error": "另一个窗口修改了这部作品。本页内容已保留，请另存为新作品。", "conflict": True}, 409)
+                    return
+                if chapter_history.contains(data["book"], chapter_history.purged_ids(conn, book_id)):
+                    self.send_json({"error": "本页包含已彻底删除的章节，请重新打开作品后编辑。", "conflict": True}, 409)
                     return
                 stamp = now()
                 preserve_history(conn, row, stamp)

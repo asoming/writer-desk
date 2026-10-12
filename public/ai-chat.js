@@ -29,6 +29,9 @@ function aiChatRead(bookId,channel){
 }
 
 function closeAIChat(){if(aiChatView)aiChatView.close();}
+function suspendAIChatForPurge(bookId){
+  if(aiChatView?.book.id===bookId){aiChatView.dispose();aiChatView=null;$('ai-chat-panel').hidden=true;}
+}
 function clearAIChatBookHistory(bookId){
   if(aiChatView?.book.id===bookId){aiChatView.dispose();aiChatView=null;$('ai-chat-panel').hidden=true;}
   for(const channel of ['outline','write'])try{clientStorage.removeItem(aiChatStorageKey(bookId,channel));}catch{toast(T('对话未能从本机删除。'));}
@@ -201,7 +204,7 @@ function createAIChatView(panel,book,channel){
     try{if(aiModelChangePending)await aiModelChangePending.catch(()=>{});const [settings,value]=await Promise.all([api('/api/ai/settings'),api('/api/skills')]);if(disposed||sequence!==loadSeq)return;configuration=settings;configurationLoading=false;modelIds=[];skills=writingSkillList(value);if(saved.skillIds===null)saved.skillIds=(value.defaults?.skillIds||[]).filter(id=>skills.some(skill=>skill.id===id&&skill.imported));if(!Object.hasOwn(writingSkillModes,saved.skillMode))saved.skillMode=Object.hasOwn(writingSkillModes,value.defaults?.skillMode)?value.defaults.skillMode:'auto';ready=true;renderModels();renderChoices();persist();resumeCandidates();loadModels();if(current()){status.textContent=available()?(storageError?T('对话未能保存到本机。'):''):T('请先在设置中启用并配置 AI。');if(hasPrompt())await updatePreview();}}catch(error){if(!disposed&&sequence===loadSeq){configurationLoading=false;ready=false;status.textContent=T(error.message);controls();}}
   }
   const controller={book,channel,visible:()=>active&&!panel.hidden,
-    open(initialAction){saved.open=true;active=true;panel.hidden=false;if(typeof toggleNotes==='function')toggleNotes(false);persist();resumeCandidates();if(initialAction)chooseTask(initialAction);else if(ready&&hasPrompt())updatePreview();if(!ready)load();controls();input.focus();},
+    open(initialAction){window.WriterWorkPlan?.close();saved.open=true;active=true;panel.hidden=false;if(typeof toggleNotes==='function')toggleNotes(false);persist();resumeCandidates();if(initialAction)chooseTask(initialAction);else if(ready&&hasPrompt())updatePreview();if(!ready)load();controls();input.focus();},
     close(){saved.open=false;active=false;panel.hidden=true;window.WriterChatImages?.closeViewers();persist();},
     suspend(){cancelPending();persist();active=false;panel.hidden=true;window.WriterChatImages?.closeViewers();},
     dispose(){cancelPending();persist();disposed=true;active=false;++previewSeq;++loadSeq;clearTimeout(previewDelay);clearTimeout(writeDelay);candidates.forEach(renderer=>renderer.dispose());candidates.clear();deferredCandidates.clear();clearImageViews();imageInput?.dispose();promptSize?.dispose();},

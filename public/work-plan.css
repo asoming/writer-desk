@@ -1,0 +1,25 @@
+.work-plan-panel.notes-panel{width:360px;min-width:260px;overflow:hidden;background:var(--paper);border-left:1px solid var(--line)}
+.work-plan-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:66px;padding:13px 17px;border-bottom:1px solid var(--line);flex:none}
+.work-plan-tabs,.work-plan-tools{display:flex;align-items:center;gap:9px}.work-plan-tabs{gap:16px;min-width:0}
+.work-plan-tab{padding:7px 0;font-size:14px;font-weight:500;color:var(--muted);white-space:nowrap;border-radius:3px}.work-plan-tab[aria-selected=true]{color:var(--ink);font-weight:650}
+.work-plan-tools{gap:2px}.work-plan-tools .icon-button{min-width:27px;min-height:29px;font-size:22px}.work-plan-tools .work-plan-open-outline{font-size:19px}
+.work-plan-outline,.work-plan-characters{padding:22px 20px 30px;overflow:auto;scrollbar-width:none;min-height:0;flex:1;overscroll-behavior:contain}
+.work-plan-outline::-webkit-scrollbar,.work-plan-characters::-webkit-scrollbar,.work-plan-input::-webkit-scrollbar,.work-plan-hint::-webkit-scrollbar{display:none;width:0;height:0}
+.work-plan-section+.work-plan-section{margin-top:25px}.work-plan-section-title{display:block;font-size:17px;font-weight:650;line-height:1.6;margin-bottom:12px;color:var(--ink)}
+.work-plan-field{position:relative;border:1px solid transparent;border-radius:11px;background:var(--theme-surface-soft,#f4f5f7);height:244px;overflow:hidden}.work-plan-field:focus-within{border-color:var(--theme-line-strong,#bfcce1)}
+.work-plan-section-synopsis .work-plan-field{height:132px}
+.work-plan-input{display:block;resize:none;outline-offset:-3px;width:100%;height:100%;padding:18px;border:0;background:transparent;font-size:13px;line-height:1.95;overflow:auto;scrollbar-width:none;overflow-wrap:anywhere;color:var(--ink)}
+.work-plan-hint{position:absolute;inset:18px;overflow:hidden;color:var(--theme-faint,#9299a4);font-size:13px;line-height:1.95;border-radius:2px;cursor:text;scrollbar-width:none;white-space:pre-wrap;overflow-wrap:anywhere}
+.work-plan-hint-text{white-space:pre-wrap;overflow-wrap:anywhere}.work-plan-hint.has-overflow .work-plan-hint-text{animation:work-plan-hint-pan var(--work-plan-hint-duration,22s) ease-in-out infinite alternate}
+.work-plan-hint:hover .work-plan-hint-text,.work-plan-hint:focus .work-plan-hint-text{animation-play-state:paused}
+.work-plan-person{display:block;width:100%;padding:16px;text-align:left;border:1px solid var(--line);border-radius:10px;background:var(--paper);overflow-wrap:anywhere}.work-plan-person+.work-plan-person{margin-top:13px}.work-plan-person:hover{border-color:var(--theme-line-strong,#bfcce1);color:var(--ink)}
+.work-plan-person>strong{display:block;font-size:14px;line-height:1.7}.work-plan-person-meta{display:block;color:var(--muted);font-size:11px;line-height:1.8;margin-top:4px}.work-plan-person-body{font-size:12px;line-height:1.9;white-space:pre-wrap;margin:12px 0 0;color:var(--muted)}
+.work-plan-person-detail{display:grid;grid-template-columns:36px minmax(0,1fr);gap:10px;margin-top:10px;font-size:12px;line-height:1.9;color:var(--muted)}.work-plan-person-detail>span:first-child{color:var(--theme-faint,#9299a4)}.work-plan-empty{color:var(--muted);font-size:13px;line-height:1.9;margin:0}
+#writing-plan[aria-expanded=true]{color:var(--accent);background:var(--accent-soft)}
+@keyframes work-plan-hint-pan{0%,12%{transform:translateY(0)}88%,100%{transform:translateY(var(--work-plan-hint-shift,0))}}
+@media(min-width:541px){.write-view.panels-resizable .work-plan-panel.notes-panel{width:var(--plan-panel-width,360px)}}
+@media(max-width:1320px){.work-plan-panel.notes-panel{width:360px;z-index:12}}
+@media(max-width:540px){.work-plan-panel.notes-panel{width:min(360px,calc(100vw - 28px));min-width:0}.work-plan-header{padding:12px 16px}.work-plan-outline,.work-plan-characters{padding:20px 18px 28px}.work-plan-field{height:226px}}
+@media(prefers-reduced-motion:reduce){.work-plan-hint{overflow:auto}.work-plan-hint.has-overflow .work-plan-hint-text{animation:none;transform:none}}
+
+@media(min-width:1101px){.work-plan-panel.notes-panel{position:static;height:100%;box-shadow:none}}

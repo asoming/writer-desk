@@ -145,6 +145,16 @@ async function testMainContract() {
   e = event(); ipcMain.emit('writer:storage', e, { op: 'length' }); assert.equal(e.returnValue.value, 1);
   e = event(); ipcMain.emit('writer:storage', e, { op: 'set', key: '../../escape', value: 'x' }); assert.match(e.returnValue.error, /Invalid/);
   e = { sender: {}, senderFrame: {} }; ipcMain.emit('writer:storage', e, { op: 'get', key: 'yejian.draft.fixture' }); assert.equal(e.returnValue.value, undefined);
+  const draftKey = 'yejian.draft.purge-fixture.11111111-1111-4111-8111-111111111111';
+  for (const key of [draftKey, 'yejian.ai-chat.purge-fixture.write', 'yejian.draft.purge-fixture.other.11111111-1111-4111-8111-111111111111']) {
+    e = event(); ipcMain.emit('writer:storage', e, { op: 'set', key, value: 'chapter text' }); assert.equal(e.returnValue.error, undefined);
+  }
+  e = event(); ipcMain.emit('writer:storage', e, { op: 'clear-book-content', key: 'purge-fixture', value: '2026-10-12T08:00:00Z' }); assert.equal(e.returnValue.error, undefined);
+  for (const key of [draftKey, 'yejian.ai-chat.purge-fixture.write']) { e = event(); ipcMain.emit('writer:storage', e, { op: 'get', key }); assert.equal(e.returnValue.value, null); }
+  e = event(); ipcMain.emit('writer:storage', e, { op: 'get', key: 'yejian.draft.purge-fixture.other.11111111-1111-4111-8111-111111111111' }); assert.equal(e.returnValue.value, 'chapter text');
+  const stored = JSON.parse(fs.readFileSync(path.join(userData, 'client-storage.json'), 'utf8'));
+  assert.equal(stored[draftKey], undefined); assert.equal(stored['yejian.chapter-purge.purge-fixture'], '2026-10-12T08:00:00Z');
+
   const openFolder = (id, sender = event()) => ipcMain['writer:open-book-folder'](sender, id);
   const bookId = 'fixture/独立作品';
   const bookFolder = path.join(userData, 'data', 'books', 'book-' + createHash('sha256').update(bookId).digest('hex'));

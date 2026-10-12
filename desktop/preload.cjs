@@ -11,7 +11,8 @@ const storage = {
   setItem: (key, value) => callStorage('set', key, value),
   removeItem: key => callStorage('remove', key),
   key: index => callStorage('key', index),
-  getLength: () => callStorage('length')
+  getLength: () => callStorage('length'),
+  clearBookContent: (bookId, purgedAt) => callStorage('clear-book-content', bookId, purgedAt)
 };
 const boot = ipcRenderer.sendSync('writer:bootstrap');
 async function nativeRequest(channel, ...args) {

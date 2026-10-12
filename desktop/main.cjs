@@ -214,6 +214,20 @@ ipcMain.on('writer:storage', (event, request) => {
     const { op, key, value } = request;
     if (op === 'length') { event.returnValue = { value: Object.keys(storage).length }; return; }
     if (op === 'key') { event.returnValue = { value: Number.isInteger(key) && key >= 0 ? Object.keys(storage)[key] ?? null : null }; return; }
+    if (op === 'clear-book-content') {
+      if (!validBookId(key) || typeof value !== 'string' || !Number.isFinite(Date.parse(value))) throw new Error('Invalid purge receipt');
+      const next = { ...storage }, prefix = 'yejian.draft.' + key + '.';
+      for (const name of Object.keys(next)) {
+        let draft = name.startsWith(prefix) && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(name.slice(prefix.length));
+        if (!draft && name.startsWith(prefix)) { try { draft = JSON.parse(next[name])?.book?.id === key; } catch { } }
+        if (draft || name === 'yejian.ai-chat.' + key + '.outline' || name === 'yejian.ai-chat.' + key + '.write') delete next[name];
+      }
+      next['yejian.chapter-purge.' + key] = value;
+      atomicWrite(storagePath, next);
+      for (const name of Object.keys(storage)) delete storage[name];
+      Object.assign(storage, next);
+      event.returnValue = { value: null }; return;
+    }
     if (typeof key !== 'string' || key.length > 512 || !/^(yejian\.|writer-desk\.)/.test(key)) throw new Error('Invalid storage key');
     if (op === 'get') { event.returnValue = { value: typeof storage[key] === 'string' ? storage[key] : null }; return; }
     if (op === 'set') {

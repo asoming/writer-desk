@@ -12,6 +12,7 @@ import uuid
 
 DEFAULTS = {"enabled": True, "intervalMinutes": 5, "retentionCount": 20}
 TOKEN = re.compile(r"r[1-9][0-9]*-[a-f0-9]{32}\.json\Z")
+TEMP_TOKEN = re.compile(r"\.snapshot-[a-f0-9]{32}\.tmp\Z")
 WARNING = "作品已保存，但自动备份未完成。请在设置中检查数据保护并重试。"
 
 
@@ -152,6 +153,91 @@ def purge_snapshots(db_path, book_id, validate):
             except FileNotFoundError:
                 pass  # Another service may have completed this same cleanup.
         os.fsync(folder)
+
+
+def rewrite_snapshots(db_path, book_id, validate, transform, dry_run=False):
+    """Rewrite owned snapshots in place, preserving their historical metadata.
+
+    Unknown foreign-book files remain untouched. An unreadable owned-looking
+    file blocks completion rather than silently claiming its text was removed.
+    No temporary file ever contains the original chapter being purged.
+    """
+    if not os.path.lexists(Path(db_path).parent / "backups"):
+        return
+    with directory(db_path, book_id) as folder:
+        if folder is None:
+            return
+        for token in os.listdir(folder):
+            temporary_snapshot = bool(TEMP_TOKEN.fullmatch(token))
+            if not TOKEN.fullmatch(token) and not temporary_snapshot:
+                continue
+            try:
+                descriptor = os.open(token, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
+                with os.fdopen(descriptor, "rb") as stream:
+                    info = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(info.st_mode) or info.st_size > 64 * 1024 * 1024:
+                        raise ValueError("invalid snapshot")
+                    raw = stream.read()
+                value = json.loads(raw)
+                meta = value.get("writerDeskSnapshot", {})
+                if isinstance(meta, dict) and meta.get("bookId") not in (None, book_id):
+                    continue
+                if (set(value) != {"format", "version", "exportedAt", "book", "writerDeskSnapshot"}
+                        or not isinstance(meta, dict)
+                        or set(meta) != {"bookId", "revision", "createdAt", "reason"}):
+                    raise ValueError("unrecognized snapshot metadata")
+                if temporary_snapshot:
+                    # Checkpoint writes these exact format/ownership markers
+                    # before renaming its temp. A crash can leave the old text
+                    # here even though it never entered the snapshot listing.
+                    if (value.get("format") != "yejian-backup" or value.get("version") != 3
+                            or not isinstance(meta, dict) or meta.get("bookId") != book_id
+                            or type(meta.get("revision")) is not int or meta["revision"] < 1
+                            or not isinstance(meta.get("createdAt"), str)
+                            or meta.get("reason") not in ("automatic", "manual", "before-restore")
+                            or validate(value.get("book"))["id"] != book_id):
+                        raise ValueError("invalid temporary snapshot")
+                else:
+                    # Reuse the normal strict ownership and format validation.
+                    read_snapshot(folder, token, book_id, validate)
+                clean = validate(transform(value["book"]))
+                if clean == value["book"]:
+                    continue
+                payload = json.dumps({**value, "book": clean}, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+            except FileNotFoundError:
+                continue
+            except (OSError, ValueError, TypeError, AttributeError, KeyError, ProtectionError) as exc:
+                raise ProtectionError("自动备份目录含无法安全清理的文件。请检查数据保护目录后重试。", 409) from exc
+            if dry_run:
+                continue
+            if temporary_snapshot:
+                descriptor = os.open(token, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
+                with os.fdopen(descriptor, "rb") as stream:
+                    if stream.read(64 * 1024 * 1024 + 1) != raw:
+                        raise ProtectionError("自动备份临时文件已被修改，请检查后重试。", 409)
+                os.unlink(token, dir_fd=folder)
+                os.fsync(folder)
+                continue
+            temporary = ".snapshot-" + uuid.uuid4().hex + ".tmp"
+            try:
+                descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=folder)
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(payload)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                # The application normally serializes writers through SQLite;
+                # also reject changes by an external editor during this write.
+                descriptor = os.open(token, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
+                with os.fdopen(descriptor, "rb") as stream:
+                    if stream.read(64 * 1024 * 1024 + 1) != raw:
+                        raise ProtectionError("自动备份文件已被修改，请检查后重试。", 409)
+                os.replace(temporary, token, src_dir_fd=folder, dst_dir_fd=folder)
+                os.fsync(folder)
+            finally:
+                try:
+                    os.unlink(temporary, dir_fd=folder)
+                except FileNotFoundError:
+                    pass
 
 
 def checkpoint(conn, db_path, row, validate, force=False, reason="automatic"):

@@ -19,3 +19,6 @@
 @media(max-width:680px){.panel-resize-outline{display:none!important}}
 @media(max-width:540px){.panel-resize-handle{display:none!important}}
 @media(prefers-reduced-motion:reduce){.panel-resize-handle::after{transition:none}}
+
+.panel-resize-plan{right:calc(var(--plan-panel-width,360px) - 5px);z-index:12}
+@media(min-width:541px){.write-view.panels-resizable .work-plan-panel.notes-panel{width:var(--plan-panel-width,360px)}}

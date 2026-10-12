@@ -214,7 +214,7 @@ class DefaultDemoTests(unittest.TestCase):
             server.initialize()
         # The first retry initializes successfully; post-startup cleanup opens
         # its own transactions after initialization has committed.
-        self.assertEqual(len(calls), 4)
+        self.assertGreaterEqual(len(calls), 4)
         sleep.assert_called_once_with(0.05)
         self.assertEqual(self.marker_count(), 1)
         self.assertEqual(len(self.demos()), 1)

@@ -49,7 +49,7 @@ function harness({ kind = 'long', current = true, dirty = false } = {}) {
     setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: callback => callback(),
   });
   context.window = context;
-  for (const file of ['public/i18n.js', 'public/app.js', 'public/workspace.js']) {
+  for (const file of ['public/i18n.js', 'public/app.js', 'public/chapter-history.js', 'public/workspace.js']) {
     let source = fs.readFileSync(path.join(root, file), 'utf8');
     if (file.endsWith('workspace.js')) source = source.replace(/\ninitialize\(\);\s*$/, '\n');
     vm.runInContext(source, context, { filename: file });
