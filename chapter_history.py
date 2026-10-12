@@ -8,7 +8,7 @@ import copy
 from datetime import datetime, timezone
 import hashlib
 import json
-import os
+import safe_fs as os
 import re
 import stat
 

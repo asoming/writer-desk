@@ -4,13 +4,15 @@
 
 ## Run a Linux release
 
-当前 Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。解压 `WriterDesk-0.4.14-linux-x64.tar.gz` 后，可直接运行目录里的 `writer-desk`；建议执行 `bash install-linux.sh`，将完整发行文件复制到当前用户的固定安装位置并注册应用菜单。安装脚本使用包内 Electron 的 Node 运行时，不需要系统 Python 或 Node。
+Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。系统安装使用 `sudo apt install ./WriterDesk-0.5.0-linux-x64.deb`；`apt` 会安装依赖，在 `/opt/Writer's Desk` 放置程序、注册应用菜单，作品仍使用下文的原有数据目录。也可解压 `WriterDesk-0.5.0-linux-x64.tar.gz` 后直接运行目录里的 `writer-desk`，或执行 `bash install-linux.sh` 注册当前用户的固定安装入口。安装脚本使用包内 Electron 的 Node 运行时，不需要系统 Python 或 Node。
+
+以前通过 `.tar.gz` 安装时，`~/.local/share/applications/writer-desk.desktop` 会优先于 `.deb` 的系统菜单入口，导致图标继续打开旧版。迁移到 `.deb` 时，先保存并退出旧版，确认直接运行 `/opt/Writer's Desk/writer-desk` 能打开新版，再将旧用户入口改名为 `writer-desk.desktop.backup`；设置了 `XDG_DATA_HOME` 时使用其 `applications/` 目录。保留旧 `versions/` 目录和作品目录。系统安装脚本不会遍历或修改用户 home；不要混用两套升级入口。后续系统版重新安装新版 `.deb`，用户安装版继续用下述离线 `.tar.gz` 升级。
 
 默认安装目录为 `~/.local/share/writer-desk/app`，遵循 `XDG_DATA_HOME`。各版放在 `versions/<版本号>`，`current` 原子链接指向已启用版本，固定启动器为 `launch-writer-desk`。菜单入口默认显示“作家工作台”，英语环境显示“Writer's Desk”，可用中英文名称或写作关键词搜索。安装完成后可移走原解压目录；旧版安装路径与快捷方式记录在 `active.json`，旧版本目录保留。安装过程不会关闭正在运行的旧版，请保存并退出后从菜单重新打开。
 
 ## Offline installation and upgrades
 
-在“设置 → 安装与升级 → 安装升级包”选择可信来源的 `WriterDesk-<版本号>-linux-x64.tar.gz`。同一目录必须有同名 `.sha256` 校验文件，例如 `WriterDesk-0.4.14-linux-x64.sha256`，其内容包含完整压缩包文件名与 SHA256。也支持 `.tar.gz.sha256` 后缀。安装器检查压缩包校验、发行清单、文件散列、架构和版本，拒绝路径穿越、链接、特殊文件以及未列入清单的文件。每个版本的发行目录包含自动生成的 `release-manifest.json`；清单不包含自身的散列。
+在“设置 → 安装与升级 → 安装升级包”选择可信来源的 `WriterDesk-<版本号>-linux-x64.tar.gz`。同一目录必须有同名 `.sha256` 校验文件，例如 `WriterDesk-0.5.0-linux-x64.sha256`，其内容包含完整压缩包文件名与 SHA256。也支持 `.tar.gz.sha256` 后缀。安装器检查压缩包校验、发行清单、文件散列、架构和版本，拒绝路径穿越、链接、特殊文件以及未列入清单的文件。每个版本的发行目录包含自动生成的 `release-manifest.json`；清单不包含自身的散列。
 
 准备完成只记录 `pending.json`，保持当前版本。点击“重启完成升级”后，程序先确认正文已保存、复验准备好的文件、优雅停止本机服务，再启动新版本。新版本的服务和窗口成功载入后才更新 `current` 与菜单入口；启动失败保留原入口。保存或校验失败会留在原窗口。安装器和设置入口均拒绝降级或用不同文件覆盖同一版本。
 
@@ -38,7 +40,22 @@ npm ci
 WRITER_DESK_BUILD_PYTHON="$PWD/.venv-build/bin/python" npm run build:linux
 ```
 
-Windows 请在 Windows 本机用 `.venv-build\Scripts\python.exe` 设置 `WRITER_DESK_BUILD_PYTHON`，然后执行 `npm run build:win`；macOS 请在目标架构 Mac 执行 `npm run build:mac`。PyInstaller 的保存服务不能跨操作系统打包。Windows/macOS 配置已提供，当前交付只实际构建、验证 Linux x64。发布签名、网络自动下载更新和商店发布尚未配置。
+构建原生安装包时使用以下命令；`build:linux` 保留只生成旧离线包的用法，`build:deb` 同时生成 `.deb` 与离线包。
+
+```sh
+npm run build:deb
+npm run build:win
+npm run build:mac -- --arch arm64
+npm run build:mac -- --arch x64
+```
+
+Windows 请在 Windows x64 本机用 `.venv-build\Scripts\python.exe` 设置 `WRITER_DESK_BUILD_PYTHON`。macOS 请分别在 Apple Silicon 和 Intel Mac 构建；Node、Python、Electron 和保存服务必须使用同一原生架构。`before-pack.cjs` 检查服务的版本、操作系统及 CPU，拒绝把 Linux 服务误装进 Windows/macOS 包。PyInstaller 不是跨操作系统编译器。
+
+Windows 包支持 Windows 10+ x64，提供可选择目录的当前用户 NSIS 安装器、桌面和开始菜单入口；卸载不主动删除 AppData 作品库。macOS 包支持 macOS 13+，按 arm64 与 x64 分开发行，拖入 Applications 后启动；使用原生窗口按钮、Retina 图标，触控板行为见验收记录。当前 Windows 包无发布者证书，macOS 包仅 ad-hoc 签名，无 Developer ID 和 Apple 公证；这批是未签名测试发行版，首次运行可能遇到系统安全提示。正式公开分发需要补齐证书及公证，不要关闭系统安全保护来绕过检查。网络自动下载更新和商店发布尚未配置。
+
+手动工作流 `.github/workflows/native-packages.yml` 使用 Ubuntu 22.04 x64、Windows Server 2022 x64、macOS 15 arm64 和 macOS 15 Intel 的原生 runner。触发输入须与 `package.json` 版本完全相同。四个任务先跑存储回归，构建后再跑冻结服务的文件夹、备份、图片、章节历史和删除流程；随后从真正的 `.deb`、`.exe`、`.dmg` 提取/安装 App，检查本机保存、重启持久化、101,506 字示例和 Electron 窗口载入。验证都使用临时作品库；Windows NSIS 验证限定在一次性的 GitHub Actions runner。真实触控板手感、Gatekeeper 下载体验和真实 Windows 桌面仍需人工验收。
+
+只有四个原生任务全部成功才收集 SHA256、校验报告、源码 zip 和安装包到私有 GitHub 草稿 release；工作流不会自动公开发布。可用 `gh workflow run native-packages.yml --ref main -f version=0.5.0` 触发，验收草稿后单独发布。已公开 release 或不同源码提交的同版本草稿不会被覆盖。
 
 Linux 的 `after-pack.cjs` 将普通文件权限统一为 `0644`、可执行文件统一为 `0755` 后生成发行清单。压缩包根目录必须是 `WriterDesk/`，只含普通文件与目录。升级读取器支持 USTAR 和常规 PAX 路径、大小、时间元数据。发行压缩包完成后生成对应 `.sha256`，不要再改包内文件。
 

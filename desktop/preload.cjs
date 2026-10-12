@@ -35,6 +35,7 @@ function checkedWindowState(value, required = false) {
 }
 contextBridge.exposeInMainWorld('WriterDesktop', {
   isDesktop: true,
+  platform: ['darwin', 'linux', 'win32'].includes(boot?.platform) ? boot.platform : '',
   language: boot?.language || 'zh',
   version: boot?.version || '',
   storage,

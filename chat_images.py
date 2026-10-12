@@ -3,7 +3,7 @@ import base64
 import binascii
 from contextlib import contextmanager
 import hashlib
-import os
+import safe_fs as os
 from pathlib import Path
 import re
 import stat

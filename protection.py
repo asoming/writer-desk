@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
-import os
+import safe_fs as os
 from pathlib import Path
 import re
 import stat

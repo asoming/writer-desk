@@ -1,0 +1,152 @@
+name: Native desktop packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version from package.json (for example 0.5.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: writer-desk-native-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    name: ${{ matrix.platform }} ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            platform: linux
+            arch: x64
+          - runner: windows-2022
+            platform: win32
+            arch: x64
+          - runner: macos-15
+            platform: darwin
+            arch: arm64
+          - runner: macos-15-intel
+            platform: darwin
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.arch }}
+          cache: pip
+          cache-dependency-path: scripts/requirements-build.txt
+      - name: Verify requested version and native architecture
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          node -e 'const p = require("./package.json"); if (p.version !== process.env.EXPECTED_VERSION || process.arch !== process.env.EXPECTED_ARCH) throw Error("Package version or native Node architecture mismatch")'
+      - name: Install locked build dependencies
+        run: |
+          npm ci
+          python -m pip install -r scripts/requirements-build.txt
+      - name: Install Linux desktop runtime
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libxtst6 libsecret-1-0 libnotify4
+      - name: Native packaging and macOS window contracts
+        run: node --test tests/packaging.test.cjs tests/desktop-mac.test.js
+      - name: Native storage and lifecycle regression tests
+        run: python scripts/test-native.py
+      - name: Linux desktop and updater contracts
+        if: runner.os == 'Linux'
+        run: |
+          npm run test:desktop
+          node scripts/test-updater.cjs
+      - name: Build native installer and checksum
+        run: node scripts/build-native.cjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+      - name: Verify actual installer on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python scripts/verify-installer.py
+      - name: Verify actual installer on Windows and macOS
+        if: runner.os != 'Linux'
+        run: python scripts/verify-installer.py
+      - name: Upload verified installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/WriterDesk-*.deb
+            dist/WriterDesk-*.exe
+            dist/WriterDesk-*.dmg
+            dist/WriterDesk-*.tar.gz
+            dist/WriterDesk-*.sha256
+            dist/installer-smoke.json
+      - name: Upload failed native diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            dist/*smoke*.json
+            dist/builder-debug.yml
+            build/backend/build-info.json
+
+  draft-release:
+    name: Collect verified packages into private draft release
+    needs: native
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: native-output
+      - name: Check reports and installer checksums
+        run: python scripts/collect-native-release.py native-output release-assets
+      - name: Create or update draft only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          tag = 'v' + os.environ['RELEASE_VERSION']
+          existing = subprocess.run(['gh', 'release', 'view', tag, '--json', 'isDraft,targetCommitish'], capture_output=True, text=True)
+          if existing.returncode == 0:
+              release = json.loads(existing.stdout)
+              if not release['isDraft'] or release['targetCommitish'] != os.environ['RELEASE_SHA']:
+                  raise SystemExit('Refusing to replace a published release or another source commit')
+          else:
+              subprocess.run(['gh', 'release', 'create', tag, '--target', os.environ['RELEASE_SHA'], '--draft', '--title', "作家工作台 · Writer's Desk " + os.environ['RELEASE_VERSION'], '--notes-file', 'release-assets/release-notes.md'], check=True)
+          from pathlib import Path
+          assets = [str(path) for path in sorted(Path('release-assets').iterdir()) if path.name != 'release-notes.md']
+          subprocess.run(['gh', 'release', 'upload', tag, '--clobber', *assets], check=True)
+          print('Verified packages saved to draft release ' + tag + '; publication is a separate action.')
+          PY

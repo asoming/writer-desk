@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Build the Python service on the same OS/architecture as the desktop target."""
 import os
+import json
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
@@ -24,4 +26,13 @@ target = build / "backend"
 if target.exists():
     shutil.rmtree(target)
 shutil.copytree(build / "service-dist" / "writer-service", target)
+machine = platform.machine().lower()
+arch = {"x86_64": "x64", "amd64": "x64", "arm64": "arm64", "aarch64": "arm64"}.get(machine)
+if arch is None:
+    raise SystemExit(f"Unsupported native architecture: {machine}")
+(target / "build-info.json").write_text(json.dumps({
+    "format": "writer-desk-native-service", "platform": sys.platform, "arch": arch,
+    "version": json.loads((root / "package.json").read_text("utf-8"))["version"],
+    "python": platform.python_version(),
+}, indent=2) + "\n", "utf-8")
 print(f"Local service ready: {target}")

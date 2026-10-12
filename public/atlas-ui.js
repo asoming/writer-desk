@@ -140,6 +140,17 @@ function renderAtlas(){
   applyGraphZoom();renderAtlasNavigation();renderRelationIndex();
 }
 function applyGraphZoom(){const zoom=state.graphZoom||1;$('people-graph').style.width=state.graphWidth*zoom+'px';$('people-graph').style.height=state.graphHeight*zoom+'px';$('graph-zoom-label').textContent=Math.round(zoom*100)+'%';}
+function zoomAtlasAt(nextZoom,point){
+  if(!Number.isFinite(nextZoom))return;
+  const graph=$('people-graph'),panel=graph.parentElement,zoom=state.graphZoom||1;
+  const before=graph.getBoundingClientRect(),bounds=panel.getBoundingClientRect();
+  const x=Number.isFinite(point?.x)?point.x:bounds.left+panel.clientWidth/2,y=Number.isFinite(point?.y)?point.y:bounds.top+panel.clientHeight/2;
+  const localX=(x-before.left)/zoom,localY=(y-before.top)/zoom;
+  state.graphZoom=Math.max(.1,Math.min(2.5,nextZoom));applyGraphZoom();
+  const after=graph.getBoundingClientRect();
+  panel.scrollLeft+=after.left+localX*state.graphZoom-x;
+  panel.scrollTop+=after.top+localY*state.graphZoom-y;
+}
 function resetAtlasForPerson(){state.atlasView='all';state.atlasMode='graph';state.graphScope='all';state.graphVolume='';state.graphGroup='';state.graphRelationType='';state.graphZoom=null;state.personEditing=false;state.atlasFocusId=state.personId;}
 function selectAtlasPerson(id){state.personId=id;state.personEditing=false;state.atlasFocusId=id;state.atlasMode='graph';renderPeople();}
 function renderPersonWorkspace(){
@@ -227,6 +238,14 @@ function bindAtlasEvents(){
   $('atlas-clear-focus').addEventListener('click',()=>{state.atlasFocusId=null;renderAtlas();});
   $('atlas-map-button').addEventListener('click',()=>{state.atlasMode='graph';renderPeople();});$('atlas-index-button').addEventListener('click',()=>{state.atlasMode='index';renderPeople();});
   [['graph-scope','graphScope'],['graph-volume','graphVolume'],['graph-group','graphGroup'],['graph-type','graphRelationType']].forEach(([id,key])=>$(id).addEventListener('change',()=>{state[key]=$(id).value;state.graphZoom=null;renderPeople();}));
-  $('graph-zoom-in').addEventListener('click',()=>{state.graphZoom=Math.min(2.5,(state.graphZoom||1)*1.2);applyGraphZoom();});$('graph-zoom-out').addEventListener('click',()=>{state.graphZoom=Math.max(.1,(state.graphZoom||1)/1.2);applyGraphZoom();});$('graph-fit').addEventListener('click',()=>{const panel=$('people-graph').parentElement;state.graphZoom=Math.min(panel.clientWidth/state.graphWidth,panel.clientHeight/state.graphHeight,1.25);applyGraphZoom();panel.scrollTop=0;panel.scrollLeft=0;});
+  $('graph-zoom-in').addEventListener('click',()=>zoomAtlasAt((state.graphZoom||1)*1.2));$('graph-zoom-out').addEventListener('click',()=>zoomAtlasAt((state.graphZoom||1)/1.2));$('graph-fit').addEventListener('click',()=>{const panel=$('people-graph').parentElement;state.graphZoom=Math.min(panel.clientWidth/state.graphWidth,panel.clientHeight/state.graphHeight,1.25);applyGraphZoom();panel.scrollTop=0;panel.scrollLeft=0;});
   const panel=$('people-graph').parentElement;let drag=null;panel.addEventListener('pointerdown',event=>{if(event.button!==0||event.target.closest('[role=button]'))return;drag={x:event.clientX,y:event.clientY,left:panel.scrollLeft,top:panel.scrollTop};panel.setPointerCapture(event.pointerId);panel.classList.add('panning');});panel.addEventListener('pointermove',event=>{if(!drag)return;panel.scrollLeft=drag.left+drag.x-event.clientX;panel.scrollTop=drag.top+drag.y-event.clientY;});function endDrag(){drag=null;panel.classList.remove('panning');}panel.addEventListener('pointerup',endDrag);panel.addEventListener('pointercancel',endDrag);
+  panel.addEventListener('wheel',event=>{
+    // Chromium represents a trackpad pinch as Ctrl+wheel. Two-finger panning
+    // and inertia have no Ctrl modifier and remain native scrolling.
+    if(!event.ctrlKey||event.metaKey||event.altKey||event.cancelable===false||!Number.isFinite(event.deltaY))return;
+    event.preventDefault();
+    const unit=event.deltaMode===1?16:event.deltaMode===2?panel.clientHeight:1,delta=Math.max(-120,Math.min(120,event.deltaY*unit));
+    zoomAtlasAt((state.graphZoom||1)*Math.exp(-delta*.005),{x:event.clientX,y:event.clientY});
+  },{passive:false});
 }

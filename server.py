@@ -8,7 +8,7 @@ import errno
 import hashlib
 import json
 import mimetypes
-import os
+import safe_fs as os
 import re
 import hmac
 import sqlite3
@@ -1201,6 +1201,8 @@ class Handler(BaseHTTPRequestHandler):
                          "/continuation.js": "continuation.js", "/ai.js": "ai.js", "/ai.css": "ai.css",
                          "/ai-chat.js": "ai-chat.js", "/ai-chat.css": "ai-chat.css"}
                 files["/book-covers.js"] = "book-covers.js"
+                files["/gestures.js"] = "gestures.js"
+                files["/gestures.css"] = "gestures.css"
                 files["/panel-resize.js"] = "panel-resize.js"
                 files["/panel-resize.css"] = "panel-resize.css"
                 files["/settings.js"] = "settings.js"

@@ -40,7 +40,8 @@ class ChatImageStoreTests(unittest.TestCase):
             self.assertEqual(refs[0][1], "data:" + mime + ";base64," + encoded)
         folder = self.data / "ai-chat-images" / self.store.book_key("book-one")
         self.assertEqual(len(list(folder.iterdir())), 3)
-        self.assertTrue(all(path.stat().st_mode & 0o077 == 0 for path in folder.iterdir()))
+        if os.name != "nt":
+            self.assertTrue(all(path.stat().st_mode & 0o077 == 0 for path in folder.iterdir()))
 
     def test_invalid_image_data_names_refs_and_byte_limit_fail_without_writing(self):
         for value in [None, "", "file:///tmp/photo.png", "https://example.invalid/image.png", "data:image/svg+xml;base64,PHN2Zz4=",

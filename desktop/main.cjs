@@ -178,10 +178,11 @@ function keyboardAction(input) {
   return null;
 }
 
-ipcMain.on('writer:bootstrap', event => { event.returnValue = trusted(event) ? { language, version: app.getVersion() } : {}; });
+ipcMain.on('writer:bootstrap', event => { event.returnValue = trusted(event) ? { language, version: app.getVersion(), platform: process.platform } : {}; });
 ipcMain.handle('writer:language', (event, value) => {
   if (!trusted(event) || !['zh', 'en'].includes(value)) return false;
   language = value;
+  configureAppMenu();
   try { atomicWrite(settingsPath, { ...settings, language }); } catch { /* The UI also retains its preference. */ }
   return true;
 });
@@ -289,7 +290,12 @@ async function stopService() {
   await new Promise(resolve => {
     const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 2000);
     child.once('exit', () => { clearTimeout(timer); resolve(); });
-    child.kill('SIGTERM');
+    try {
+      // The service watches this pipe. EOF lets it close its HTTP server and
+      // SQLite connections cleanly on Windows as well as Unix.
+      if (typeof child.stdin?.end === 'function') child.stdin.end();
+      else child.kill('SIGTERM');
+    } catch { child.kill('SIGTERM'); }
   });
 }
 function startService() {
@@ -335,7 +341,8 @@ function createWindow() {
     callback({ requestHeaders: headers });
   });
   window = new BrowserWindow({
-    title: title(), width: 1440, height: 960, minWidth: 780, minHeight: 600, show: false, frame: false, backgroundColor: '#ffffff',
+    title: title(), width: 1440, height: 960, minWidth: 780, minHeight: 600, show: false,
+    ...(process.platform === 'darwin' ? { frame: true, titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 24 } } : { frame: false }), backgroundColor: '#ffffff',
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, nodeIntegrationInWorker: false, webSecurity: true, navigateOnDragDrop: false, webviewTag: false, session: appSession }
   });
@@ -367,15 +374,44 @@ function createWindow() {
   return window.loadURL(origin + '/').then(() => console.info('[writer-desk] Desktop window loaded; local storage service is ready.'));
 }
 
+function configureAppMenu() {
+  if (process.platform !== 'darwin') { Menu.setApplicationMenu(null); return; }
+  // macOS needs its system menu for native editing, hiding and full screen.
+  // It lives in the OS menu bar; no traditional menu is added inside the app.
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: title(), submenu: [
+      { role: 'about', label: text('关于作家工作台', "About Writer's Desk") },
+      { type: 'separator' },
+      { role: 'hide', label: text('隐藏作家工作台', "Hide Writer's Desk") },
+      { role: 'hideOthers', label: text('隐藏其他应用', 'Hide Others') },
+      { role: 'unhide', label: text('显示全部', 'Show All') },
+      { type: 'separator' },
+      { label: text('退出作家工作台', "Quit Writer's Desk"), accelerator: 'Command+Q', click: () => { requestClose(); } }
+    ] },
+    { label: text('编辑', 'Edit'), submenu: [
+      { role: 'undo', label: text('撤销', 'Undo') }, { role: 'redo', label: text('重做', 'Redo') },
+      { type: 'separator' },
+      { role: 'cut', label: text('剪切', 'Cut') }, { role: 'copy', label: text('复制', 'Copy') },
+      { role: 'paste', label: text('粘贴', 'Paste') }, { role: 'selectAll', label: text('全选', 'Select All') }
+    ] },
+    { label: text('窗口', 'Window'), submenu: [
+      { role: 'minimize', label: text('最小化', 'Minimize') },
+      { role: 'togglefullscreen', label: text('切换全屏', 'Toggle Full Screen') },
+      { type: 'separator' }, { role: 'front', label: text('前置全部窗口', 'Bring All to Front') }
+    ] }
+  ]));
+}
+
 if (!hasLock) app.quit();
 else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
+  app.on('activate', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
   app.on('before-quit', event => { if (!allowQuit && window) { event.preventDefault(); requestClose(); } });
   app.on('window-all-closed', () => { if (allowQuit) app.quit(); });
   app.on('quit', () => { if (service && service.exitCode === null) service.kill(); });
   app.whenReady().then(async () => {
     try {
-      Menu.setApplicationMenu(null);
+      configureAppMenu();
       await startService(); await createWindow();
       const activationArgument = process.argv.indexOf('--writer-activate-update');
       if (activationArgument !== -1) {
