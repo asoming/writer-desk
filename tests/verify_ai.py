@@ -244,11 +244,34 @@ class AITests(unittest.TestCase):
                 self.service.run(book, 'outline', [], prompt)
             self.assertEqual(error.exception.status, 502)
         short = {**book, 'kind': 'short'}
-        Stub.reply = {'nodes': [nodes[1], {**nodes[0], 'parentKey': 's1'}]}
+        Stub.reply = {'nodes': [nodes[1], nodes[3]]}
         self.assertEqual(len(self.service.run(short, 'outline', [], prompt)['data']['nodes']), 2)
-        Stub.reply = {'nodes': [nodes[1], nodes[2], nodes[0]]}
-        with self.assertRaises(AIError):
-            self.service.run(short, 'outline', [], prompt)
+        system = Stub.received[-1]['payload']['messages'][0]['content']
+        self.assertIn('story|setting', system)
+        self.assertIn('只有一篇连续正文', system)
+        self.assertEqual(json.loads(Stub.received[-1]['payload']['messages'][1]['content'])['bookKind'], 'short')
+        for divided in [[nodes[1], nodes[2], nodes[0]], [nodes[1], {**nodes[0], 'parentKey': 's1'}]]:
+            Stub.reply = {'nodes': divided}
+            with self.assertRaises(AIError):
+                self.service.run(short, 'outline', [], prompt)
+
+    def test_short_draft_is_one_continuous_manuscript_and_never_mutates_the_book(self):
+        self.configure()
+        book = {'id': 'short-book', 'kind': 'short', 'title': '雨停之前',
+                'chapters': [{'id': 'body', 'title': '旧版第一段标题', 'body': '许宁推开书店的门。', 'deletedAt': None}],
+                'outline': [{'id': 'plan', 'title': '雨停时', 'body': '用归还雨伞完成故事。', 'kind': 'scene', 'parentId': None, 'chapterIds': [], 'deletedAt': None}], 'notes': [], 'relations': []}
+        before = copy.deepcopy(book)
+        preview = self.service.preview(book, 'draft', ['body'], '继续写这篇短篇。', skill_ids=[])
+        result = self.service.run(book, 'draft', ['body'], '继续写这篇短篇。', skill_ids=[])
+        messages = Stub.received[-1]['payload']['messages']
+        context = json.loads(messages[1]['content'])
+        self.assertEqual(context['bookKind'], 'short')
+        self.assertEqual(context['chapters'], [{'id': 'body', 'title': '正文', 'body': '许宁推开书店的门。'}])
+        self.assertEqual([outline['id'] for outline in context['outlines']], ['plan'])
+        self.assertIn('连续正文，不含章节标题', messages[0]['content'])
+        self.assertIn('不分卷、不分章', messages[0]['content'])
+        self.assertEqual(preview['contextChars'], result['contextChars'])
+        self.assertEqual(book, before)
 
     def test_custom_free_text_requires_prompt_counts_it_and_never_changes_book(self):
         self.configure()

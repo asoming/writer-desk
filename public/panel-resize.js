@@ -65,7 +65,7 @@
     function setStyle(node,name,value){if(node.style.getPropertyValue(name)===value)return false;node.style.setProperty(name,value);return true;}
     function sync(){
       if(disposed)return;currentView=view();const focused=workspace.classList.contains('focus'),viewport=win.innerWidth;
-      const visible={outline:currentView==='outline',chapters:currentView==='write'&&!workspace.classList.contains('sidebar-hidden'),notes:currentView==='write'&&!byId('notes-panel')?.hidden,ai:!byId('ai-chat-panel')?.hidden};
+      const visible={outline:currentView==='outline',chapters:currentView==='write'&&!byId('sidebar')?.hidden&&!workspace.classList.contains('sidebar-hidden'),notes:currentView==='write'&&!byId('notes-panel')?.hidden,ai:!byId('ai-chat-panel')?.hidden};
       layout=focused?{}:calculateLayout({view:currentView,width:body.getBoundingClientRect().width,viewport,preferences:preferences[currentView],visible});
       let changed=false;
       for(const item of definitions){

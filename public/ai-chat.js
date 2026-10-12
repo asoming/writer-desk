@@ -71,17 +71,17 @@ function createAIChatView(panel,book,channel){
   function persistLater(){saved.prompt=input.value;saved.action=task.value;clearTimeout(writeDelay);writeDelay=setTimeout(persist,250);}
   function validChapters(){return book.chapters.filter(chapter=>!chapter.deletedAt);}
   function sourceOutline(){return channel==='outline'?book.outline.find(node=>node.id===state.outlineId&&!node.deletedAt)||null:null;}
-  function defaultChapterIds(){const chapters=validChapters(),outline=sourceOutline();return outline?(outline.chapterIds||[]).filter(id=>chapters.some(chapter=>chapter.id===id)):chapters.some(chapter=>chapter.id===state.chapterId)?[state.chapterId]:[];}
+  function defaultChapterIds(){const chapters=validChapters(),outline=sourceOutline();if(book.kind==='short')return chapters.map(chapter=>chapter.id);return outline?(outline.chapterIds||[]).filter(id=>chapters.some(chapter=>chapter.id===id)):chapters.some(chapter=>chapter.id===state.chapterId)?[state.chapterId]:[];}
   function updateScope(){
     const outline=sourceOutline(),chapter=validChapters().find(item=>item.id===state.chapterId),next=channel+':'+(outline?.id||chapter?.id||'');
-    scope.textContent=channel==='outline'?(outline?.title||T('故事大纲')):(chapter?.title||T('正文写作'));scope.title=scope.textContent;
+    scope.textContent=channel==='outline'?(outline?.title||T('故事大纲')):book.kind==='short'?T('正文'):(chapter?.title||T('正文写作'));scope.title=scope.textContent;
     if(next===scopeKey)return false;scopeKey=next;
     if(!saved.manualChapters)saved.chapterIds=defaultChapterIds();
     return true;
   }
   function payload(turn=null){
     const history=saved.turns.filter(item=>item.status==='complete').flatMap(item=>[{role:'user',content:item.user},{role:'assistant',content:item.reply+(item.data?'\n\n'+JSON.stringify(item.data):'')}]);
-    return{action:turn?.action||task.value,chapterIds:turn?turn.chapterIds:validChapters().filter(chapter=>saved.chapterIds.includes(chapter.id)).map(chapter=>chapter.id),instruction:turn?.user??input.value,skillIds:turn&&Array.isArray(turn.skillIds)?turn.skillIds:skills.filter(skill=>skill.imported&&(saved.skillIds||[]).includes(skill.id)).map(skill=>skill.id),skillMode:turn&&Object.hasOwn(writingSkillModes,turn.skillMode)?turn.skillMode:saved.skillMode,...(configuration?.model?{model:configuration.model}:{}),chat:true,history};
+    return{action:turn?.action||task.value,chapterIds:book.kind==='short'?validChapters().map(chapter=>chapter.id):turn?turn.chapterIds:validChapters().filter(chapter=>saved.chapterIds.includes(chapter.id)).map(chapter=>chapter.id),instruction:turn?.user??input.value,skillIds:turn&&Array.isArray(turn.skillIds)?turn.skillIds:skills.filter(skill=>skill.imported&&(saved.skillIds||[]).includes(skill.id)).map(skill=>skill.id),skillMode:turn&&Object.hasOwn(writingSkillModes,turn.skillMode)?turn.skillMode:saved.skillMode,...(configuration?.model?{model:configuration.model}:{}),chat:true,history};
   }
   function available(){return ready&&configuration?.enabled&&configuration.endpoint&&configuration.model;}
   function controls(){
@@ -111,8 +111,8 @@ function createAIChatView(panel,book,channel){
     finally{modelSaving=false;if(current()&&!disposed)controls();}
   });
   function renderChoices(){
-    const chapters=validChapters();saved.chapterIds=saved.chapterIds.filter(id=>chapters.some(chapter=>chapter.id===id));materialSummary.textContent=saved.chapterIds.length?T('资料 · {0} 章',saved.chapterIds.length):T('资料');chapterChoices.replaceChildren();chapterTools.hidden=!chapters.length;
-    chapters.forEach(chapter=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.value=chapter.id;box.checked=saved.chapterIds.includes(chapter.id);box.addEventListener('change',()=>{if(pending)return;saved.manualChapters=true;saved.chapterIds=box.checked?[...new Set([...saved.chapterIds,chapter.id])]:saved.chapterIds.filter(id=>id!==chapter.id);renderChoices();persist();schedulePreview();});row.append(box,el('span',null,chapter.title||T('未命名章节')));chapterChoices.append(row);});
+    const chapters=validChapters();saved.chapterIds=book.kind==='short'?chapters.map(chapter=>chapter.id):saved.chapterIds.filter(id=>chapters.some(chapter=>chapter.id===id));materialSummary.textContent=saved.chapterIds.length?(book.kind==='short'?T('资料 · 正文'):T('资料 · {0} 章',saved.chapterIds.length)):T('资料');chapterChoices.replaceChildren();chapterTools.hidden=chapterChoices.hidden=book.kind==='short'||!chapters.length;
+    if(book.kind!=='short')chapters.forEach(chapter=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.value=chapter.id;box.checked=saved.chapterIds.includes(chapter.id);box.addEventListener('change',()=>{if(pending)return;saved.manualChapters=true;saved.chapterIds=box.checked?[...new Set([...saved.chapterIds,chapter.id])]:saved.chapterIds.filter(id=>id!==chapter.id);renderChoices();persist();schedulePreview();});row.append(box,el('span',null,chapter.title||T('未命名章节')));chapterChoices.append(row);});
     skillChoices.replaceChildren();skills.forEach(skill=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.value=skill.id;box.checked=(saved.skillIds||[]).includes(skill.id);box.dataset.available=String(!!skill.imported);box.addEventListener('change',()=>{if(pending)return;saved.skillIds=box.checked?[...new Set([...(saved.skillIds||[]),skill.id])]:saved.skillIds.filter(id=>id!==skill.id);persist();schedulePreview();});row.append(box,el('span',null,writingSkillName(skill.id)),el('small',null,skill.imported?T('已导入'):T('未导入')));skillChoices.append(row);});skillMode.value=saved.skillMode;controls();
   }
   function chooseChapters(all){if(pending)return;saved.manualChapters=true;saved.chapterIds=all?validChapters().map(chapter=>chapter.id):[];renderChoices();persist();schedulePreview();}
@@ -132,7 +132,7 @@ function createAIChatView(panel,book,channel){
   }
   async function updatePreview(request=payload()){
     const sequence=++previewSeq;preview=null;previewKey='';controls();if(!current()||!ready||!request.instruction.trim())return null;
-    try{const value=validatePreview(await api('/api/books/'+encodeURIComponent(book.id)+'/ai/preview','POST',request),request);if(sequence!==previewSeq||!current())return null;preview=value;previewKey=JSON.stringify(request);materialCount.textContent=T('共 {0} 字符',value.contextChars.toLocaleString());status.textContent=value.overLimit?T('资料超过手动上限，请减少章节或调整设置。'):!available()?T('请先在设置中启用并配置 AI。'):storageError?T('对话未能保存到本机。'):'';controls();return value;}catch(error){if(sequence===previewSeq&&current()){status.textContent=T(error.message);controls();}return null;}
+    try{const value=validatePreview(await api('/api/books/'+encodeURIComponent(book.id)+'/ai/preview','POST',request),request);if(sequence!==previewSeq||!current())return null;preview=value;previewKey=JSON.stringify(request);materialCount.textContent=T('共 {0} 字符',value.contextChars.toLocaleString());status.textContent=value.overLimit?(book.kind==='short'?T('资料超过手动上限，请调整设置。'):T('资料超过手动上限，请减少章节或调整设置。')):!available()?T('请先在设置中启用并配置 AI。'):storageError?T('对话未能保存到本机。'):'';controls();return value;}catch(error){if(sequence===previewSeq&&current()){status.textContent=T(error.message);controls();}return null;}
   }
   function scrollEnd(){requestAnimationFrame(()=>{transcript.scrollTop=transcript.scrollHeight;});}
   function appendTurn(turn){
@@ -149,7 +149,7 @@ function createAIChatView(panel,book,channel){
       // Defer only candidates that have no renderer; existing save retries and
       // edited fields must survive closing the panel or opening settings.
       if(!visible()||modalOpen()){deferredCandidates.add(turn.id);return;}
-      try{const renderer=renderAIResult(host,{bookId:book.id,action:turn.action,chapterIds:turn.chapterIds,data:turn.data},{book,chapters:validChapters(),chapterIds:turn.chapterIds,sourceOutline:book.outline.find(node=>node.id===turn.outlineId&&!node.deletedAt)||null,idPrefix:'chat-'+turn.id+'-',current:()=>visible()&&!modalOpen()&&saved.turns.includes(turn)&&turn.status==='complete',settings:()=>configuration,onApplied:()=>{turn.consumed=true;persist();},onAdopt:target=>{turn.consumed=true;persist();renderAnswer(turn);if(current()){if(target?.view===channel){if(target.chapterId)state.chapterId=target.chapterId;if(target.outlineId)state.outlineId=target.outlineId;}renderShell();}},onNavigate:id=>jumpToChapter(id)});candidates.set(turn.id,renderer);}catch(error){host.replaceChildren(el('p','ai-chat-message-error',T(error.message)));}
+      try{const renderer=renderAIResult(host,{bookId:book.id,action:turn.action,chapterIds:turn.chapterIds,data:turn.data},{book,chapters:validChapters(),chapterIds:turn.chapterIds,sourceOutline:book.outline.find(node=>node.id===turn.outlineId&&!node.deletedAt)||null,idPrefix:'chat-'+turn.id+'-',current:()=>visible()&&!modalOpen()&&saved.turns.includes(turn)&&turn.status==='complete',settings:()=>configuration,onApplied:()=>{turn.consumed=true;persist();},onAdopt:target=>{turn.consumed=true;persist();renderAnswer(turn);if(current()){if(target?.view===channel){if(target.chapterId)state.chapterId=target.chapterId;if(target.outlineId)state.outlineId=target.outlineId;}renderShell();}},onNavigate:(id,quote)=>jumpToChapter(id,quote)});candidates.set(turn.id,renderer);}catch(error){host.replaceChildren(el('p','ai-chat-message-error',T(error.message)));}
     }else if(turn.consumed)answer.append(el('span','ai-chat-adopted',T('已采用')));
   }
   function resumeCandidates(){if(!visible()||modalOpen())return;saved.turns.filter(turn=>deferredCandidates.has(turn.id)).forEach(renderAnswer);}

@@ -146,13 +146,15 @@ with tempfile.TemporaryDirectory(prefix="yejian-verify-") as tmp:
 
         code, short = request("/api/books", "POST", {"title": "短篇验收", "kind": "short", "cover": png_cover, "coverTemplate": "neon"})
         assert code == 201
-        assert short["book"]["kind"] == "short" and short["book"]["chapters"] == [] and short["book"]["volumes"] == []
+        assert short["book"]["kind"] == "short" and short["book"]["volumes"] == []
+        assert len(short["book"]["chapters"]) == 1 and short["book"]["chapters"][0]["body"] == ""
+        assert short["book"]["chapters"][0]["title"] == "正文"
         listed = {b["id"]: b for b in request("/api/books")[1]["books"]}
         assert listed[bid]["cover"] == png_cover and listed[bid]["volumeCount"] == 2
         assert listed[bid]["coverTemplate"] == "ocean" and short["book"]["coverTemplate"] == "neon"
         assert listed[bid]["outlineCount"] == 2 and listed[bid]["personCount"] == 2
         assert listed[bid]["latestChapterTitle"] == "第二章" and listed[bid]["chapterCount"] == 3
-        assert listed[short["book"]["id"]]["kind"] == "short" and listed[short["book"]["id"]]["latestChapterTitle"] == ""
+        assert listed[short["book"]["id"]]["kind"] == "short" and listed[short["book"]["id"]]["latestChapterTitle"] == "正文"
         bad_short = copy.deepcopy(short["book"])
         bad_short["volumes"] = copy.deepcopy(book["volumes"])
         assert request("/api/books/" + bad_short["id"], "PUT", {"book": bad_short, "revision": 1})[0] == 400

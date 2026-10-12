@@ -37,6 +37,18 @@ test('planning and writing get a docked conversation, no service request on open
   const h=harness();await h.open();assert.equal(h.panel().hidden,false);assert.equal(h.field('ai-chat-task').value,'custom');assert.equal(h.field('ai-chat-prompt').value,'');assert.ok(h.button('发送').disabled);assert.deepEqual(h.notes,[false]);assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
   h.state.view='outline';h.run('syncAIChat()');await h.tick();assert.equal(find(h.panel(),node=>node.className==='ai-chat-scope').textContent,'第一卷');
 });
+
+test('short story chat always uses its whole manuscript without chapter controls in either workspace',async()=>{
+  for(const view of ['write','outline']){
+    const storage=new Map([['yejian.ai-chat.one.'+view,JSON.stringify({version:1,manualChapters:true,chapterIds:[],turns:[]})]]),h=harness(storage);h.state.book.kind='short';h.state.book.chapters=[{id:'body',title:'正文',body:'许宁在书店等雨停。'}];h.state.book.outline[0].chapterIds=[];h.state.chapterId='body';h.state.view=view;await h.open();
+    assert.equal(find(h.panel(),node=>node.className==='ai-chat-chapters').hidden,true);assert.equal(find(h.panel(),node=>node.className==='ai-chat-chapters').children.length,0);assert.equal(find(h.panel(),node=>node.className==='ai-chat-material-tools').hidden,true);assert.ok(find(h.panel(),node=>node.textContent==='资料 · 正文'));assert.ok(!find(h.panel(),node=>node.tagName==='OPTION'&&node.textContent==='章节创作'));
+    if(view==='write')assert.equal(find(h.panel(),node=>node.className==='ai-chat-scope').textContent,'正文');h.run("toggleAIChat('outline')");await h.flush();assert.match(h.field('ai-chat-prompt').value,/总纲与情节/);await h.prompt('继续规划这个短篇');await h.send();assert.deepEqual(h.calls.find(call=>call.url.endsWith('/ai')).request.chapterIds,['body']);
+  }
+});
+
+test('short story retry uses the canonical manuscript after old chapters have been merged',async()=>{
+  const turn={id:'old-turn',user:'继续写这个短篇',action:'draft',chapterIds:['old-second'],status:'error',error:'连接失败'},storage=new Map([['yejian.ai-chat.one.write',JSON.stringify({version:1,open:true,turns:[turn]})]]),h=harness(storage);h.state.book.kind='short';h.state.book.chapters=[{id:'body',title:'正文',body:'前后两段合并的正文。'}];h.state.chapterId='body';await h.open();await h.button('重试').listeners.click();assert.deepEqual(h.calls.find(call=>call.url.endsWith('/ai')).request.chapterIds,['body']);assert.equal(h.records().turns.length,1);assert.equal(h.records().turns[0].status,'complete');
+});
 test('explicit send displays alternating text and full history on follow-up',async()=>{
   const h=harness();await h.open();await h.prompt('主角想要什么？');await h.send();await h.prompt('再具体一点');await h.send();const calls=h.calls.filter(call=>call.url.endsWith('/ai'));assert.equal(calls.length,2);assert.deepEqual(calls[0].request.history,[]);assert.deepEqual(calls[1].request.history,[{role:'user',content:'主角想要什么？'},{role:'assistant',content:'收到：主角想要什么？'}]);assert.equal(h.records().turns.length,2);assert.equal(h.field('ai-chat-prompt').value,'');
 });

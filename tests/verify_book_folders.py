@@ -95,7 +95,7 @@ class FolderTests(unittest.TestCase):
             server.insert_book(conn, short)
         result = server.sync_book_folder(short["id"], create=True)
         text = (Path(result["folder"]) / "正文.txt").read_text("utf-8-sig")
-        self.assertEqual(text, "同名短篇\n\n正文\n\n第一段\n\n第二段\n")
+        self.assertEqual(text, "同名短篇\n\n第一段\n\n第二段\n")
         self.assertNotEqual(Path(result["folder"]), self.folder())
         self.assertEqual(json.loads((Path(result["folder"]) / "作品.yejian.json").read_text("utf-8"))["book"], short)
 

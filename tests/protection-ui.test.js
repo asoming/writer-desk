@@ -83,6 +83,35 @@ test('full novel previews are read-only and restoration uses optimistic revision
   assert.ok(h.messages.includes('已恢复，恢复前的内容也已保留。'));
 });
 
+test('short-story history shows only character counts and previews all legacy active text continuously without a chapter picker',async()=>{
+  const h=harness(),short=structuredClone(sample);short.kind='short';short.title='雨后';
+  short.chapters=[
+    {id:'old-one',title:'旧篇章一',body:'第一部分\n保留原换行。',deletedAt:null},
+    {id:'old-deleted',title:'回收内容',body:'回收站正文不能混入预览。',deletedAt:'2026-10-11'},
+    {id:'old-two',title:'旧篇章二',body:'第二部分与最后一句。',deletedAt:null},
+  ];
+  const before=JSON.stringify(short),currentBefore=JSON.stringify(h.state.book);
+  h.context.apiOverride=(endpoint,method)=>{
+    if(method!=='GET')return undefined;
+    if(endpoint==='/api/books/'+h.state.book.id)return{book:structuredClone(short),revision:2};
+    if(endpoint.endsWith('/history/1'))return{book:structuredClone(short),revision:1,savedAt:'2026-10-10T00:00:00Z'};
+    return undefined;
+  };
+  await h.run('showHistory()');
+  const rows=descendants(currentContent(h)).filter(node=>node.className==='protection-version');
+  assert.ok(rows.length>0);
+  rows.forEach(row=>{assert.match(row.children[1].textContent,/字$/);assert.ok(!row.children[1].textContent.includes('章'));});
+  await rows[0].listeners.click();
+  const preview=find(currentContent(h),node=>node.className==='protection-preview');
+  assert.ok(!descendants(preview).some(node=>node.tagName==='select'));
+  const body=find(preview,node=>node.className?.includes('protection-prose'));
+  assert.equal(body.readOnly,true);
+  assert.equal(body.value,'第一部分\n保留原换行。\n\n第二部分与最后一句。');
+  assert.equal(JSON.stringify(short),before,'Previewing must not alter the saved legacy snapshot');
+  assert.equal(JSON.stringify(h.state.book),currentBefore,'Previewing another book must not replace the current draft');
+  assert.equal(h.calls.filter(call=>call.method!=='GET').length,0);
+});
+
 test('a failed save or stale-window restoration never replaces current text and leaves retry available',async()=>{
   const h=harness(),before=JSON.stringify(h.state.book),restore=await openPreview(h);
   h.allowSave(false);await restore.listeners.click();

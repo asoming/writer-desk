@@ -186,7 +186,7 @@ check('registering candidate people retains the confirmation dialog after save f
   assert.equal(h.state.book.notes.length, before + 1); assert.ok(h.context.dialogState.messages[1].includes('1'));
 });
 
-check('outline-first creation suggests a volume under the long-story root, and a chapter under a short-story root', () => {
+check('outline-first creation suggests a volume under a long-story root and a scene under a short-story concept', () => {
   const h = harness(); load(h); setupDialog(h, true);
   h.context.rootId = h.state.book.outline.find(item => item.kind === 'story').id;
   h.run('showNewOutline(rootId)');
@@ -194,7 +194,79 @@ check('outline-first creation suggests a volume under the long-story root, and a
   assert.equal(descendants(form).find(element => element.id === 'new-outline-kind').value, 'volume');
   assert.equal(descendants(form).find(element => element.id === 'new-outline-category').value, '分卷剧情');
   h.state.kind = 'short'; h.state.book.kind = 'short'; h.run('showNewOutline(rootId)'); form = h.context.dialogState.children[0];
-  assert.equal(descendants(form).find(element => element.id === 'new-outline-kind').value, 'chapter');
+  const kind = descendants(form).find(element => element.id === 'new-outline-kind');
+  assert.equal(kind.value, 'scene');
+  assert.deepEqual(kind.options.map(option => option.value), ['story', 'scene']);
+  assert.deepEqual(kind.options.map(option => option.textContent), ['全篇构思', '情节 / 设定']);
+  assert.ok(!descendants(form).some(element => element.id === 'new-outline-volume'));
+});
+
+check('short-story outline templates contain concepts and scenes without manuscript chapters or volumes', () => {
+  const h = harness(); load(h, { id: 'short-empty', title: '雨后', kind: 'short', chapters: [], volumes: [], outline: [], notes: [], relations: [], atlasViews: [] });
+  h.run('createOutlineTemplate()');
+  assert.equal(h.state.book.outline[0].title, '全篇构思');
+  assert.equal(h.state.book.chapters.length, 0);
+  assert.equal(h.state.book.volumes.length, 0);
+  assert.ok(h.state.book.outline.every(item => ['story', 'scene'].includes(item.kind)));
+});
+
+check('short-story outlines show no volume or chapter choices while preserving old planning nodes', () => {
+  const h = harness(); const value = sample(); value.kind = 'short'; load(h, value);
+  const before = JSON.stringify(h.state.book.outline);
+  h.state.outlineId = value.outline.find(item => item.kind === 'chapter').id;
+  h.run('renderOutlineWorkspace()');
+  assert.deepEqual(h.get('outline-kind').options.map(option => option.value), ['story', 'scene']);
+  assert.deepEqual(h.get('outline-filter-kind').options.map(option => option.value), ['', 'story', 'scene']);
+  assert.equal(h.get('outline-kind').value, 'scene');
+  assert.equal(h.get('outline-build').hidden, true);
+  assert.equal(h.get('outline-volume-field').hidden, true);
+  assert.equal(h.get('outline-create-chapter').textContent, '打开正文');
+  assert.ok(!h.get('outline-categories').children.some(element => element.dataset.topic === '分卷剧情'));
+  assert.ok(h.get('outline-categories').children.some(element => element.dataset.topic === '情节与设定'));
+  assert.equal(JSON.stringify(h.state.book.outline), before, 'Presenting legacy planning as scenes must not rewrite or delete it');
+});
+
+check('every short-story plan links to the same manuscript, preserving its prose and keeping planning separate', () => {
+  const h = harness(); load(h, { id: 'short-one-body', title: '雨后', kind: 'short', volumes: [], notes: [], relations: [], atlasViews: [],
+    chapters: [{ id: 'short-body', title: '正文', body: '这是已经写好的正文。', volumeId: null, deletedAt: null }],
+    outline: [{ id: 'short-concept', kind: 'story', title: '全篇构思', body: '计划不能插入正文。', chapterIds: [], parentId: null, deletedAt: null },
+      { id: 'short-ending', kind: 'scene', title: '结局', body: '另一份计划也只关联同一篇正文。', chapterIds: [], parentId: 'short-concept', deletedAt: null }] });
+  // The app owns manuscript creation and legacy merging. This check covers the
+  // workspace contract: every plan reuses that result and adds only its link.
+  h.run('ensureShortManuscript=()=>activeChapters()[0]');
+  const before = JSON.stringify(h.state.book.chapters);
+  h.run('state.book.outline.forEach(item=>chapterFromOutline(item,false));state.book.outline.forEach(item=>chapterFromOutline(item,false))');
+  assert.equal(JSON.stringify(h.state.book.chapters), before);
+  assert.ok(h.state.book.outline.every(item => JSON.stringify(item.chapterIds) === '["short-body"]'));
+  h.state.outlineMode = 'read'; h.run('renderOutlineWorkspace()');
+  const links = h.get('outline-reading').querySelectorAll('.outline-manuscript-link');
+  assert.equal(links.length, 2);
+  assert.ok(links.every(link => link.textContent === '正文' && link.dataset.chapter === 'short-body'));
+});
+
+check('short-story writing has no chapter directory and switching back restores the long-story controls', () => {
+  const h = harness(); load(h); h.context.uiLanguage = 'zh';
+  h.run('renderPeople=()=>{};renderStats=()=>{};renderTrashCount=()=>{};selectChapter=id=>{state.chapterId=id;};resizeEditor=()=>{};ensureShortManuscript=()=>activeChapters()[0]');
+  h.state.kind = 'short'; h.state.book.kind = 'short'; h.state.view = 'write'; h.run('renderWorkspaceShell();renderVolumeChapters()');
+  for (const id of ['sidebar', 'toggle-sidebar', 'add-chapter', 'add-volume']) assert.equal(h.get(id).hidden, true, id);
+  assert.equal(h.get('chapter-list').children.length, 0);
+  assert.ok(h.get('write-view').className.split(/\s+/).includes('short-manuscript'));
+  h.state.kind = 'long'; h.state.book.kind = 'long'; h.run('renderWorkspaceShell();renderVolumeChapters()');
+  for (const id of ['sidebar', 'toggle-sidebar', 'add-chapter', 'add-volume']) assert.equal(h.get(id).hidden, false, id);
+  assert.ok(h.get('chapter-list').querySelectorAll('.chapter-item').length > 0);
+  assert.ok(!h.get('write-view').className.split(/\s+/).includes('short-manuscript'));
+});
+
+check('short-story shelf shows word count without a chapter count or latest-chapter line', () => {
+  const h = harness(); load(h); h.context.uiLanguage = 'zh';
+  h.state.kind = 'short';
+  h.state.books = [{ id: 'short-summary', title: '风过檐下', kind: 'short', chapterCount: 1, volumeCount: 0,
+    charCount: 5000, latestChapterTitle: '正文', cover: '', updatedAt: '2026-10-12T00:00:00Z' }];
+  h.run('svgIcon=()=>"";renderCollection()');
+  const card = h.get('shelf-grid').children[0];
+  assert.equal(card.querySelector('.shelf-book-progress'), null);
+  assert.equal(card.querySelector('.shelf-book-bottom').children[0].textContent, '5,000 字');
+  assert.ok(!descendants(card).some(element => /篇章|最近章节|\d+ 章/.test(element.textContent)));
 });
 
 check('a new book whose first outline save fails keeps its form and retries the same book instead of creating a duplicate', async () => {

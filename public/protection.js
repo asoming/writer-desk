@@ -2,7 +2,7 @@
 
 function protectionDate(value){return new Date(value).toLocaleString(uiLanguage==='en'?'en-GB':'zh-CN');}
 function protectionVersion(item){return T('版本 {0}',item.revision)+' · '+protectionDate(item.savedAt);}
-function protectionInfo(item){return T('{0} 章 · {1} 字',item.chapterCount,item.charCount.toLocaleString());}
+function protectionInfo(item,kind){return kind==='short'?T('{0} 字',item.charCount.toLocaleString()):T('{0} 章 · {1} 字',item.chapterCount,item.charCount.toLocaleString());}
 function protectionReason(item){return T(({automatic:'自动备份',manual:'手动备份','before-restore':'恢复前备份'})[item.reason]||'历史版本');}
 
 let historyRequest=0;
@@ -35,17 +35,20 @@ async function showHistory(bookId=state.book?.id){
           const path='/api/books/'+encodeURIComponent(bookId)+'/'+kind+'/'+encodeURIComponent(kind==='history'?item.revision:item.token);
           try{const snapshot=await api(path);if(!visible()||request!==previewRequest)return;if(snapshot.book?.id!==bookId)throw new Error(T('作品与目标不匹配，请重试。'));renderPreview(snapshot,path);}catch(error){if(visible()&&request===previewRequest)toast(error.message);}
         });
-        row.append(el('strong',null,protectionVersion(item)),el('small',null,(kind==='backups'?protectionReason(item)+' · ':'')+protectionInfo(item)));group.append(row);
+        row.append(el('strong',null,protectionVersion(item)),el('small',null,(kind==='backups'?protectionReason(item)+' · ':'')+protectionInfo(item,current.book.kind)));group.append(row);
       });list.append(group);
     }
     function renderPreview(snapshot,path){
-      const heading=el('div','protection-heading'),selector=el('select','text-field'),body=el('textarea','text-field protection-prose');
+      const heading=el('div','protection-heading'),selector=el('select','text-field'),body=el('textarea','text-field protection-prose'),short=snapshot.book.kind==='short';
       body.readOnly=true;body.setAttribute('aria-label',T('版本正文预览'));
       const active=snapshot.book.chapters.filter(chapter=>!chapter.deletedAt),volumeIds=new Set(snapshot.book.volumes.filter(volume=>!volume.deletedAt).map(volume=>volume.id));
-      const chapters=snapshot.book.kind==='short'?active:[...snapshot.book.volumes.filter(volume=>!volume.deletedAt).flatMap(volume=>active.filter(chapter=>chapter.volumeId===volume.id)),...active.filter(chapter=>!volumeIds.has(chapter.volumeId))];
-      chapters.forEach(chapter=>{const option=el('option',null,chapter.title||T('未命名章节'));option.value=chapter.id;selector.append(option);});
-      const showChapter=()=>{body.value=chapters.find(chapter=>chapter.id===selector.value)?.body||'';};
-      selector.setAttribute('aria-label',T('预览章节'));selector.addEventListener('change',showChapter);selector.value=chapters[0]?.id||'';selector.hidden=!chapters.length;showChapter();
+      const chapters=short?active:[...snapshot.book.volumes.filter(volume=>!volume.deletedAt).flatMap(volume=>active.filter(chapter=>chapter.volumeId===volume.id)),...active.filter(chapter=>!volumeIds.has(chapter.volumeId))];
+      if(short)body.value=chapters.map(chapter=>chapter.body).join('\n\n');
+      else{
+        chapters.forEach(chapter=>{const option=el('option',null,chapter.title||T('未命名章节'));option.value=chapter.id;selector.append(option);});
+        const showChapter=()=>{body.value=chapters.find(chapter=>chapter.id===selector.value)?.body||'';};
+        selector.setAttribute('aria-label',T('预览章节'));selector.addEventListener('change',showChapter);selector.value=chapters[0]?.id||'';selector.hidden=!chapters.length;showChapter();
+      }
       const restore=action(T('恢复此版本'),'primary-button',async()=>{
         if(restore.disabled)return;restore.disabled=true;
         try{
@@ -66,7 +69,7 @@ async function showHistory(bookId=state.book?.id){
       const planText=el('div','protection-plan-text');
       snapshot.book.outline.filter(item=>!item.deletedAt).forEach(item=>planText.append(el('h4',null,item.title),el('p',null,item.body)));
       snapshot.book.notes.filter(item=>!item.deletedAt&&item.type==='人物').forEach(item=>planText.append(el('h4',null,item.title),el('p',null,item.body)));plans.append(planText);
-      preview.replaceChildren(heading,el('p','subtle',T('恢复前会先保留当前版本。')),selector,body,plans);body.hidden=!chapters.length;
+      preview.replaceChildren(heading,el('p','subtle',T('恢复前会先保留当前版本。')),...(short?[]:[selector]),body,plans);body.hidden=!chapters.length;
     }
     addGroup(T('历史版本'),history.versions,'history');addGroup(T('本机备份'),backups.backups,'backups');
     preview.append(el('p','empty-hint',T('选择一个版本查看内容，再决定是否恢复。')));

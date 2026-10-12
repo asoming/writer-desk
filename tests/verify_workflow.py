@@ -232,7 +232,11 @@ class WorkflowTests(unittest.TestCase):
                 created = self.request("/api/books", "POST", {"title": "从大纲开始 " + kind, "kind": kind}, 201)
                 book, revision = created["book"], created["revision"]
                 volume_id = book["volumes"][0]["id"] if book["volumes"] else None
-                self.assertEqual(book["chapters"], [])
+                if kind == "short":
+                    self.assertEqual(len(book["chapters"]), 1)
+                    self.assertEqual(book["chapters"][0]["body"], "")
+                else:
+                    self.assertEqual(book["chapters"], [])
                 book["outline"] = [{"id": "planned-story", "title": "先有大纲", "body": "两个人在雨停前做出选择。", "kind": "story",
                                     "category": "故事主线", "parentId": None, "volumeId": None, "chapterIds": [], "deletedAt": None}]
                 book["notes"] = [{"id": item_id, "type": "人物", "title": title, "body": "在正文之前建立的人物。", "aliases": [],
@@ -244,7 +248,7 @@ class WorkflowTests(unittest.TestCase):
                                       "body": "由陌生到相识。", "type": "friend", "stage": "初识", "volumeIds": [volume_id] if volume_id else [],
                                       "chapterIds": [], "deletedAt": None}]
                 revision = self.save(book, revision)["revision"]
-                self.assertEqual(self.shelf()[book["id"]]["chapterCount"], 0)
+                self.assertEqual(self.shelf()[book["id"]]["chapterCount"], 1 if kind == "short" else 0)
                 self.assertEqual(self.shelf()[book["id"]]["charCount"], 0)
                 book["chapters"] = [{"id": "written-from-plan", "title": "正文", "body": "许宁把伞交给来客。\n\n雨停后，他又回来了。",
                                      "volumeId": volume_id, "deletedAt": None}]
@@ -253,6 +257,15 @@ class WorkflowTests(unittest.TestCase):
                 revision = self.save(book, revision)["revision"]
                 folder = Path(self.request("/api/books/" + book["id"] + "/folder", "POST", {})["folder"])
                 self.assertIn(book["chapters"][0]["body"], (folder / "正文.txt").read_text("utf-8-sig"))
+                if kind == "short":
+                    self.assertEqual((folder / "正文.txt").read_text("utf-8-sig"),
+                                     book["title"] + "\n\n" + book["chapters"][0]["body"] + "\n")
+                    backup = json.loads((folder / "作品.yejian.json").read_text("utf-8"))
+                    self.assertEqual(restore_volume_ids(self.request("/api/import", "POST", backup, 201)["book"], book), book)
+                    book["chapters"][0]["body"] += "\n\n整篇修订仍保留全部大纲和人物关联。"
+                    self.save(book, revision)
+                    self.assert_other_books_unchanged(book["id"])
+                    continue
                 book["chapters"][0]["deletedAt"] = "2026-10-10T00:00:00Z"
                 revision = self.save(book, revision)["revision"]
                 self.assertEqual((self.shelf()[book["id"]]["chapterCount"], self.shelf()[book["id"]]["charCount"],
@@ -298,9 +311,13 @@ class WorkflowTests(unittest.TestCase):
             {"id": "short-blank", "title": "待写结尾", "body": "", "volumeId": None, "deletedAt": None},
             {"id": "short-recycled", "title": "回收正文", "body": "不可作为结尾", "volumeId": None, "deletedAt": "2026-10-10"},
         ]
-        self.save(short, 1)
-        self.assertEqual(self.shelf()[short["id"]]["latestChapterTitle"], "短篇结尾")
-        self.assertEqual(self.shelf()[short["id"]]["excerpt"], "第一段")
+        self.request("/api/books/" + short["id"], "PUT", {"book": short, "revision": 1})
+        merged = self.get_book(short["id"])["book"]
+        active = [item for item in merged["chapters"] if not item["deletedAt"]]
+        self.assertEqual([(item["id"], item["title"], item["body"]) for item in active],
+                         [("short-one", "短篇开头", "第一段\n\n第二段\n\n")])
+        self.assertEqual(self.shelf()[short["id"]]["latestChapterTitle"], "短篇开头")
+        self.assertEqual(self.shelf()[short["id"]]["excerpt"], "第一段\n\n第二段\n\n")
         self.assert_other_books_unchanged(book["id"])
 
 

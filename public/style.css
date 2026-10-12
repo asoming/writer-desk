@@ -25,6 +25,8 @@ button>span[data-icon]{display:inline-flex;align-items:center}
 .brand #close-nav{margin-left:auto}
 
 .eyebrow{font-size:.75rem;color:var(--muted);display:block;line-height:1.7}
+.short-story-title{font-size:1.6rem;line-height:1.6;font-weight:650;margin:0 0 24px;overflow-wrap:anywhere}
+.short-manuscript .writing-toolbar{padding-left:24px}
 
 
 
@@ -149,6 +151,12 @@ button>span[data-icon]{display:inline-flex;align-items:center}
 .chapter-item{display:block;text-align:left;width:100%;padding:13px 13px;margin-bottom:5px;border-radius:6px;border:0}
 .chapter-item:hover{background:#f0f4fa}
 .chapter-item.active{background:#eaf1ff}
+.chapter-row{position:relative}
+.chapter-row .chapter-item{padding-right:42px}
+.chapter-rename{position:absolute;right:5px;top:9px;width:28px;height:28px;opacity:0;color:#69778c}
+.chapter-row:hover .chapter-rename,.chapter-row:focus-within .chapter-rename{opacity:1}
+@media (hover:none){.chapter-rename{opacity:1}}
+.short-manuscript .chapter-heading{display:none}
 .chapter-item-top{display:flex;align-items:baseline;gap:8px}
 .chapter-index{display:none}
 .chapter-item-title{font-size:.875rem;line-height:1.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

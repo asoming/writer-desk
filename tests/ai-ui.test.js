@@ -496,6 +496,43 @@ function renderConversationCandidate(h,action='draft',options={}){
   return{container,controller,button:text=>dialogButton(container,text),field:id=>dialogField(container,(options.idPrefix||'')+id)};
 }
 
+function shortHarness(){
+  const h=harness();h.state.kind='short';h.state.book={id:'short-story',kind:'short',title:'雨停之前',cover:'',volumes:[],chapters:[{id:'short-body',title:'正文',body:'许宁在书店等雨停。',volumeId:null,deletedAt:null}],outline:[{id:'short-plan',title:'一把伞',body:'在雨中借伞，收束于归还。',kind:'story',parentId:null,volumeId:null,category:'故事主线',chapterIds:[],deletedAt:null}],notes:[],relations:[],atlasViews:[]};h.state.chapterId='short-body';h.state.outlineId='short-plan';return h;
+}
+
+test('short story AI includes the full manuscript in planning and hides chapter choices',async()=>{
+  const h=shortHarness();h.state.view='outline';await h.run("showAIAssistant('draft')");
+  const material=find(h.get('dialog-body'),node=>node.className==='ai-material'),choices=find(material,node=>node.className==='ai-chapter-choices');assert.equal(choices.hidden,true);assert.equal(choices.children.length,0);assert.ok(find(material,node=>node.textContent==='资料 · 正文'));assert.match(field(h,'ai-instruction').value,/一篇连续正文/);
+  assert.deepEqual(h.calls.find(call=>call.url.endsWith('/preview')).data.chapterIds,['short-body']);assert.ok(!find(h.get('dialog-body'),node=>node.tagName==='OPTION'&&node.textContent==='章节创作'));await button(h,'发送所选资料').listeners.click();assert.deepEqual(h.calls.find(call=>call.url.endsWith('/ai')).data.chapterIds,['short-body']);
+  assert.ok(!find(h.get('dialog-body'),node=>node.id==='ai-draft-target'||node.id==='ai-draft-title'));assert.ok(!find(h.get('dialog-body'),node=>node.tagName==='BUTTON'&&node.textContent==='保存为新章节'));
+});
+
+test('short draft adoption appends or replaces only the manuscript and retry never repeats the edit',async()=>{
+  for(const append of [true,false]){
+    const h=shortHarness(),book=h.state.book,manuscript=book.chapters[0],before=manuscript.body,candidate=renderConversationCandidate(h,'draft',{sourceOutline:book.outline[0]}),draft=candidate.field('ai-draft-body').value;
+    assert.equal(manuscript.body,before);assert.equal(book.title,'雨停之前');h.saves=[true,false];await candidate.button(append?'追加到正文':'替换正文').listeners.click();
+    const expected=append?before+'\n\n'+draft:draft;assert.equal(manuscript.body,expected);assert.equal(book.chapters.length,1);assert.equal(book.title,'雨停之前');assert.deepEqual(structuredClone(book.outline[0].chapterIds),['short-body']);assert.equal(h.applications.length,1);assert.equal(candidate.controller.hasUnsavedAdoption(),true);
+    await candidate.button('重试保存').listeners.click();assert.equal(manuscript.body,expected);assert.equal(book.chapters.length,1);assert.equal(h.applications.length,1);assert.equal(candidate.controller.hasUnsavedAdoption(),false);
+  }
+});
+
+test('short replacement respects save conflicts and resolves the live manuscript',async()=>{
+  const blocked=shortHarness(),unchanged=blocked.state.book.chapters[0].body,candidate=renderConversationCandidate(blocked);blocked.saves=[false];await candidate.button('替换正文').listeners.click();assert.equal(blocked.state.book.chapters[0].body,unchanged);assert.equal(blocked.applications.length,0);
+  const live=shortHarness(),captured=live.state.book.chapters[0],choice=renderConversationCandidate(live);live.state.book.chapters[0]={...captured,body:'作者在等待期间写入的新句子。'};await choice.button('追加到正文').listeners.click();assert.equal(captured.body,'许宁在书店等雨停。');assert.equal(live.state.book.chapters[0].body,'作者在等待期间写入的新句子。\n\n'+choice.field('ai-draft-body').value);assert.equal(live.state.book.chapters.length,1);
+});
+
+test('short outline candidates allow story and plot settings but reject volume and chapter candidates',async()=>{
+  const h=shortHarness(),root={key:'story',parentKey:null,kind:'story',title:'一把伞',body:'借伞、等雨、归还。'},plot={key:'plot',parentKey:'story',kind:'setting',title:'雨停',body:'归还雨伞，人物完成一次选择。'},before=h.state.book.chapters[0].body;
+  const candidate=renderConversationCandidate(h,'outline',{response:{bookId:h.state.book.id,action:'outline',data:{nodes:[root,plot]}}});await candidate.button('全选大纲').listeners.click();await candidate.button('追加勾选的大纲').listeners.click();assert.equal(h.state.book.outline.at(-1).kind,'scene');assert.equal(h.state.book.outline.at(-1).category,'情节与设定');assert.equal(h.state.book.chapters[0].body,before);assert.equal(h.state.book.chapters.length,1);
+  for(const kind of ['volume','chapter'])assert.throws(()=>renderConversationCandidate(h,'outline',{response:{bookId:h.state.book.id,action:'outline',data:{nodes:[root,{...plot,kind}]}}}),/结构不正确/);
+});
+
+test('short AI evidence forwards the exact quote with old aliases so navigation can find edited prose',async()=>{
+  const h=shortHarness(),quote='许宁在书店等雨停。',jumps=[];h.state.book.chapters[0].body='作者后来插入的前言。\n\n'+quote;
+  const response={bookId:h.state.book.id,action:'consistency',data:{issues:[{title:'旧对话中的证据',description:'查看保留的引用。',evidence:[{chapterId:'old-second-body',quote}]}]}},candidate=renderConversationCandidate(h,'consistency',{response,onNavigate:(id,text)=>jumps.push({id,quote:text})}),link=find(candidate.container,node=>node.className==='ai-evidence-link');
+  assert.equal(link.textContent,'正文 · '+quote);await link.listeners.click();assert.deepEqual(jumps,[{id:'old-second-body',quote}]);assert.equal(h.state.book.chapters[0].body,'作者后来插入的前言。\n\n'+quote);assert.equal(h.applications.length,0);
+});
+
 test('conversation adoption previews first, keeps the current view and unrelated dialog open, and disables both actions after one save',async()=>{
   const h=harness(),original=h.state.book.chapters[0],before=original.body,count=h.state.book.chapters.length;h.get('dialog').open=true;
   const candidate=renderConversationCandidate(h,'draft',{idPrefix:'message-one-'}),draft=candidate.field('ai-draft-body').value;

@@ -108,6 +108,43 @@ check('legacy books and empty themed filters render without inventing people or 
   assert.equal(h.state.book.atlasViews[0].title, 'No people yet');
 });
 
+check('short-story people use manuscript labels and ignore legacy volume filters without changing stored profiles', () => {
+  const h = harness(), value = book(); value.kind = 'short';
+  value.notes[0].profile.arcs.push({ volumeId: 'v1', body: '以前的分卷人物规划保留。' });
+  load(h, value); h.state.graphVolume = 'v2'; h.state.showAutomatic = true;
+  h.context.WriterAnalysis.analyzeBook = () => ({ appearances: { A: ['c1'], B: ['c1'] },
+    cooccurrences: [{ fromId: 'A', toId: 'B', chapterIds: ['c1'], volumeIds: [] }], candidates: [], ambiguous: [] });
+  const before = JSON.stringify(h.state.book);
+  const checkbox = h.get('graph-auto'); checkbox.marker = 'original-checkbox';
+  const summaryCount = h.get('person-link-count'); summaryCount.marker = 'original-count';
+  h.run('renderPersonWorkspace()');
+  assert.deepEqual(ids(h), ['A', 'B', 'C', 'D'], 'An invisible old volume selection must not hide people');
+  assert.equal(h.state.graphVolume, '');
+  assert.equal(h.get('graph-volume').hidden, true);
+  assert.equal(h.get('character-arcs').hidden, true);
+  assert.equal(h.get('atlas-timeline-section').hidden, true);
+  assert.equal(h.get('atlas-timeline').children.length, 0);
+  assert.equal(h.get('graph-auto-label').textContent, '显示正文共同提及');
+  assert.equal(h.get('relation-automatic-option').textContent, '正文共同提及');
+  assert.equal(h.get('person-link-label').textContent, '手动关联正文');
+  assert.equal(h.get('person-link').textContent, '＋ 关联正文');
+  assert.equal(h.get('graph-auto'), checkbox);
+  assert.equal(h.get('graph-auto').checked, true);
+  assert.equal(h.get('person-link-count'), summaryCount);
+  assert.match(h.get('graph-count').textContent, /正文共同提及/);
+  assert.match(h.get('relation-index-count').textContent, /正文共同提及/);
+  const prose = node => [node.textContent, ...node.children.map(prose)].join(' ');
+  assert.ok(!prose(h.get('person-overview')).includes('分卷人物变化'));
+  assert.equal(JSON.stringify(h.state.book), before, 'Display changes cannot remove previous planning or profile content');
+  h.state.kind = 'long'; h.state.book.kind = 'long'; h.run('renderPersonWorkspace()');
+  assert.equal(h.get('graph-volume').hidden, false);
+  assert.equal(h.get('graph-auto-label').textContent, '显示同章提及');
+  assert.equal(h.get('person-link-label').textContent, '手动关联章节');
+  assert.equal(h.get('person-link').textContent, '＋ 关联章节');
+  assert.equal(h.get('relation-automatic-option').textContent, '同章提及');
+  assert.equal(h.get('graph-auto'), checkbox, 'Switching work types must retain event-bound inputs');
+});
+
 check('new people escape restrictive themes and enter editable profile mode', () => {
   const h = harness(); load(h); h.state.atlasView = 'view:old-case'; h.state.graphVolume = 'v2'; h.state.graphGroup = 'Harbor';
   h.run('addPerson()');
