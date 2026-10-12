@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="作家工作台 Writer's Desk：本地小说写作 App，整合书架、大纲、人物脉络和正文。支持 Linux、Windows 和 macOS，免费开源。">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="作家工作台 · Writer's Desk">
+  <meta property="og:description" content="让故事，在这里成形。A quiet place for your next story.">
+  <meta property="og:url" content="https://asoming.github.io/writer-desk/">
+  <meta property="og:image" content="https://asoming.github.io/writer-desk/assets/writing.png">
+  <meta name="theme-color" content="#f9fafc">
+  <link rel="icon" type="image/png" href="./assets/icon.png">
+  <link rel="apple-touch-icon" href="./assets/icon.png">
+  <link rel="canonical" href="https://asoming.github.io/writer-desk/">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+  <title>作家工作台 · Writer's Desk</title>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-en="Skip to content">跳到正文</a>
+  <svg class="symbol-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="download-icon" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4"/></symbol>
+    <symbol id="github-icon" viewBox="0 0 24 24"><path class="fill-icon" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02A9.6 9.6 0 0 1 12 6.81c.85 0 1.71.12 2.51.34 1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.85-2.34 4.7-4.57 4.95.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></symbol>
+    <symbol id="book-icon" viewBox="0 0 24 24"><path d="M12 5v15M3 4h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v15h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3z"/></symbol>
+    <symbol id="outline-icon" viewBox="0 0 24 24"><path d="M5 5h15M9 12h11M9 19h11M4 10v9h2"/></symbol>
+    <symbol id="people-icon" viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="18" r="3"/><circle cx="19" cy="18" r="3"/><path d="m10 8-4 7m8-7 4 7M8 18h8"/></symbol>
+    <symbol id="save-icon" viewBox="0 0 24 24"><path d="M6 3h11l4 4v14H3V3zM7 3v6h10V3M7 21v-7h10v7"/></symbol>
+    <symbol id="spark-icon" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM20 2v4m-2-2h4"/></symbol>
+    <symbol id="sun-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+    <symbol id="monitor-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="13" rx="2"/><path d="M8 21h8m-4-5v5"/></symbol>
+    <symbol id="windows-icon" viewBox="0 0 24 24"><path class="fill-icon" d="M2 4.5 11 3v8H2zm10-1.7L22 1v10H12zM2 12h9v8L2 18.5zm10 0h10v10l-10-1.8z"/></symbol>
+    <symbol id="apple-icon" viewBox="0 0 24 24"><path class="fill-icon" d="M15.1 4.2c.7-.9 1.2-2 1.1-3.2-1.1.1-2.4.7-3.1 1.5-.7.8-1.2 2-1.1 3.1 1.2.1 2.4-.6 3.1-1.4zM19.7 17.6c-.5 1.1-.8 1.6-1.4 2.6-.9 1.4-2.2 3.1-3.7 3.1-1.3 0-1.6-.8-3.4-.8s-2.1.8-3.4.8c-1.5 0-2.8-1.5-3.7-3C1.6 16.1 1 10.7 2.6 8.3c1.1-1.7 2.8-2.6 4.4-2.6 1.6 0 2.5.8 3.8.8 1.2 0 2-.8 3.8-.8 1.4 0 2.8.8 3.8 2.1-3.3 1.8-2.8 6.5.5 7.8.4.2.8.3 1.2.4l-.4 1.6z"/></symbol>
+    <symbol id="expand-icon" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></symbol>
+    <symbol id="close-icon" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+  </svg>
+
+  <header class="site-header">
+    <div class="header-inner container">
+      <a class="brand" href="#" aria-label="作家工作台 Writer's Desk">
+        <img src="./assets/icon.png" width="36" height="36" alt="">
+        <span data-en="Writer's Desk">作家工作台</span>
+      </a>
+      <nav class="main-nav" aria-label="主导航" data-en-aria="Main navigation">
+        <a href="#features" data-en="Features">功能</a>
+        <a href="#preview" data-en="Preview">预览</a>
+        <a href="https://github.com/asoming/writer-desk/blob/main/docs/quickstart-zh.md" class="guide-link" data-en="Guide">指南</a>
+      </nav>
+      <div class="header-actions">
+        <button class="language-switch" type="button" aria-label="Switch to English">EN</button>
+        <a class="nav-download" href="#download"><span data-en="Download">下载</span><svg class="icon" aria-hidden="true"><use href="#arrow"/></svg></a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero container">
+      <a class="release-pill" href="https://github.com/asoming/writer-desk/releases/tag/v0.5.0"><span class="release-dot"></span><span data-en="v0.5.0 · Preview release">v0.5.0 · 测试版</span><span class="pill-divider"></span><span>Linux / Windows / macOS</span><svg class="icon" aria-hidden="true"><use href="#arrow"/></svg></a>
+      <h1><span data-en="A quiet place for">让故事，</span><br><span class="hero-accent" data-en="your next story.">在这里成形。</span></h1>
+      <p class="hero-description" data-en="From the first idea to the final chapter. Keep your outlines, characters and manuscript together, in a workspace of your own.">从第一个念头，到最后一个句号。<br>把大纲、人物和正文，放进属于你的写作空间。</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="#download"><svg class="icon" aria-hidden="true"><use href="#download-icon"/></svg><span data-en="Get Writer's Desk">下载桌面版</span></a>
+        <a class="button button-secondary" href="https://github.com/asoming/writer-desk"><svg class="icon" aria-hidden="true"><use href="#github-icon"/></svg><span data-en="View on GitHub">在 GitHub 查看</span></a>
+      </div>
+      <p class="hero-note"><span data-en="Local-first">本地优先</span><i></i><span data-en="No account required">无需账号</span><i></i><span data-en="Free & open source">免费开源</span></p>
+    </section>
+
+    <section id="preview" class="preview-section container" aria-label="应用界面预览" data-en-aria="App interface preview">
+      <div class="preview-tabs" role="tablist" aria-label="选择界面" data-en-aria="Choose a view">
+        <button type="button" role="tab" id="tab-writing" aria-controls="preview-panel" aria-selected="true" data-view="writing"><svg class="icon" aria-hidden="true"><use href="#book-icon"/></svg><span data-en="Writing">正文写作</span></button>
+        <button type="button" role="tab" id="tab-outline" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="outline"><svg class="icon" aria-hidden="true"><use href="#outline-icon"/></svg><span data-en="Outlines">故事大纲</span></button>
+        <button type="button" role="tab" id="tab-characters" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="characters"><svg class="icon" aria-hidden="true"><use href="#people-icon"/></svg><span data-en="Characters">人物脉络</span></button>
+        <button type="button" role="tab" id="tab-night" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="night"><svg class="icon" aria-hidden="true"><use href="#sun-icon"/></svg><span data-en="Night mode">夜间写作</span></button>
+      </div>
+      <div class="app-window" id="preview-panel" role="tabpanel" aria-labelledby="tab-writing">
+        <div class="window-chrome"><div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div><span>Writer's Desk</span><button class="preview-expand" type="button" aria-label="放大界面截图" data-en-aria="Enlarge screenshot"><svg class="icon" aria-hidden="true"><use href="#expand-icon"/></svg></button></div>
+        <img id="preview-image" src="./assets/writing.png" alt="长篇写作：卷章目录、正文编辑与 AI 对话栏" width="1280" height="720" fetchpriority="high">
+      </div>
+      <p class="preview-caption" aria-live="polite"><span id="preview-caption-text">长篇按卷章写作，短篇是一篇连续正文。</span><span id="preview-version">界面记录 · v0.4.10</span></p>
+    </section>
+
+    <section id="features" class="features-section container">
+      <div class="section-heading"><span class="eyebrow" data-en="MADE FOR THE WHOLE STORY">为完整的创作过程而做</span><h2 data-en="Room for every part of your story.">不止正文，还有整个故事。</h2><p data-en="Plan first, write freely, and return to your notes whenever you need them.">先想清楚，再安心写。灵感与资料，随时回到手边。</p></div>
+      <div class="features-grid">
+        <article class="feature"><svg class="icon" aria-hidden="true"><use href="#book-icon"/></svg><h3 data-en="A shelf of your own">每个故事，各有位置</h3><p data-en="Separate shelves for novels and short stories. Give each work a cover, a title and its own folder.">长篇与短篇分别管理。独立的封面、书名和作品文件夹，让每部作品井然有序。</p></article>
+        <article class="feature"><svg class="icon" aria-hidden="true"><use href="#outline-icon"/></svg><h3 data-en="See the story take shape">让大纲连成一条线</h3><p data-en="Plan by story, volume, chapter and scene. Read it all continuously, then build the chapter list from your plan.">从全书、分卷到章节与情节，分类梳理，连续阅读。大纲写好，就能生成卷章目录。</p></article>
+        <article class="feature"><svg class="icon" aria-hidden="true"><use href="#people-icon"/></svg><h3 data-en="Keep your characters connected">人物之间，有迹可循</h3><p data-en="Profiles, aliases, groups and relationship maps. Link characters and outlines to chapters, and jump back again.">档案、别名、阵营与主题分图。人物、大纲和正文章节双向关联，复杂关系也能看清。</p></article>
+        <article class="feature"><svg class="icon" aria-hidden="true"><use href="#save-icon"/></svg><h3 data-en="Stay close to your words">写下的，都有着落</h3><p data-en="Autosave, version history and per-book backups. Export plain text, Markdown or a complete JSON backup.">自动保存、历史恢复与逐书备份。导出 TXT、Markdown，或完整 JSON，把作品留在自己手里。</p></article>
+        <article class="feature"><svg class="icon" aria-hidden="true"><use href="#spark-icon"/></svg><h3 data-en="An assistant, when you want one">需要时，再请 AI 帮忙</h3><p data-en="Bring your own compatible API for outlines, drafts, characters or cover ideas. Review each suggestion before applying it.">接入自己的兼容 API，讨论大纲、草稿、人物或封面。提示词由你掌控，结果确认后才采用。</p></article>
+        <article class="feature"><svg class="icon" aria-hidden="true"><use href="#sun-icon"/></svg><h3 data-en="Make the space feel right">舒服一点，写久一点</h3><p data-en="Light, dark and eye-comfort modes. Resize your panels, enter focus mode and work in Chinese or English.">白天、黑夜与护眼模式。自由调整分栏，进入专注写作，中英文界面随时切换。</p></article>
+      </div>
+    </section>
+
+    <section class="sample-section">
+      <div class="sample-inner container">
+        <div class="sample-book"><img src="./assets/tide-archive.png" alt="潮汐档案馆小说封面" data-en-alt="The Tide Archive book cover" width="600" height="840" loading="lazy"><span class="sample-book-shadow" aria-hidden="true"></span></div>
+        <div class="sample-copy"><span class="eyebrow" data-en="AN ENTIRE NOVEL, READY TO EXPLORE">打开就能体验的完整示例</span><h2 data-en="Meet The Tide Archive.">从《潮汐档案馆》开始。</h2><p data-en="An original ensemble novel is included with the app. Explore its outline and character maps, jump into a chapter, edit a passage, then try a backup and restore.">内置一部原创群像小说。查看完整大纲与人物分图，点击关联进入正文，改一段文字，再试试备份与恢复。</p><div class="sample-stats"><div><strong>101,506</strong><span data-en="non-whitespace characters">正文字符</span></div><div><strong>6 / 36</strong><span data-en="volumes / chapters">卷 / 章</span></div><div><strong>32</strong><span data-en="characters">人物</span></div></div><a class="text-link" href="https://github.com/asoming/writer-desk/blob/main/examples/潮汐档案馆.txt"><span data-en="Read the example novel (Chinese)">阅读示例小说</span><svg class="icon" aria-hidden="true"><use href="#arrow"/></svg></a><p class="sample-note" data-en="The example is in Chinese. Counts include punctuation. Editing or deleting it does not affect your own books.">示例为中文，字符数包含标点。可自由编辑或删除，不影响自己的作品。</p></div>
+      </div>
+    </section>
+
+    <section id="download" class="download-section container">
+      <div class="section-heading"><span class="eyebrow" data-en="YOUR NEXT CHAPTER STARTS HERE">下一章，从这里开始</span><h2 data-en="Your desk, on your desktop.">把写作空间，放到桌面上。</h2><p data-en="v0.5.0 preview · No Python or Node.js installation needed.">v0.5.0 测试版 · 安装即可使用，无需另装 Python 或 Node.js。</p></div>
+      <div class="download-grid">
+        <article class="download-card"><svg class="platform-icon icon" aria-hidden="true"><use href="#windows-icon"/></svg><h3>Windows</h3><p data-en="Windows 10 / 11 · x64">Windows 10 / 11 · x64</p><a class="button button-platform" href="https://github.com/asoming/writer-desk/releases/download/v0.5.0/WriterDesk-0.5.0-windows-x64.exe"><span data-en="Download .exe">下载 .exe</span><svg class="icon" aria-hidden="true"><use href="#download-icon"/></svg></a><span class="download-detail" data-en="Installer with desktop shortcut">安装向导 · 桌面快捷方式</span></article>
+        <article class="download-card"><svg class="platform-icon icon" aria-hidden="true"><use href="#apple-icon"/></svg><h3>macOS</h3><p data-en="macOS 13 or later">macOS 13 及以上</p><div class="mac-downloads"><a class="button button-platform" href="https://github.com/asoming/writer-desk/releases/download/v0.5.0/WriterDesk-0.5.0-mac-arm64.dmg">Apple Silicon <span>↗</span></a><a class="button button-platform" href="https://github.com/asoming/writer-desk/releases/download/v0.5.0/WriterDesk-0.5.0-mac-x64.dmg">Intel <span>↗</span></a></div><span class="download-detail" data-en="DMG · Trackpad support">DMG · 支持触控板操作</span></article>
+        <article class="download-card"><svg class="platform-icon icon" aria-hidden="true"><use href="#monitor-icon"/></svg><h3>Linux</h3><p>Ubuntu 22.04+ · amd64</p><a class="button button-platform" href="https://github.com/asoming/writer-desk/releases/download/v0.5.0/WriterDesk-0.5.0-linux-amd64.deb"><span data-en="Download .deb">下载 .deb</span><svg class="icon" aria-hidden="true"><use href="#download-icon"/></svg></a><a class="download-detail secondary-download" href="https://github.com/asoming/writer-desk/releases/download/v0.5.0/WriterDesk-0.5.0-linux-x64.tar.gz" data-en="Portable .tar.gz →">便携版 .tar.gz →</a></article>
+      </div>
+      <div class="release-notes"><p data-en="Preview signing status: Windows is unsigned; macOS is ad-hoc signed and not notarized. Physical Mac trackpad testing is still pending.">测试版签名状态：Windows 未签名；macOS 为临时签名，尚未公证。Mac 实体触控板体验仍需实机验收。</p><a href="https://github.com/asoming/writer-desk/releases/tag/v0.5.0"><span data-en="Release notes & SHA256 checksums">发行说明与 SHA256 校验</span><svg class="icon" aria-hidden="true"><use href="#arrow"/></svg></a></div>
+    </section>
+
+    <section class="faq-section container">
+      <div class="faq-heading"><span class="eyebrow" data-en="A FEW THINGS TO KNOW">开始前，你可能想知道</span><h2 data-en="A little more clarity.">常见问题</h2><a class="text-link guide-link" href="https://github.com/asoming/writer-desk/blob/main/docs/quickstart-zh.md"><span data-en="Read the guide">查看使用指南</span><svg class="icon" aria-hidden="true"><use href="#arrow"/></svg></a></div>
+      <div class="faq-list">
+        <details><summary data-en="Can I write offline?">可以完全离线写作吗？</summary><p data-en="Yes. Writing, outlines, character maps, saving and backups work locally, without an account. AI features need the service you configure; a local compatible model service can also be used.">可以。写作、大纲、人物脉络、保存和备份都在本机完成，无需账号。AI 功能需要连接你配置的服务，也可以使用兼容的本地模型服务。</p></details>
+        <details><summary data-en="Where are my books saved?">我的作品保存在哪里？</summary><p data-en="In your system user-data folder, separate from the app installation. Find it under Settings → About → Local data folder. Export a complete JSON backup for each book to move it to another device.">保存在系统用户数据目录，与程序安装目录分开。通过「设置 → 关于 → 本机数据目录」查看。迁移到另一台电脑时，逐书导出完整 JSON，再到新设备导入。</p></details>
+        <details><summary data-en="Do I need to configure AI?">一定要配置 AI 才能用吗？</summary><p data-en="No. All core writing features work without AI. If you choose to connect a compatible API, you provide the service and key. Requests may be billed by that provider; generated suggestions only enter your book after you approve them.">不用。核心写作功能无需 AI。若要接入兼容 API，需自己配置服务与密钥，费用由对应服务方收取；生成结果确认后才会写入作品。</p></details>
+        <details><summary data-en="How do novels and short stories differ?">长篇和短篇的写作有什么区别？</summary><p data-en="Both open in Writing. Novels have volumes and chapters; short stories use a single continuous manuscript. Every book has its own outlines, characters and backups. Return to the shelf to switch books.">都进入同一个「写作」入口。长篇有卷和章节目录，短篇是一篇连续正文。每本书拥有独立的大纲、人物与备份，返回书架即可切换作品。</p></details>
+        <details><summary data-en="Is this a browser-based writing app?">官网能直接在线写作吗？</summary><p data-en="This site introduces the app and provides downloads. Your books are edited in the desktop app. Developers can also run the source locally in a browser. Cloud sync and collaboration are not included.">这个网站用于介绍和下载。作品在桌面 App 中编辑；开发者也可以从源码启动本机浏览器版本。当前不提供云端同步或多人协作。</p></details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer"><div class="footer-inner container"><a class="brand" href="#"><img src="./assets/icon.png" width="28" height="28" alt=""><span data-en="Writer's Desk">作家工作台</span></a><span class="footer-note" data-en="A place for your words. Yours to keep.">给文字一个位置，把故事留在自己手里。</span><nav aria-label="页脚导航" data-en-aria="Footer navigation"><a href="https://github.com/asoming/writer-desk">GitHub</a><a href="https://github.com/asoming/writer-desk/issues" data-en="Feedback">反馈</a><a href="https://github.com/asoming/writer-desk/blob/main/LICENSE">MIT</a></nav></div></footer>
+
+  <dialog class="image-dialog" aria-label="界面大图" data-en-aria="Full screenshot"><button class="dialog-close" type="button" aria-label="关闭大图" data-en-aria="Close screenshot"><svg class="icon" aria-hidden="true"><use href="#close-icon"/></svg></button><img alt="" width="1280" height="720"></dialog>
+</body>
+</html>

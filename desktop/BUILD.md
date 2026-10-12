@@ -55,7 +55,7 @@ Windows 包支持 Windows 10+ x64，提供可选择目录的当前用户 NSIS �
 
 手动工作流 `.github/workflows/native-packages.yml` 使用 Ubuntu 22.04 x64、Windows Server 2022 x64、macOS 15 arm64 和 macOS 15 Intel 的原生 runner。触发输入须与 `package.json` 版本完全相同。四个任务先跑存储回归，构建后再跑冻结服务的文件夹、备份、图片、章节历史和删除流程；随后从真正的 `.deb`、`.exe`、`.dmg` 提取/安装 App，检查本机保存、重启持久化、101,506 字示例和 Electron 窗口载入。验证都使用临时作品库；Windows NSIS 验证限定在一次性的 GitHub Actions runner。真实触控板手感、Gatekeeper 下载体验和真实 Windows 桌面仍需人工验收。
 
-只有四个原生任务全部成功才收集 SHA256、校验报告、源码 zip 和安装包到私有 GitHub 草稿 release；工作流不会自动公开发布。可用 `gh workflow run native-packages.yml --ref main -f version=0.5.0` 触发，验收草稿后单独发布。已公开 release 或不同源码提交的同版本草稿不会被覆盖。
+只有四个原生任务全部成功才收集 SHA256、校验报告、源码 zip 和安装包到 GitHub 草稿 release；工作流不会自动公开发布。可用 `gh workflow run native-packages.yml --ref main -f version=0.5.0` 触发，验收草稿后单独发布。已公开 release 或不同源码提交的同版本草稿不会被覆盖。
 
 Linux 的 `after-pack.cjs` 将普通文件权限统一为 `0644`、可执行文件统一为 `0755` 后生成发行清单。压缩包根目录必须是 `WriterDesk/`，只含普通文件与目录。升级读取器支持 USTAR 和常规 PAX 路径、大小、时间元数据。发行压缩包完成后生成对应 `.sha256`，不要再改包内文件。
 

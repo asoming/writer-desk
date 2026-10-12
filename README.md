@@ -1,4 +1,25 @@
-# 作家工作台 · Writer's Desk
+<p align="center">
+  <img src="desktop/assets/icon.png" width="112" height="112" alt="作家工作台图标">
+</p>
+
+<h1 align="center">作家工作台 · Writer's Desk</h1>
+
+<p align="center">书架、大纲、人物与正文，在一个安静的本地工作台里。</p>
+
+<p align="center">
+  <a href="README.md">中文介绍</a> ·
+  <a href="README.en.md">English guide</a> ·
+  <a href="https://asoming.github.io/writer-desk/">产品官网 / Website</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.5.0">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.5.0"><img src="https://img.shields.io/badge/release-v0.5.0%20preview-6366f1" alt="Release v0.5.0 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
+  <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
+</p>
 
 面向小说创作的本地写作 App，将书架、大纲、人物脉络和正文放在同一个工作台。支持多部作品独立管理，长篇按卷章组织，短篇使用连续正文。
 
@@ -8,7 +29,7 @@
 
 [下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.5.0) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
 
-> 当前测试版：**0.5.0**。仓库及发行包目前为私有，需要仓库访问权限才能下载。Windows 包未作发布者签名；macOS 包仅采用 ad-hoc 签名，尚未进行 Apple 公证。
+> 当前测试版：**0.5.0**。Windows 包未作发布者签名；macOS 包仅采用 ad-hoc 签名，尚未进行 Apple 公证。
 
 ## 功能
 
@@ -114,7 +135,7 @@ Linux 另提供 [便携压缩包](https://github.com/asoming/writer-desk/release
 | 桌面开发 | Node.js 22.12+、npm，以及 Python 3.9+ |
 | 原生安装包构建 | 上述环境、目标平台的构建工具及 `scripts/requirements-build.txt`；推荐 Python 3.12，与原生 CI 一致 |
 
-获取源码需要私有仓库访问权限：
+获取源码：
 
 ```sh
 git clone https://github.com/asoming/writer-desk.git
@@ -151,7 +172,7 @@ Windows 可使用 `py -3 server.py --open`。默认地址为 `http://127.0.0.1:8
 | macOS arm64 | `npm run build:mac -- --arch arm64` | Apple 芯片 DMG 及校验文件 |
 | macOS x64 | `npm run build:mac -- --arch x64` | Intel DMG 及校验文件 |
 
-产物输出到 `dist/`。原生 CI 工作流为 [native-packages.yml](.github/workflows/native-packages.yml)，手动触发后在四种原生环境中构建和验收，全部通过才收集到私有 GitHub 草稿 Release；发布是单独步骤。
+产物输出到 `dist/`。原生 CI 工作流为 [native-packages.yml](.github/workflows/native-packages.yml)，手动触发后在四种原生环境中构建和验收，全部通过才收集到 GitHub 草稿 Release；发布是单独步骤。
 
 ### 验证
 
@@ -174,6 +195,7 @@ Linux 另可运行 `npm run test:desktop` 和 `node scripts/test-updater.cjs` �
 ```text
 writer-desk/
 ├── public/             界面、编辑器与人物图
+├── website/            中英文产品官网（GitHub Pages）
 ├── desktop/            Electron 主进程、桥接与升级器
 ├── server.py           本机 HTTP 服务与 SQLite 保存
 ├── protection.py       自动备份与历史恢复
@@ -194,9 +216,10 @@ writer-desk/
 - [使用指南](docs/user-guide-zh.md)：书架、大纲、人物、保存恢复和 AI 的详细行为。
 - [桌面构建说明](desktop/BUILD.md)：开发环境、平台构建、升级与数据迁移。
 - [跨平台发行说明](docs/distribution-checklist.md)：系统要求、签名状态和 Mac 验收边界。
+- [官网维护](docs/website.md)：本地预览、中英文内容与 GitHub Pages 部署。
 - [功能验收记录](docs/acceptance-report.md)：0.4.14 功能检查记录；0.5.0 原生验收报告随 [发行包](https://github.com/asoming/writer-desk/releases/tag/v0.5.0) 提供。
 
-有仓库权限的用户可在 [Issues](https://github.com/asoming/writer-desk/issues) 反馈问题。请附 App 版本、操作系统、复现步骤和预期行为；日志与截图请先移除密钥和私人作品内容。
+可在 [Issues](https://github.com/asoming/writer-desk/issues) 反馈问题。请附 App 版本、操作系统、复现步骤和预期行为；日志与截图请先移除密钥和私人作品内容。
 
 ## 许可证
 
