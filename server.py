@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 import protection
 from ai_service import AIService, AIError
+from chat_images import ChatImageStore
 from skills import SkillsService, SkillError
 
 ROOT = Path(__file__).resolve().parent
@@ -637,7 +638,8 @@ def cleanup_pending_book_purges(book_id=None):
                 continue
             try:
                 protection.purge_snapshots(DB_PATH, row[0], validate_book)
-            except (protection.ProtectionError, OSError):
+                ChatImageStore(DB_PATH.parent).purge(row[0])
+            except (protection.ProtectionError, OSError, AIError):
                 continue
             conn.execute("DELETE FROM pending_book_purges WHERE book_id=?", (row[0],))
         return bool(conn.execute("SELECT 1 FROM pending_book_purges" + (" WHERE book_id=?" if book_id is not None else "") + " LIMIT 1", (book_id,) if book_id is not None else ()).fetchone())
@@ -1011,10 +1013,20 @@ def handle_ai_request(path, data):
         if not isinstance(data, dict) or data:
             raise AIError(400, "连接测试不接受作品内容或额外参数。")
         return service.test_connection()
+    upload = re.fullmatch(r"/api/books/([^/]+)/ai/images", path)
+    if upload:
+        if not isinstance(data, dict) or set(data) != {"name", "dataUrl"} or not isinstance(data["name"], str):
+            raise AIError(400, "对话图片上传参数不正确。")
+        with DB_LOCK, connect() as conn:
+            row = conn.execute("SELECT * FROM books WHERE id=?", (upload[1],)).fetchone()
+            if not row:
+                raise AIError(404, "找不到这部作品")
+            require_active_book(row)
+            return ChatImageStore(DB_PATH.parent).save(row["id"], data["name"], data["dataUrl"])
     match = re.fullmatch(r"/api/books/([^/]+)/ai(/preview)?", path)
     if not match:
         return None
-    if not isinstance(data, dict) or set(data) - {"action", "chapterIds", "instruction", "skillIds", "skillMode", "chat", "history", "model"}:
+    if not isinstance(data, dict) or set(data) - {"action", "chapterIds", "instruction", "skillIds", "skillMode", "chat", "history", "model", "attachments"}:
         raise AIError(400, "AI 请求参数不正确。")
     if "model" in data and (not isinstance(data["model"], str) or not data["model"].strip()):
         raise AIError(400, "模型名称格式不正确或过长。")
@@ -1022,6 +1034,8 @@ def handle_ai_request(path, data):
         raise AIError(400, "AI 写作技能参数不正确。")
     if type(data.get("chat", False)) is not bool or "history" in data and (not data.get("chat", False) or not isinstance(data["history"], list)):
         raise AIError(400, "AI 对话参数不正确。")
+    if "attachments" in data and (not data.get("chat", False) or not isinstance(data["attachments"], list)):
+        raise AIError(400, "图片附件只能用于 AI 对话。")
     with connect() as conn:
         row = conn.execute("SELECT * FROM books WHERE id=?", (match.group(1),)).fetchone()
     if not row:
@@ -1030,7 +1044,27 @@ def handle_ai_request(path, data):
     book = book_result(row)["book"]
     operation = service.preview if match.group(2) else service.run
     # Never hold a database transaction while waiting for an external service.
-    return operation(book, data.get("action"), short_chapter_ids(book, data.get("chapterIds")), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"), chat=data.get("chat", False), history=data.get("history"), model=data.get("model"))
+    result = operation(book, data.get("action"), short_chapter_ids(book, data.get("chapterIds")), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"), chat=data.get("chat", False), history=data.get("history"), model=data.get("model"), attachments=data.get("attachments"))
+    if result.get("images"):
+        # A book can be purged while a provider is responding. Never leave the
+        # late response's pictures behind after its durable cleanup has run.
+        with DB_LOCK, connect() as conn:
+            if not conn.execute("SELECT 1 FROM books WHERE id=?", (book["id"],)).fetchone():
+                ChatImageStore(DB_PATH.parent).purge(book["id"])
+                raise AIError(404, "找不到这部作品")
+    return result
+
+
+def read_chat_image(path):
+    match = re.fullmatch(r"/api/books/([^/]+)/ai/images/([^/]+)", path)
+    if not match:
+        return None
+    with DB_LOCK, connect() as conn:
+        row = conn.execute("SELECT id FROM books WHERE id=?", (match[1],)).fetchone()
+        if not row:
+            raise AIError(404, "找不到这部作品")
+        # Recycled books keep their read-only conversations until final purge.
+        return ChatImageStore(DB_PATH.parent).read(row["id"], match[2])
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1078,6 +1112,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = unquote(urlparse(self.path).path)
         try:
+            image = read_chat_image(path)
+            if image is not None:
+                self.send_bytes(image[0], content_type=image[1])
+                return
             protected = read_protection(path)
             if protected is not None:
                 self.send_json(protected)
@@ -1124,6 +1162,8 @@ class Handler(BaseHTTPRequestHandler):
                 files["/settings.css"] = "settings.css"
                 files["/theme.js"] = "theme.js"
                 files["/theme.css"] = "theme.css"
+                files["/textarea-autosize.js"] = "textarea-autosize.js"
+                files["/chat-images.js"] = "chat-images.js"
                 filename = files.get(path)
                 if not filename:
                     self.send_json({"error": "找不到这个页面"}, 404)

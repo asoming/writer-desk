@@ -9,7 +9,7 @@
 
 顶部保存状态左侧的太阳／月亮图标可切换白天和黑夜模式。「设置 → 通用」中可开启护眼模式，白天使用暖纸色，黑夜使用暖灰色；外观选择保存在本机，重开后恢复。
 
-界面预览：[夜间写作](docs/appearance-night-v0.4.11.jpg) · [护眼设置](docs/appearance-settings-v0.4.11.jpg) · [统一写作入口 · 长篇](docs/writing-long-v0.4.10.png) · [短篇](docs/writing-short-v0.4.10.png) · [短篇单正文](docs/short-writing-v0.4.9.png) · [章节改名与总字数](docs/chapter-rename-v0.4.9.png) · [分组设置](docs/settings-v0.4.8.png) · [模型选择与分栏](docs/layout-v0.4.8.png) · [大纲与写作对话栏](docs/chat-v0.4.7.png) · [封面模板与随机书名](docs/covers-v0.4.5.png) · [AI 封面与书名](docs/ai-cover-v0.4.5.png) · [简洁 AI 面板](docs/ai-v0.4.3.png) · [逐书导出](docs/export-v0.4.4.png) · [30 天回收站](docs/trash-v0.4.4.png) · [写作 Skill](docs/skills-v0.4.1.png) · [历史与自动备份](docs/backups-v0.4.0.png) · [流程检查与分类索引](docs/workflow-v0.3.6.png) · [内置设置](docs/app-settings-v0.3.5.png) · [书架与作品文件夹](docs/book-folders-v0.3.3.png) · [人物脉络与分类](docs/people-v0.3.1.png) · [完整大纲阅读](docs/outline-v0.3.1.png)。
+界面预览：[图片对话](docs/chat-images-v0.4.12.jpg) · [自适应提示词](docs/chat-prompt-v0.4.12.jpg) · [夜间写作](docs/appearance-night-v0.4.11.jpg) · [护眼设置](docs/appearance-settings-v0.4.11.jpg) · [统一写作入口 · 长篇](docs/writing-long-v0.4.10.png) · [短篇](docs/writing-short-v0.4.10.png) · [短篇单正文](docs/short-writing-v0.4.9.png) · [章节改名与总字数](docs/chapter-rename-v0.4.9.png) · [分组设置](docs/settings-v0.4.8.png) · [模型选择与分栏](docs/layout-v0.4.8.png) · [大纲与写作对话栏](docs/chat-v0.4.7.png) · [封面模板与随机书名](docs/covers-v0.4.5.png) · [AI 封面与书名](docs/ai-cover-v0.4.5.png) · [简洁 AI 面板](docs/ai-v0.4.3.png) · [逐书导出](docs/export-v0.4.4.png) · [30 天回收站](docs/trash-v0.4.4.png) · [写作 Skill](docs/skills-v0.4.1.png) · [历史与自动备份](docs/backups-v0.4.0.png) · [流程检查与分类索引](docs/workflow-v0.3.6.png) · [内置设置](docs/app-settings-v0.3.5.png) · [书架与作品文件夹](docs/book-folders-v0.3.3.png) · [人物脉络与分类](docs/people-v0.3.1.png) · [完整大纲阅读](docs/outline-v0.3.1.png)。
 
 首次打开书架即有原创群像小说《潮汐档案馆》，含六卷三十六章、三十二位人物、四十九条大纲节点、六个主题分图和三十五条手动关系。升级已有作品库也会补入缺少的完整示例，保留已有作品及修改。书架的「载入长篇示例」仍可新建独立副本。正文共 101,506 个非空白字符，字数包含标点和英文字母；完整验证结果见 [验收记录](docs/acceptance-report.md)。
 
@@ -111,6 +111,10 @@
 「封面与书名」中的 AI 入口也可用于尚未保存的新书。先生成候选书名和封面提示词，修改后再点击「生成封面」。在 AI 设置填写同一服务支持的图像模型；图片通过该服务的 Images API 请求，需服务实际支持图像生成。候选先预览，明确采用后才回填编辑框或保存当前书；书名排版在本机完成。生成名字不调用图像服务，改书名也不重复生成图片。
 
 图像接口依据 [Images API](https://developers.openai.com/api/reference/resources/images/methods/generate)，使用同一已配置服务及密钥；仅接受内联 PNG、JPEG、WebP，不自动下载服务返回的外部图片地址。测试使用本机模拟服务验证请求、预览和保存，没有调用真实付费模型。
+
+提示词框随内容和分栏宽度自动增高或缩回，长提示词在框内滚动。底部「＋」或粘贴可添加 PNG、JPEG、WebP 图片，发送前可预览及移除；对话里的图片可点击查看大图，Esc 关闭。每条消息最多 4 张，每张不超过 8 MiB，单次请求当前与历史图片合计不超过 20 MiB。图片原件单独保存在本机数据目录 `ai-chat-images/`，对话偏好只记录引用，重开后恢复；移入回收站保留，彻底删除作品及 30 天清理会删除该书的对话图片。作品备份与源码发行包不含对话图片。
+
+图片仅在点击发送时随提示词交给已配置服务；本机预览和上传不调用外部 AI。识图需选择支持图片输入的模型，按 [官方 OpenAI 图片消息格式](https://developers.openai.com/api/docs/guides/images-vision?api-mode=chat) 发送。兼容服务返回的内联 PNG、JPEG、WebP 图片可显示；不自动抓取外部图片链接，无法显示的图片给出提示并保留文字答复。不会因为普通对话自动调用封面生成模型。
 
 ## 本机写作 Skill
 
