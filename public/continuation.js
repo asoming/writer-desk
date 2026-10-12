@@ -27,7 +27,7 @@ async function buildContinuationSettings(){
 
 function bindContinuationEvents(){
   for(const [id,kind]of [['outline-ai','outline'],['people-ai','relationships'],['writing-ai',null]]){
-    $(id)?.addEventListener('click',()=>showAIAssistant(kind));
+    $(id)?.addEventListener('click',()=>id!=='people-ai'&&typeof toggleAIChat==='function'?toggleAIChat():showAIAssistant(kind));
   }
   $('settings-install-update')?.addEventListener('click',async()=>{
     if(updateSettingsState.busy||!window.WriterDesktop?.installUpdate)return;

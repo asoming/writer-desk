@@ -28,6 +28,9 @@ async function main(){
   h.native.installUpdate=async()=>({canceled:true});await h.get('settings-install-update').listeners.click();assert.match(h.get('settings-update-status').textContent,/0\.4\.1/,'cancel keeps pending state');
   h.native.installUpdate=async()=>{assert.equal(h.get('settings-install-update').disabled,true);await h.get('settings-install-update').listeners.click();return{canceled:true};};await h.get('settings-install-update').listeners.click();
   await h.get('outline-ai').listeners.click();await h.get('people-ai').listeners.click();assert.deepEqual(h.calls.slice(-2),['outline','relationships']);
+  h.context.toggleAIChat=()=>h.calls.push('chat');
+  await h.get('outline-ai').listeners.click();await h.get('writing-ai').listeners.click();await h.get('people-ai').listeners.click();
+  assert.deepEqual(h.calls.slice(-3),['chat','chat','relationships'],'outline and writing open the inline chat; people keeps its review dialog');
   console.log('PASS: browser visibility, save-gated update/restart, staged state, retry and AI entry actions.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

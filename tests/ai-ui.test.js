@@ -468,3 +468,81 @@ test('existing metadata preview and result book IDs must match the chosen shelf 
     assert.equal(h.applied.length,0);
   }
 });
+
+function renderConversationCandidate(h,action='draft',options={}){
+  const container=new Element(),response=options.response||h.result({action,chapterIds:[h.state.chapterId]});
+  h.context.candidateContainer=container;h.context.candidateResponse=response;h.adoptions=[];h.applications=[];h.candidateActive=true;
+  h.context.candidateOptions={book:h.state.book,chapters:h.state.book.chapters.filter(chapter=>!chapter.deletedAt),chapterIds:[h.state.chapterId],current:()=>h.candidateActive,settings:()=>h.settings,onApplied:target=>h.applications.push(structuredClone(target)),onAdopt:target=>h.adoptions.push(structuredClone(target)),...options};
+  const controller=h.run('renderAIResult(candidateContainer,candidateResponse,candidateOptions)');
+  return{container,controller,button:text=>dialogButton(container,text),field:id=>dialogField(container,(options.idPrefix||'')+id)};
+}
+
+test('conversation adoption previews first, keeps the current view and unrelated dialog open, and disables both actions after one save',async()=>{
+  const h=harness(),original=h.state.book.chapters[0],before=original.body,count=h.state.book.chapters.length;h.get('dialog').open=true;
+  const candidate=renderConversationCandidate(h,'draft',{idPrefix:'message-one-'}),draft=candidate.field('ai-draft-body').value;
+  assert.equal(original.body,before);assert.equal(h.applications.length,0);assert.match(draft,/<img src=x/);assert.ok(!find(candidate.container,node=>node.tagName==='IMG'));
+  h.state.view='outline';h.state.chapterId=h.state.book.chapters[1].id;
+  await candidate.button('追加到目标章节').listeners.click();
+  assert.equal(original.body,before+'\n\n'+draft);assert.equal(h.state.book.chapters.length,count);assert.equal(h.get('dialog').open,true);assert.equal(h.state.view,'outline');assert.equal(h.state.chapterId,h.state.book.chapters[1].id);assert.equal(h.renderCount,0);
+  assert.deepEqual(h.applications,[{view:'write',chapterId:original.id}]);assert.deepEqual(h.adoptions,h.applications);assert.equal(candidate.controller.hasUnsavedAdoption(),false);
+  assert.ok(descendants(candidate.container).filter(node=>node.tagName==='BUTTON').every(node=>node.disabled));
+  for(const button of descendants(candidate.container).filter(node=>node.tagName==='BUTTON'))await button.listeners.click();
+  assert.equal(original.body,before+'\n\n'+draft);assert.equal(h.state.book.chapters.length,count);assert.equal(h.adoptions.length,1);
+});
+
+test('conversation buttons share pending and failed-save decisions, notify history consumption once, then retry only persistence',async()=>{
+  const h=harness(),chapter=h.state.book.chapters[0],before=chapter.body,count=h.state.book.chapters.length,candidate=renderConversationCandidate(h),draft=candidate.field('ai-draft-body').value;
+  let resolveSave;h.saves=[true,new Promise(resolve=>{resolveSave=resolve;})];
+  const append=candidate.button('追加到目标章节'),create=candidate.button('保存为新章节'),pending=append.listeners.click();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(append.disabled,true);assert.equal(create.disabled,true);assert.equal(h.applications.length,1);assert.equal(h.adoptions.length,0);assert.equal(candidate.controller.hasUnsavedAdoption(),true);
+  await create.listeners.click();assert.equal(chapter.body,before+'\n\n'+draft);assert.equal(h.state.book.chapters.length,count);
+  resolveSave(false);await pending;assert.equal(append.textContent,'重试保存');assert.equal(create.textContent,'重试保存');assert.equal(candidate.controller.hasUnsavedAdoption(),true);
+  await create.listeners.click();assert.equal(chapter.body,before+'\n\n'+draft);assert.equal(h.state.book.chapters.length,count);assert.equal(h.applications.length,1);assert.equal(h.adoptions.length,1);assert.equal(candidate.controller.hasUnsavedAdoption(),false);assert.equal(append.disabled,true);assert.equal(create.disabled,true);
+});
+
+test('conversation adoption re-resolves chapter objects after continued editing and rejects a deleted destination',async()=>{
+  for(const deleted of [false,true]){
+    const h=harness(),captured=h.state.book.chapters[0],before=captured.body,candidate=renderConversationCandidate(h),draft=candidate.field('ai-draft-body').value;
+    const replacement={...captured,body:'作者在对话期间写下的新正文。',deletedAt:deleted?'2026-10-12':null};h.state.book.chapters[0]=replacement;
+    await candidate.button('追加到目标章节').listeners.click();
+    assert.equal(captured.body,before);assert.equal(replacement.body,'作者在对话期间写下的新正文。'+(deleted?'':'\n\n'+draft));assert.equal(h.applications.length,deleted?0:1);assert.equal(h.adoptions.length,deleted?0:1);
+    if(deleted)assert.equal(h.get('toast').textContent,'请选择有效的目标章节。');
+  }
+});
+
+test('conversation drafts use the live linked outline object rather than a stale captured outline',async()=>{
+  const h=harness(),volume=h.state.book.volumes[0],captured={id:'live-outline-target',kind:'chapter',title:'新章纲',body:'当前计划',parentId:null,volumeId:volume.id,chapterIds:[],deletedAt:null};h.state.book.outline.push(captured);
+  const candidate=renderConversationCandidate(h,'draft',{sourceOutline:captured}),live={...captured,chapterIds:[]};h.state.book.outline[h.state.book.outline.indexOf(captured)]=live;
+  await candidate.button('保存为新章节').listeners.click();
+  assert.equal(captured.chapterIds.length,0);assert.equal(live.chapterIds.length,1);const created=h.state.book.chapters.find(chapter=>chapter.id===live.chapterIds[0]);assert.ok(created);assert.equal(created.volumeId,volume.id);assert.deepEqual(h.adoptions,[{view:'write',chapterId:created.id}]);
+});
+
+test('conversation outlines stay in their original view, preserve the selection, and report the new outline only through the callback',async()=>{
+  const h=harness(),before=h.state.book.outline.length,selectedId=h.state.book.outline[0].id;h.state.outlineId=selectedId;
+  h.result=request=>({bookId:h.state.book.id,action:request.action,data:{nodes:[{key:'root',parentKey:null,kind:'story',title:'候选主线',body:'作者确认后追加的规划。'}]}});
+  const candidate=renderConversationCandidate(h,'outline');await candidate.button('全选大纲').listeners.click();await candidate.button('追加勾选的大纲').listeners.click();
+  assert.equal(h.state.book.outline.length,before+1);assert.equal(h.state.view,'write');assert.equal(h.state.outlineId,selectedId);assert.deepEqual(h.adoptions,[{view:'outline',outlineId:h.state.book.outline.at(-1).id}]);assert.equal(candidate.button('重试保存').disabled,true);
+});
+
+test('disposed, mismatched and conflicted conversation candidates cannot mutate books or invoke callbacks',async()=>{
+  const bad=harness();assert.throws(()=>renderConversationCandidate(bad,'draft',{response:{bookId:'other-book',action:'draft',data:{title:'坏结果',body:'不可采用'}}}),/不匹配/);
+  for(const reason of ['disposed','inactive','detached','book','conflict','closing-during-save']){
+    const h=harness(),book=h.state.book,before=JSON.stringify(book),candidate=renderConversationCandidate(h),adoptButton=candidate.button('追加到目标章节');let resolveSave;
+    if(reason==='disposed')candidate.controller.dispose();else if(reason==='inactive')h.candidateActive=false;else if(reason==='detached')candidate.container.replaceChildren();else if(reason==='book')h.state.book={...structuredClone(book),id:'other-book'};else if(reason==='conflict')h.saves=[false];else h.saves=[new Promise(resolve=>{resolveSave=resolve;})];
+    const pending=adoptButton.listeners.click();if(resolveSave){await new Promise(resolve=>setImmediate(resolve));candidate.controller.dispose();resolveSave(true);}await pending;
+    assert.equal(JSON.stringify(book),before,reason);assert.equal(h.applications.length,0,reason);assert.equal(h.adoptions.length,0,reason);
+  }
+});
+
+test('a saved conversation result remains consumed even if its refresh callback fails',async()=>{
+  const h=harness(),chapter=h.state.book.chapters[0],before=chapter.body,candidate=renderConversationCandidate(h,'draft',{onAdopt:()=>{throw Error('refresh failed');}}),draft=candidate.field('ai-draft-body').value;
+  await candidate.button('追加到目标章节').listeners.click();assert.equal(chapter.body,before+'\n\n'+draft);assert.equal(h.state.dirty,false);assert.equal(candidate.controller.hasUnsavedAdoption(),false);assert.equal(candidate.button('重试保存').disabled,true);
+  await candidate.button('重试保存').listeners.click();assert.equal(chapter.body,before+'\n\n'+draft);assert.equal(h.applications.length,1);
+});
+
+test('multiple conversation results have distinct field IDs and citations use the provided navigation callback',async()=>{
+  const h=harness(),first=renderConversationCandidate(h,'draft',{idPrefix:'first-'}),second=renderConversationCandidate(h,'draft',{idPrefix:'second-'});
+  assert.notEqual(first.field('ai-draft-body').id,second.field('ai-draft-body').id);first.field('ai-draft-body').value='第一条消息编辑后的草稿';assert.notEqual(second.field('ai-draft-body').value,first.field('ai-draft-body').value);
+  const jumps=[],candidate=renderConversationCandidate(h,'consistency',{onNavigate:id=>jumps.push(id)}),link=find(candidate.container,node=>node.className==='ai-evidence-link');
+  link.listeners.click();assert.deepEqual(jumps,[h.state.chapterId]);candidate.controller.dispose();link.listeners.click();assert.equal(jumps.length,1);
+});

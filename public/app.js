@@ -70,7 +70,7 @@ function renderChapters(){renderVolumeChapters();}
 function resizeEditor(){if(state.view!=='write'||!state.book)return;const e=$('editor');e.style.height='0px';e.style.height=Math.max(390,e.scrollHeight)+'px';}
 function closeSidebar(){$('workspace').classList.remove('sidebar-mobile-open');$('sidebar-backdrop').hidden=true;}
 function selectChapter(id){
-  if(state.composing)return;const c=activeChapters().find(c=>c.id===id);state.chapterId=c?.id||null;if(c){state.collapsedVolumes?.delete(c.volumeId);const query=$('chapter-search').value.trim().toLocaleLowerCase();if(query&&!(c.title+' '+c.body).toLocaleLowerCase().includes(query))$('chapter-search').value='';}
+  if(state.composing)return;const c=activeChapters().find(c=>c.id===id);state.chapterId=c?.id||null;if(typeof syncAIChat==='function')syncAIChat();if(c){state.collapsedVolumes?.delete(c.volumeId);const query=$('chapter-search').value.trim().toLocaleLowerCase();if(query&&!(c.title+' '+c.body).toLocaleLowerCase().includes(query))$('chapter-search').value='';}
   $('editor-empty').hidden=!!c;$('manuscript').hidden=!c;$('chapter-volume-control').hidden=!c||state.kind==='short';
   $('link-current-chapter').disabled=!c;$('backlinks-edit').disabled=!c;$('toggle-focus').hidden=state.view!=='write'||!c;
   if(!c){$('chapter-title').value='';$('editor').value='';$('chapter-title').disabled=true;$('editor').disabled=true;renderChapters();renderStats();renderBacklinks();return;}
@@ -149,9 +149,9 @@ function confirmPurgeBook(record){
   if(state.transitioning||state.composing)return;const body=el('div'),buttons=el('div','dialog-actions'),visible=()=>$('dialog').open&&$('dialog-body').contains(body),confirm=action(T('彻底删除'),'primary-button danger-button',async()=>{if(confirm.disabled||!visible())return;confirm.disabled=true;try{await purgeTrashedBook(record,visible);}finally{confirm.disabled=false;}});body.append(el('p','dialog-description',T('彻底删除「{0}」？正文、关联、历史和本机备份将无法恢复。',record.title)));buttons.append(action(T('取消'),'secondary-button',()=>{if(visible())return showTrash();}),confirm);body.append(buttons);showDialog(T('彻底删除作品'),body);
 }
 async function purgeTrashedBook(record,visible){
-  return transition(async()=>{if(!visible()||!await requireSaved()||!visible())return false;try{const result=await api('/api/books/'+encodeURIComponent(record.id)+'/purge','POST',{revision:record.revision});if(result.ok!==true||result.id!==record.id)throw new Error(T('删除结果与目标作品不匹配，请刷新回收站。'));if(state.book?.id===record.id){removeDraft(record.id);clearBook();state.view='shelf';state.collection=null;exitFocus();}state.books=state.books.filter(book=>book.id!==record.id);state.trashBookCount=Math.max(0,(state.trashBookCount||0)-1);closeDialog();try{await refreshBooks();}catch(error){toast(error.message);}renderShell();toast(T(result.cleanupPending?'作品已删除，自动备份清理将在后台重试。':'作品已彻底删除。'));return true;}catch(error){toast(error.message);return false;}});
+  return transition(async()=>{if(!visible()||!await requireSaved()||!visible())return false;try{const result=await api('/api/books/'+encodeURIComponent(record.id)+'/purge','POST',{revision:record.revision});if(result.ok!==true||result.id!==record.id)throw new Error(T('删除结果与目标作品不匹配，请刷新回收站。'));if(typeof clearAIChatBookHistory==='function')clearAIChatBookHistory(record.id);if(state.book?.id===record.id){removeDraft(record.id);clearBook();state.view='shelf';state.collection=null;exitFocus();}state.books=state.books.filter(book=>book.id!==record.id);state.trashBookCount=Math.max(0,(state.trashBookCount||0)-1);closeDialog();try{await refreshBooks();}catch(error){toast(error.message);}renderShell();toast(T(result.cleanupPending?'作品已删除，自动备份清理将在后台重试。':'作品已彻底删除。'));return true;}catch(error){toast(error.message);return false;}});
 }
-function toggleNotes(force){const visible=force===undefined?$('notes-panel').hidden:force;$('notes-panel').hidden=!visible;$('toggle-notes').setAttribute('aria-expanded',String(visible));$('workspace').classList.toggle('notes-open',visible);if(visible){renderNotes();renderBacklinks();}requestAnimationFrame(resizeEditor);}
+function toggleNotes(force){const visible=force===undefined?$('notes-panel').hidden:force;if(visible&&typeof closeAIChat==='function')closeAIChat();$('notes-panel').hidden=!visible;$('toggle-notes').setAttribute('aria-expanded',String(visible));$('workspace').classList.toggle('notes-open',visible);if(visible){renderNotes();renderBacklinks();}requestAnimationFrame(resizeEditor);}
 function filteredNotes(){return state.book.notes.filter(n=>!n.deletedAt&&($('notes-filter').value==='全部'||n.type===$('notes-filter').value));}
 function renderNotes(){
   if(!state.book)return;const notes=filteredNotes();if(!notes.some(n=>n.id===state.noteId))state.noteId=notes[0]?.id||null;$('note-list').replaceChildren();
@@ -266,7 +266,7 @@ function bindAppSettingsEvents(){
   document.addEventListener('focusin',event=>rememberSettingsEditor(event.target));document.addEventListener('selectionchange',()=>rememberSettingsEditor());document.addEventListener('input',event=>rememberSettingsEditor(event.target));
   $('open-settings').addEventListener('pointerdown',()=>rememberSettingsEditor());$('open-settings').addEventListener('click',showAppSettings);$('close-settings').addEventListener('click',closeAppSettings);
   $('settings-dialog').addEventListener('cancel',event=>{event.preventDefault();closeAppSettings();});
-  $('settings-dialog').addEventListener('close',()=>{if(!settingsFocusRestored){settingsFocusRestored=true;++settingsRequest;restoreSettingsEditor();}});
+  $('settings-dialog').addEventListener('close',()=>{if(!settingsFocusRestored){settingsFocusRestored=true;++settingsRequest;restoreSettingsEditor();}if(typeof refreshAIChatSettings==='function')refreshAIChatSettings();});
   $('settings-edit-actions').querySelectorAll('[data-settings-edit]').forEach(button=>button.addEventListener('click',()=>performSettingsAction(button.dataset.settingsEdit)));
   $('settings-dialog').querySelectorAll('[data-settings-action]').forEach(button=>button.addEventListener('click',()=>performSettingsAction(button.dataset.settingsAction)));
   for(const [id,command]of [['window-minimize','minimize'],['window-maximize','toggleMaximize'],['window-close','close']])$(id).addEventListener('click',()=>performSettingsAction(command));
@@ -326,13 +326,13 @@ async function navigate(view,kind=state.kind){
   return transition(async()=>{if(!await requireSaved())return false;state.view=view;state.collection=null;state.trail=null;closeDialog();closeNav();exitFocus();renderShell();return true;});
 }
 function closeNav(){$('workspace').classList.remove('nav-open');$('nav-backdrop').hidden=true;}
-function renderShell(){renderWorkspaceShell();}
+function renderShell(){renderWorkspaceShell();if(typeof syncAIChat==='function')syncAIChat();}
 
 function renderShelf(){renderCollection();}
 
 function outlineRows(){const list=activeOutline(),ids=new Set(list.map(o=>o.id)),children=new Map(),result=[];list.forEach(o=>{const key=ids.has(o.parentId)?o.parentId:null;if(!children.has(key))children.set(key,[]);children.get(key).push(o);});const stack=(children.get(null)||[]).map(o=>({o,depth:0})).reverse();while(stack.length){const entry=stack.pop();result.push(entry);(children.get(entry.o.id)||[]).slice().reverse().forEach(o=>stack.push({o,depth:entry.depth+1}));}return result;}
 function isDescendant(candidate,id){const map=new Map(state.book.outline.map(o=>[o.id,o.parentId]));let p=map.get(candidate),limit=map.size;while(p&&limit--){if(p===id)return true;p=map.get(p);}return false;}
-function renderOutline(){renderOutlineWorkspace();}
+function renderOutline(){renderOutlineWorkspace();if(typeof syncAIChat==='function')syncAIChat();}
 
 function addOutline(parentId=null,kind='scene',volumeId=null){
   if(!state.book||state.composing)return;const parent=activeOutline().find(o=>o.id===parentId),item={id:uid(),title:'',body:'',parentId,kind,volumeId:volumeId||parent?.volumeId||null,chapterIds:[],deletedAt:null};

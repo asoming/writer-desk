@@ -250,7 +250,7 @@ function revealOutlinePath(id){
   while(parent&&!seen.has(parent)){seen.add(parent);state.outlineCollapsed?.delete(parent);parent=map.get(parent)?.parentId;}
 }
 function selectOutlineNode(id){
-  state.outlineId=id;revealOutlinePath(id);renderOutlineNavigation();
+  state.outlineId=id;revealOutlinePath(id);renderOutlineNavigation();if(typeof syncAIChat==='function')syncAIChat();
   if(state.outlineMode==='read'){
     document.getElementById('read-'+id)?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
     $('outline-tree').querySelectorAll('.outline-node').forEach(button=>{const selected=button.dataset.outline===id;button.classList.toggle('active',selected);button.setAttribute('aria-current',String(selected));});

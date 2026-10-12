@@ -17,7 +17,8 @@ from server import validate_book
 
 backup = json.loads((ROOT / "examples/tide-archive.yejian.json").read_text("utf-8"))
 book = backup["book"]
-assert validate_book(book) == book
+# Backups from before cover templates remain valid without that optional field.
+assert validate_book(book) == {"coverTemplate": "", **book}
 chapters, volumes = book["chapters"], book["volumes"]
 people = [p for p in book["notes"] if p["type"] == "人物"]
 assert len(chapters) == 36 and len(volumes) == 6 and len(people) == 32

@@ -918,6 +918,32 @@ Object.assign(englishMessages,{
   "原作品已回收或删除。本页内容仍保留，可另存新作品或下载备份。": "The original book was trashed or deleted. Content on this page is kept; save it as a new book or download a backup.",
   "草稿已保留在本机，可另存为新作品。": "Draft kept on this device. You can save it as a new book."
 });
+Object.assign(englishMessages,{
+  "自由对话": "Conversation",
+  "新对话": "New conversation",
+  "关闭 AI 对话": "Close AI conversation",
+  "AI 对话": "AI conversation",
+  "输入提示词…": "Enter a prompt…",
+  "发送": "Send",
+  "对话未能保存到本机。": "The conversation could not be saved on this device.",
+  "对话未能从本机删除。": "The conversation could not be removed from this device.",
+  "请求中断，可重试。": "The request was interrupted. Try again.",
+  "正在思考…": "Thinking…",
+  "停止等待": "Stop waiting",
+  "已停止等待": "Stopped waiting",
+  "请先选择正文资料。": "Select manuscript material first.",
+  "已采用": "Applied",
+  "AI 对话参数不正确。": "Invalid AI conversation settings.",
+  "对话历史只能用于 AI 对话。": "Conversation history requires conversation mode.",
+  "封面方案不支持 AI 对话。": "Cover generation does not support conversation mode.",
+  "对话提示词格式不正确或过长。": "The conversation prompt is invalid or too long.",
+  "对话提示词不能为空。": "Enter a conversation prompt.",
+  "对话历史必须是完整的用户与助手轮次。": "Conversation history must contain complete user and assistant turns.",
+  "对话历史格式不正确或过长。": "The conversation history is invalid or too long.",
+  "对话历史不能为空。": "Conversation messages cannot be empty.",
+  "对话答复格式不正确或过长。": "The conversation reply is invalid or too long.",
+  "对话答复不能为空。": "The conversation reply cannot be empty."
+});
 function T(source,...values){
   if(uiLanguage==='en'&&typeof source==='string'){
     const failure=source.match(/^AI 服务请求失败（HTTP (\d{3})）。请检查配置后重试。$/);

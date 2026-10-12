@@ -95,29 +95,38 @@ async function showAIAssistant(initialAction='draft'){
   async function updatePreview(){invalidatePreview();const sequence=previewSeq,payload=request();if(!current()||!skillReady)return;try{const value=await api('/api/books/'+encodeURIComponent(bookId)+'/ai/preview','POST',payload);if(sequence!==previewSeq||!current())return;if(!Array.isArray(value.selectedSkillIds)||value.skillMode!==payload.skillMode||JSON.stringify([...value.selectedSkillIds].sort())!==JSON.stringify([...payload.skillIds].sort()))throw new Error(T('写作 Skill 预览与当前选择不匹配，请重试。'));if(!value.counts||!Number.isSafeInteger(value.contextChars)||value.contextChars<0||!['auto','manual'].includes(value.contextMode)||(value.contextMode==='auto'?(value.maxContextChars!==null||value.overLimit!==false):(!Number.isSafeInteger(value.maxContextChars)||value.maxContextChars<1||typeof value.overLimit!=='boolean')))throw new Error(T('资料预览无效，请重试。'));scope.textContent=T('共 {0} 字符',value.contextChars.toLocaleString())+(value.contextMode==='manual'?' · '+T('手动上限 {0}',value.maxContextChars.toLocaleString()):'');skillScope.textContent=payload.skillIds.length?T('Skill：{0} 字符（计入总数）',(value.skillChars||0).toLocaleString()):'';skillFiles.replaceChildren();(value.skills||[]).forEach(skill=>{skillFiles.append(el('p',null,writingSkillName(skill.id)+' · '+T(writingSkillModes[skill.mode]||(skill.mode==='custom'?'自定义':skill.mode))+' · '+(skill.files||[]).join('、')));});if(value.overLimit)status.textContent=T('资料超过手动上限，请减少章节或调整设置。');else status.textContent=!settings?.enabled||!settings.endpoint||!settings.model?T('请先在设置中启用并配置 AI。'):'';preview=value;previewKey=JSON.stringify(payload);}catch(error){if(sequence===previewSeq&&current()){preview=null;previewKey='';status.textContent=error.message;}}canSend();}
   mode.addEventListener('change',()=>{if(pending){mode.value=activeAction;return;}prompts[activeAction]=instruction.value;activeAction=mode.value;instruction.value=prompts[activeAction];result.replaceChildren();clearTimeout(delay);return updatePreview();});skillMode.addEventListener('change',()=>{if(!pending)return updatePreview();});instruction.addEventListener('input',()=>{if(pending)return;prompts[activeAction]=instruction.value;clearTimeout(delay);invalidatePreview();if(mode.value==='custom'&&!instruction.value.trim())status.textContent=T('请填写自定义提示词。');delay=setTimeout(updatePreview,200);});
   try{const [configuration,skillList]=await Promise.all([api('/api/ai/settings'),api('/api/skills')]);if(!current())return;settings=configuration;skills=writingSkillList(skillList);(skillList.defaults?.skillIds||[]).forEach(id=>{if(skills.some(skill=>skill.id===id&&skill.imported))selectedSkills.add(id);});skillMode.value=Object.hasOwn(writingSkillModes,skillList.defaults?.skillMode)?skillList.defaults.skillMode:'auto';skillReady=true;renderSkillChoices();await updatePreview();}catch(error){if(current())status.textContent=error.message;}
-  async function run(){canSend();if(pending||send.disabled||!current())return;pending=true;canSend();mode.disabled=instruction.disabled=configure.disabled=resetPrompt.disabled=true;renderChoices();renderSkillChoices();const payload=request();status.textContent=T('AI 正在处理所选资料…');try{if(!await requireSaved()||!current())return;const response=await api('/api/books/'+encodeURIComponent(bookId)+'/ai','POST',payload);if(!current())return;if(response.bookId!==bookId||response.action!==payload.action)throw new Error(T('AI 结果与当前作品不匹配。'));result.replaceChildren();status.textContent='';if(response.action==='relationships')renderRelationships(response.data);else if(response.action==='draft')renderDraft(response.data,payload.chapterIds);else if(response.action==='outline')renderOutlineSuggestions(response.data);else if(response.action==='custom')renderCustom(response.data);else if(response.action==='book_cover')renderBookCover(response.data);else renderConsistency(response.data);result.scrollIntoView({block:'nearest'});}catch(error){if(current())status.textContent=T(error.message);}finally{pending=false;mode.disabled=instruction.disabled=configure.disabled=resetPrompt.disabled=false;if(current()){renderChoices();renderSkillChoices();canSend();}}}
+  async function run(){canSend();if(pending||send.disabled||!current())return;pending=true;canSend();mode.disabled=instruction.disabled=configure.disabled=resetPrompt.disabled=true;renderChoices();renderSkillChoices();const payload=request();status.textContent=T('AI 正在处理所选资料…');try{if(!await requireSaved()||!current())return;const response=await api('/api/books/'+encodeURIComponent(bookId)+'/ai','POST',payload);if(!current())return;if(response.bookId!==bookId||response.action!==payload.action)throw new Error(T('AI 结果与当前作品不匹配。'));result.replaceChildren();status.textContent='';renderAIResult(result,response,{book,chapters,chapterIds:payload.chapterIds,sourceOutline,current,settings:()=>settings,onAdopt:target=>{closeDialog();if(target.view==='write'){state.view='write';state.chapterId=target.chapterId;}else if(target.view==='outline'){state.view='outline';state.outlineId=target.outlineId;state.outlineMode='read';state.outlineCategory='all';state.outlineKindFilter='';state.outlineVolumeFilter='';$('outline-search').value='';}renderShell();}});result.scrollIntoView({block:'nearest'});}catch(error){if(current())status.textContent=T(error.message);}finally{pending=false;mode.disabled=instruction.disabled=configure.disabled=resetPrompt.disabled=false;if(current()){renderChoices();renderSkillChoices();canSend();}}}
+}
+
+function renderAIResult(result,response,options={}){
+  const book=options.book,bookId=book?.id,chapters=options.chapters||book?.chapters.filter(chapter=>!chapter.deletedAt)||[],sourceOutline=options.sourceOutline;
+  if(!bookId||response?.bookId!==bookId||!['relationships','draft','outline','custom','book_cover','consistency'].includes(response.action))throw new Error(T('AI 结果与当前作品不匹配。'));
+  let disposed=false,anchor=null;
+  const decisions=new Set(),current=()=>!disposed&&(!anchor||result.contains(anchor))&&state.book===book&&state.book?.id===bookId&&(typeof options.current!=='function'||options.current()),settings=()=>typeof options.settings==='function'?options.settings():options.settings;
+  const fieldId=id=>(options.idPrefix||'')+id;
+  function finish(target){return options.onAdopt?.(target||{});}
   function renderBookCover(data){
     const decision={applied:false,busy:false,buttons:[]};
-    let editor;editor=renderAIBookCoverResult(result,data,{current,settings:()=>settings,
+    let editor;editor=renderAIBookCoverResult(result,data,{current,settings,idPrefix:options.idPrefix,
       addApply:(label,host,selection)=>adoption(label,host,()=>{const value=selection();if(!value)return false;try{const cover=value.cover!==undefined?value.cover:book.coverTemplate?window.WriterCovers.render(book.coverTemplate,value.title,book.kind):book.cover;book.title=value.title;book.cover=cover;if(value.cover!==undefined)book.coverTemplate='';}catch(error){editor.unlock();throw error;}},null,decision)});
   }
-  function citations(evidence,container){const list=el('div','ai-evidence');evidence.forEach(item=>{const chapter=chapters.find(c=>c.id===item.chapterId);list.append(action((chapter?.title||T('未命名章节'))+' · '+item.quote,'ai-evidence-link',()=>jumpToChapter(item.chapterId)));});container.append(list);}
+  function citations(evidence,container){const list=el('div','ai-evidence');evidence.forEach(item=>{const chapter=chapters.find(c=>c.id===item.chapterId);list.append(action((chapter?.title||T('未命名章节'))+' · '+item.quote,'ai-evidence-link',()=>{if(current())(options.onNavigate||jumpToChapter)(item.chapterId);}));});container.append(list);}
   function sourceText(item){return item.description+'\n\n'+T('AI 来源')+'\n'+item.evidence.map(cite=>(chapters.find(c=>c.id===cite.chapterId)?.title||'')+' · '+cite.quote).join('\n');}
-  function adoption(label,container,mutate,done,shared=null){
-    const decision=shared||{applied:false,busy:false,buttons:[]};
+  function adoption(label,container,mutate,target,shared=null){
+    const decision=shared||{applied:false,busy:false,buttons:[]};decisions.add(decision);
     const button=action(label,'primary-button',async()=>{
-      if(decision.busy)return;if(!current()){toast(T('作品已切换，请重新生成建议。'));return;}
+      if(decision.busy||decision.saved)return;if(!current()){toast(T('作品已切换，请重新生成建议。'));return;}
       decision.busy=true;decision.buttons.forEach(entry=>entry.button.disabled=true);
       try{
         if(!decision.applied){
           if(!await requireSaved()||!current())return;if(mutate()===false)return;
           decision.applied=true;markDirty();container.querySelectorAll('input,textarea,select').forEach(input=>input.disabled=true);
-          decision.buttons.forEach(entry=>entry.button.textContent=T('重试保存'));
+          decision.buttons.forEach(entry=>entry.button.textContent=T('重试保存'));options.onApplied?.(target?.()||{});
         }
         if(!await requireSaved()||!current())return;
-        closeDialog();done?.();renderShell();toast(T('AI 建议已保存到作品。'));
+        decision.saved=true;await finish(target?.());toast(T('AI 建议已保存到作品。'));
       }catch(error){if(current())toast(T(error.message));}
-      finally{decision.busy=false;decision.buttons.forEach(entry=>entry.button.disabled=!!entry.unavailable);}
+      finally{decision.busy=false;decision.buttons.forEach(entry=>entry.button.disabled=decision.saved||disposed||!!entry.unavailable);}
     });
     decision.buttons.push({button,unavailable:false});container.append(button);return button;
   }
@@ -136,15 +145,16 @@ async function showAIAssistant(initialAction='draft'){
     });
   }
   function renderDraft(data,chapterIds){
-    result.append(el('h3',null,T('草稿预览')));const title=el('input','text-field'),body=el('textarea','text-field'),target=el('select','text-field');title.value=data.title;title.maxLength=200;title.id='ai-draft-title';body.value=data.body;body.rows=14;body.maxLength=100000;body.id='ai-draft-body';target.id='ai-draft-target';chapters.forEach(chapter=>{const option=el('option',null,chapter.title||T('未命名章节'));option.value=chapter.id;target.append(option);});target.value=chapterIds[0]||chapters[0]?.id||'';addField(result,T('草稿标题'),title);addField(result,T('草稿正文'),body);addField(result,T('追加目标章节'),target);
+    result.append(el('h3',null,T('草稿预览')));const title=el('input','text-field'),body=el('textarea','text-field'),target=el('select','text-field');title.value=data.title;title.maxLength=200;title.id=fieldId('ai-draft-title');body.value=data.body;body.rows=14;body.maxLength=100000;body.id=fieldId('ai-draft-body');target.id=fieldId('ai-draft-target');chapters.forEach(chapter=>{const option=el('option',null,chapter.title||T('未命名章节'));option.value=chapter.id;target.append(option);});target.value=chapterIds[0]||chapters[0]?.id||'';addField(result,T('草稿标题'),title);addField(result,T('草稿正文'),body);addField(result,T('追加目标章节'),target);
     let targetId=null;const actions=el('div','ai-draft-actions');result.append(actions);
-    function apply(kind){if(!title.value.trim()||!body.value.trim()){toast(T('草稿标题与正文不能为空。'));return false;}const existing=chapters.find(chapter=>chapter.id===target.value&&!chapter.deletedAt);if(kind==='append'&&!existing){toast(T('请选择有效的目标章节。'));return false;}if(kind==='append'&&existing.body.length+body.value.length+2>5000000){toast(T('追加后正文过长，请保存为新章节。'));return false;}if(kind==='append'){existing.body+=(existing.body.trim()?'\n\n':'')+body.value;targetId=existing.id;}else{const outline=sourceOutline&&!sourceOutline.deletedAt?sourceOutline:null,volumeId=outline?chapterOutlineVolume(outline)?.id||null:book.kind==='short'?null:existing?.volumeId||activeVolumes()[0]?.id||null;const chapter={id:uid(),title:title.value.trim(),body:body.value,volumeId,deletedAt:null};if(outline){insertOutlineChapter(outline,chapter);outline.chapterIds=[...new Set([...outline.chapterIds,chapter.id])];}else book.chapters.push(chapter);targetId=chapter.id;}title.disabled=body.disabled=target.disabled=true;}
-    const done=()=>{state.view='write';state.chapterId=targetId;},decision={applied:false,busy:false,buttons:[]};
+    function apply(kind){if(!title.value.trim()||!body.value.trim()){toast(T('草稿标题与正文不能为空。'));return false;}const existing=book.chapters.find(chapter=>chapter.id===target.value&&!chapter.deletedAt);if(kind==='append'&&!existing){toast(T('请选择有效的目标章节。'));return false;}if(kind==='append'&&existing.body.length+body.value.length+2>5000000){toast(T('追加后正文过长，请保存为新章节。'));return false;}if(kind==='append'){existing.body+=(existing.body.trim()?'\n\n':'')+body.value;targetId=existing.id;}else{const outline=book.outline.find(item=>item.id===sourceOutline?.id&&!item.deletedAt)||null,volumeId=outline?chapterOutlineVolume(outline)?.id||null:book.kind==='short'?null:existing?.volumeId||activeVolumes()[0]?.id||null;const chapter={id:uid(),title:title.value.trim(),body:body.value,volumeId,deletedAt:null};if(outline){insertOutlineChapter(outline,chapter);outline.chapterIds=[...new Set([...outline.chapterIds,chapter.id])];}else book.chapters.push(chapter);targetId=chapter.id;}title.disabled=body.disabled=target.disabled=true;}
+    const done=()=>({view:'write',chapterId:targetId}),decision={applied:false,busy:false,buttons:[]};
     const append=adoption(T('追加到目标章节'),actions,()=>apply('append'),done,decision);adoption(T('保存为新章节'),actions,()=>apply('new'),done,decision);
     if(!chapters.length){append.disabled=true;decision.buttons[0].unavailable=true;}
   }
   function renderOutlineSuggestions(data){
     if(!Array.isArray(data?.nodes)||!data.nodes.length||data.nodes.length>200)throw new Error(T('AI 大纲结构不正确，请重新生成。'));
+    let adoptedOutlineId=null;
     const byKey=new Map(),ordered=[],entries=new Map(),labels={story:T('总纲'),volume:T('分卷'),chapter:T('章纲'),setting:T('设定')};
     data.nodes.forEach(node=>{if(!node||typeof node.key!=='string'||byKey.has(node.key)||!Object.hasOwn(labels,node.kind)||typeof node.title!=='string'||typeof node.body!=='string')throw new Error(T('AI 大纲结构不正确，请重新生成。'));byKey.set(node.key,node);});
     function visit(node,path=new Set()){if(path.has(node.key))throw new Error(T('AI 大纲结构不正确，请重新生成。'));if(ordered.includes(node))return;const parent=node.parentKey==null?null:byKey.get(node.parentKey);if(node.parentKey!=null&&!parent)throw new Error(T('AI 大纲结构不正确，请重新生成。'));if(parent)visit(parent,new Set([...path,node.key]));ordered.push(node);}
@@ -152,7 +162,7 @@ async function showAIAssistant(initialAction='draft'){
     result.append(el('h3',null,T('大纲预览')));
     const list=el('div','ai-outline-document'),chooseAll=action(T('全选大纲'),'text-button',()=>{entries.forEach(entry=>{if(!entry.box.disabled)entry.box.checked=true;});});result.append(chooseAll,list);
     ordered.forEach((node,index)=>{
-      const section=el('section','ai-outline-section'),heading=el('label','checkbox-row'),box=el('input'),title=el('input','text-field ai-outline-title'),body=el('textarea','text-field ai-outline-body');box.type='checkbox';box.id='ai-outline-select-'+index;title.id='ai-outline-title-'+index;title.value=node.title;title.maxLength=200;body.id='ai-outline-body-'+index;body.value=node.body;body.rows=node.kind==='story'?5:3;body.maxLength=10000;
+      const section=el('section','ai-outline-section'),heading=el('label','checkbox-row'),box=el('input'),title=el('input','text-field ai-outline-title'),body=el('textarea','text-field ai-outline-body');box.type='checkbox';box.id=fieldId('ai-outline-select-'+index);title.id=fieldId('ai-outline-title-'+index);title.value=node.title;title.maxLength=200;body.id=fieldId('ai-outline-body-'+index);body.value=node.body;body.rows=node.kind==='story'?5:3;body.maxLength=10000;
       let depth=0,parent=byKey.get(node.parentKey);while(parent){depth++;parent=byKey.get(parent.parentKey);}section.style.setProperty('--outline-depth',String(depth));heading.append(box,el('span',null,labels[node.kind]));section.append(heading,title,body);list.append(section);entries.set(node.key,{node,box,title,body});
       box.addEventListener('change',()=>{if(box.disabled)return;if(box.checked){let parent=entries.get(node.parentKey);while(parent){parent.box.checked=true;parent=entries.get(parent.node.parentKey);}}else entries.forEach(entry=>{let parent=byKey.get(entry.node.parentKey);while(parent){if(parent.key===node.key){entry.box.checked=false;break;}parent=byKey.get(parent.parentKey);}});});
     });
@@ -164,14 +174,26 @@ async function showAIAssistant(initialAction='draft'){
       if(emptyVolume)ids.set(firstVolume.key,emptyVolume.id);
       const created=selected.map(node=>{const entry=entries.get(node.key);return{id:ids.get(node.key),title:entry.title.value.trim(),body:entry.body.value,kind:node.kind==='setting'?'scene':node.kind,category:node.kind==='setting'?'世界设定':node.kind==='story'?'故事主线':'分卷剧情',parentId:ids.get(node.parentKey)||null,volumeId:emptyVolume&&node===firstVolume?emptyVolume.volumeId:null,chapterIds:[],deletedAt:null};});
       if(emptyVolume)Object.assign(emptyVolume,created.find(node=>node.id===emptyVolume.id));
-      book.outline.push(...created.filter(node=>node.id!==emptyVolume?.id));state.outlineId=created[0].id;entries.forEach(entry=>{entry.box.disabled=entry.title.disabled=entry.body.disabled=true;});chooseAll.disabled=true;
-    },()=>{state.view='outline';state.outlineMode='read';state.outlineCategory='all';state.outlineKindFilter='';state.outlineVolumeFilter='';$('outline-search').value='';});
+      book.outline.push(...created.filter(node=>node.id!==emptyVolume?.id));adoptedOutlineId=created[0].id;entries.forEach(entry=>{entry.box.disabled=entry.title.disabled=entry.body.disabled=true;});chooseAll.disabled=true;
+    },()=>({view:'outline',outlineId:adoptedOutlineId}));
   }
   function renderCustom(data){
     if(typeof data?.text!=='string'||!data.text.trim())throw new Error(T('AI 未返回有效文本。'));
-    result.append(el('h3',null,T('自定义结果')));const body=el('textarea','text-field ai-custom-result');body.id='ai-custom-result';body.value=data.text;body.rows=14;body.maxLength=100000;result.append(body,action(T('复制结果'),'secondary-button',async()=>{try{await navigator.clipboard.writeText(body.value);toast(T('结果已复制。'));}catch{body.focus();body.select();toast(T('请按 Ctrl+C 或 Command+C 复制选中文字。'));}}));
+    result.append(el('h3',null,T('自定义结果')));const body=el('textarea','text-field ai-custom-result');body.id=fieldId('ai-custom-result');body.value=data.text;body.rows=14;body.maxLength=100000;result.append(body,action(T('复制结果'),'secondary-button',async()=>{try{await navigator.clipboard.writeText(body.value);toast(T('结果已复制。'));}catch{body.focus();body.select();toast(T('请按 Ctrl+C 或 Command+C 复制选中文字。'));}}));
   }
   function renderConsistency(data){result.append(el('h3',null,T('一致性检查结果')));if(!data.issues.length){result.append(el('p','subtle',T('所选资料中没有返回待核查问题。')));return;}data.issues.forEach(issue=>{const card=el('section','ai-suggestion');card.append(el('h4',null,issue.title),el('p',null,issue.description));citations(issue.evidence,card);result.append(card);});}
+  if(!current())return{dispose(){disposed=true;},hasUnsavedAdoption(){return false;}};
+  if(response.action==='relationships')renderRelationships(response.data);
+  else if(response.action==='draft')renderDraft(response.data,options.chapterIds||response.chapterIds||[]);
+  else if(response.action==='outline')renderOutlineSuggestions(response.data);
+  else if(response.action==='custom')renderCustom(response.data);
+  else if(response.action==='book_cover')renderBookCover(response.data);
+  else renderConsistency(response.data);
+  anchor=result.children[result.children.length-1]||null;
+  return{
+    dispose(){disposed=true;decisions.forEach(decision=>decision.buttons.forEach(entry=>entry.button.disabled=true));},
+    hasUnsavedAdoption(){return [...decisions].some(decision=>decision.applied&&!decision.saved);}
+  };
 }
 
 function aiRasterDataURL(value){return typeof value==='string'&&value.length<=16*1024*1024&&/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value);}
@@ -180,7 +202,7 @@ function aiValidPreview(value,payload,bookId){return value?.action==='book_cover
 function renderAIBookCoverResult(container,data,options){
   if(!Array.isArray(data?.titles)||!data.titles.length||data.titles.length>8||data.titles.some(title=>typeof title!=='string'||!title.trim()||title.length>200)||new Set(data.titles).size!==data.titles.length||typeof data.coverPrompt!=='string'||!data.coverPrompt.trim()||data.coverPrompt.length>10000)throw new Error(T('AI 封面与书名结果无效，请重新生成。'));
   const panel=el('section','ai-book-cover-result'),names=el('div','ai-cover-name-options'),title=el('input','text-field'),prompt=el('textarea','text-field'),preview=el('img','ai-cover-preview'),status=el('p','ai-status'),imageActions=el('div','ai-cover-image-actions'),applyActions=el('div','ai-draft-actions');
-  title.id='ai-cover-title';title.maxLength=200;title.value=data.titles[0];prompt.id='ai-cover-prompt';prompt.rows=5;prompt.maxLength=10000;prompt.value=data.coverPrompt;preview.alt=T('封面预览');preview.hidden=true;
+  title.id=(options.idPrefix||'')+'ai-cover-title';title.maxLength=200;title.value=data.titles[0];prompt.id=(options.idPrefix||'')+'ai-cover-prompt';prompt.rows=5;prompt.maxLength=10000;prompt.value=data.coverPrompt;preview.alt=T('封面预览');preview.hidden=true;
   const current=()=>options.current()&&container.contains(panel),validTitle=()=>title.value.trim().length>0&&title.value.length<=200;
   let rawImage='',cover='',coverTitle='',busy=false,composing=false,locked=false,composeSeq=0;
   const chooseButtons=data.titles.map(name=>{const button=action(name,'secondary-button ai-cover-name-option',()=>{if(locked||busy||!current())return;title.value=name;return compose();});names.append(button);return button;});
