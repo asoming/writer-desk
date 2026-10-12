@@ -13,7 +13,7 @@ window.WriterWorkPlan=(()=>{
     {key:'plot',label:'剧情大纲',category:'故事主线',titles:['剧情大纲','全书总纲','全篇构思','Plot outline','Story overview','Story concept'],hint:()=>T(plotHint)+'\n\n'+(state.kind==='short'?T('主要情节\n一句话概括内容：人物，世界观，金手指，主要目标。\n什么人，在什么地方，凭借什么，做什么。\n开端：\n发展：\n转折：\n高潮：\n结局：'):T('主要情节')+'\n'+T('第一卷（卷名）')+'\n'+T(volumeHint)+'\n\n'+T('第二卷（卷名）')+'\n'+T(volumeHint))},
     {key:'synopsis',label:'故事梗概',category:'参考资料',titles:['故事梗概','故事摘要','Synopsis','Story summary'],hint:()=>T('故事的梗概')},
   ];
-  let bound=false,view=null,observer=null;
+  let bound=false,view=null;
   const panel=()=>$('work-plan-panel');
   const enabled=()=>!!state.book&&state.view==='write';
   const language=()=>typeof uiLanguage==='string'?uiLanguage:document.documentElement.lang;
@@ -28,16 +28,7 @@ window.WriterWorkPlan=(()=>{
   function setEmpty(field){
     const empty=field.input.value.length===0;field.hint.hidden=!empty;
     field.shell.classList.toggle('is-empty',empty);
-    if(empty)requestAnimationFrame(()=>measureHint(field));
   }
-  function measureHint(field){
-    if(!view||panel().hidden||field.hint.hidden)return;
-    const distance=Math.max(0,field.text.scrollHeight-field.hint.clientHeight);
-    field.hint.classList.toggle('has-overflow',distance>1);
-    field.hint.style.setProperty('--work-plan-hint-shift',-distance+'px');
-    field.hint.style.setProperty('--work-plan-hint-duration',Math.max(18,distance/18+8)+'s');
-  }
-  function resizeHints(){if(view&&!panel()?.hidden)view.fields.forEach(measureHint);}
   function current(candidate){return view===candidate&&state.book===candidate.book&&enabled();}
   function saveField(candidate,field){
     if(!current(candidate))return;
@@ -53,7 +44,6 @@ window.WriterWorkPlan=(()=>{
     record.body=field.input.value;candidate.outlineButton.disabled=false;markDirty();
   }
   function build(){
-    observer?.disconnect();
     const target=panel(),book=state.book,candidate={book,kind:state.kind,language:language(),fields:[],tab:'outline'};
     view=candidate;
     const header=el('header','work-plan-header'),tabs=el('div','work-plan-tabs'),tools=el('div','work-plan-tools');
@@ -64,7 +54,7 @@ window.WriterWorkPlan=(()=>{
     function selectTab(tab){
       if(!current(candidate))return;candidate.tab=tab;outline.hidden=tab!=='outline';characters.hidden=tab!=='characters';
       for(const [key,button]of tabButtons){button.setAttribute('aria-selected',String(key===tab));button.tabIndex=key===tab?0:-1;}
-      if(tab==='characters')renderCharacters(candidate);else requestAnimationFrame(resizeHints);
+      if(tab==='characters')renderCharacters(candidate);
     }
     [['outline','作品大纲'],['characters','人物卡片']].forEach(([key,label])=>{
       const button=action(T(label),'work-plan-tab',()=>selectTab(key));button.id='work-plan-tab-'+key;button.setAttribute('role','tab');button.setAttribute('aria-controls',key==='outline'?outline.id:characters.id);
@@ -83,7 +73,7 @@ window.WriterWorkPlan=(()=>{
       const group=el('section','work-plan-section work-plan-section-'+section.key),label=el('label','work-plan-section-title',T(section.label)),shell=el('div','work-plan-field'),input=el('textarea','work-plan-input'),hint=el('div','work-plan-hint'),text=el('div','work-plan-hint-text',section.hint()),record=findRecord(section);
       input.id='work-plan-'+section.key;input.rows=8;input.value=record?.body||'';input.spellcheck=false;input.setAttribute('aria-label',T(section.label));label.htmlFor=input.id;
       hint.id=input.id+'-hint';hint.setAttribute('aria-label',T('填写参考'));hint.tabIndex=0;input.setAttribute('aria-describedby',hint.id);hint.append(text);
-      const field={section,shell,input,hint,text,recordId:record?.id||null,composing:false};candidate.fields.push(field);
+      const field={section,shell,input,hint,recordId:record?.id||null,composing:false};candidate.fields.push(field);
       input.addEventListener('input',()=>saveField(candidate,field));
       input.addEventListener('compositionstart',()=>{if(!current(candidate))return;field.composing=true;state.composing=true;clearTimeout(state.timer);});
       input.addEventListener('compositionend',()=>{if(!current(candidate))return;field.composing=false;state.composing=false;saveField(candidate,field);});
@@ -91,7 +81,6 @@ window.WriterWorkPlan=(()=>{
       shell.append(input,hint);group.append(label,shell);outline.append(group);setEmpty(field);
     });
     target.replaceChildren(header,outline,characters);candidate.characters=characters;
-    if(typeof ResizeObserver==='function'){observer=new ResizeObserver(resizeHints);candidate.fields.forEach(field=>observer.observe(field.hint));}
     selectTab('outline');
   }
   function renderCharacters(candidate){
@@ -120,7 +109,6 @@ window.WriterWorkPlan=(()=>{
       }
       view.outlineButton.disabled=!records().length;if(view.tab==='characters')renderCharacters(view);
     }
-    requestAnimationFrame(resizeHints);
   }
   function open(){
     if(!enabled()||!panel())return;toggleNotes(false);if(typeof closeAIChat==='function')closeAIChat();
@@ -134,7 +122,7 @@ window.WriterWorkPlan=(()=>{
     if(bound||!$('writing-plan')||!panel())return;bound=true;
     $('writing-plan').addEventListener('click',()=>panel().hidden?open():close(true));
     panel().addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('dialog')?.open){event.preventDefault();close(true);}});
-    window.addEventListener('resize',resizeHints);sync();
+    sync();
   }
   return{bind,sync,open,close,isOpen:()=>!!panel()&&!panel().hidden};
 })();

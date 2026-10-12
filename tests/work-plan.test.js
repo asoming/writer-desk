@@ -9,8 +9,7 @@ const {randomUUID}=require('node:crypto');
 const root=path.resolve(__dirname,'..');
 class Element{
   constructor(tag='div'){
-    this.tagName=tag.toUpperCase();this.children=[];this.hidden=false;this.value='';this.textContent='';this.listeners={};this.attributes={};this.scrollHeight=720;this.clientHeight=208;
-    this.styles={};this.style={setProperty:(key,value)=>{this.styles[key]=value;}};
+    this.tagName=tag.toUpperCase();this.children=[];this.hidden=false;this.value='';this.textContent='';this.listeners={};this.attributes={};
     this.classes=new Set();this.classList={add:key=>this.classes.add(key),remove:key=>this.classes.delete(key),toggle:(key,value)=>{value??=!this.classes.has(key);value?this.classes.add(key):this.classes.delete(key);return value;},contains:key=>this.classes.has(key)};
   }
   append(...items){for(const item of items){this.children.push(item);item.parentElement=this;}}
@@ -29,13 +28,13 @@ function harness(initial=book()){
   const nodes=new Map(),document={activeElement:null,documentElement:{lang:'zh'},createElement(tag){const node=new Element(tag);node.document=document;return node;}};
   const get=id=>{if(!nodes.has(id)){const node=document.createElement('div');node.id=id;nodes.set(id,node);}return nodes.get(id);};
   get('work-plan-panel').hidden=true;get('dialog').open=false;
-  let dirty=0,notes=0,ai=0,resize=0;const jumps=[],observers=[];
+  let dirty=0,notes=0,ai=0,resize=0;const jumps=[];
   const state={book:initial,kind:initial.kind,view:'write'},ctx=vm.createContext({window:null,state,document,uiLanguage:'zh',T:value=>value,$:get,uid:randomUUID,
     el(tag,className,text){const node=document.createElement(tag);node.className=className||'';if(text!==undefined)node.textContent=text;return node;},
     action(text,className,listener){const node=document.createElement('button');node.className=className;node.textContent=text;node.addEventListener('click',listener);return node;},
     outlineTopic:item=>item.category||'',people:()=>state.book.notes.filter(item=>item.type==='人物'&&!item.deletedAt),
     markDirty(){dirty++;},toggleNotes(value){assert.equal(value,false);notes++;},closeAIChat(){ai++;},resizeEditor(){resize++;},jumpToOwner(owner){jumps.push(owner);},
-    requestAnimationFrame:callback=>callback(),clearTimeout(){},addEventListener(){},ResizeObserver:class{constructor(callback){this.callback=callback;observers.push(this);}observe(){}disconnect(){this.disconnected=true;}},
+    requestAnimationFrame:callback=>callback(),clearTimeout(){},
   });
   ctx.window=ctx;vm.runInContext(fs.readFileSync(path.join(root,'public/work-plan.js'),'utf8'),ctx);
   const module=ctx.WriterWorkPlan;
@@ -43,7 +42,7 @@ function harness(initial=book()){
   const field=key=>all().find(node=>node.id==='work-plan-'+key);
   const hint=key=>all().find(node=>node.id==='work-plan-'+key+'-hint');
   const button=label=>all().find(node=>node.tagName==='BUTTON'&&node.textContent===label);
-  return{module,state,get,ctx,field,hint,all,button,jumps,observers,counters:()=>({dirty,notes,ai,resize}),async type(key,value){const input=field(key);input.value=value;await input.dispatch('input');}};
+  return{module,state,get,ctx,field,hint,all,button,jumps,counters:()=>({dirty,notes,ai,resize}),async type(key,value){const input=field(key);input.value=value;await input.dispatch('input');}};
 }
 const tests=[];const check=(name,test)=>tests.push({name,test});
 
@@ -100,9 +99,13 @@ check('closing and leaving writing restores toggle state without mutation or reb
   const h=harness();h.module.bind();await h.get('writing-plan').dispatch('click');const input=h.field('world');await h.get('writing-plan').dispatch('click');assert.equal(h.module.isOpen(),false);assert.equal(h.get('writing-plan').attributes['aria-expanded'],'false');assert.equal(h.ctx.document.activeElement,h.get('writing-plan'));
   h.module.open();assert.equal(h.field('world'),input);h.state.view='shelf';h.module.sync();assert.equal(h.module.isOpen(),false);assert.equal(h.get('writing-plan').disabled,true);h.module.open();assert.equal(h.module.isOpen(),false);assert.equal(h.counters().dirty,0);
 });
-check('animated hints are measured against available space; reduced motion has a scrollable no-animation alternative',()=>{
-  const h=harness();h.module.bind();h.module.open();const hint=h.hint('world');assert.equal(hint.classes.has('has-overflow'),true);assert.equal(hint.styles['--work-plan-hint-shift'],'-512px');hint.children[0].scrollHeight=100;h.observers.at(-1).callback();assert.equal(hint.classes.has('has-overflow'),false);
-  const css=fs.readFileSync(path.join(root,'public/work-plan.css'),'utf8');assert.match(css,/@keyframes work-plan-hint-pan/);assert.match(css,/scrollbar-width:none/);assert.match(css,/@media\(prefers-reduced-motion:reduce\)\{\.work-plan-hint\{overflow:auto\}.*animation:none/s);assert.match(css,/\.work-plan-input\{[^}]*resize:none/);
+check('guidance supports manual wheel and keyboard scrolling with hidden scrollbars and no automatic motion',async()=>{
+  const h=harness(),before=copy(h.state.book);h.module.bind();h.module.open();const hint=h.hint('world');
+  assert.equal(hint.tabIndex,0);hint.focus();assert.equal(h.ctx.document.activeElement,hint);
+  let prevented=false;await hint.dispatch('wheel',{deltaY:120,preventDefault(){prevented=true;}});await hint.dispatch('keydown',{key:'ArrowDown',preventDefault(){prevented=true;}});assert.equal(prevented,false);h.module.sync();assert.deepEqual(h.state.book,before);assert.equal(h.counters().dirty,0);
+  const css=fs.readFileSync(path.join(root,'public/work-plan.css'),'utf8'),source=fs.readFileSync(path.join(root,'public/work-plan.js'),'utf8');
+  assert.match(css,/\.work-plan-hint\{[^}]*overflow-y:auto;overflow-x:hidden/);assert.match(css,/\.work-plan-hint\{[^}]*scrollbar-width:none/);assert.match(css,/\.work-plan-hint::-webkit-scrollbar\{display:none/);assert.match(css,/\.work-plan-input\{[^}]*overflow:auto;scrollbar-width:none/);assert.match(css,/\.work-plan-input\{[^}]*resize:none/);
+  assert.doesNotMatch(css,/@keyframes|animation|transform/);assert.doesNotMatch(source,/measureHint|resizeHints|ResizeObserver|hint-shift|hint-duration|scrollTop\s*=/);
 });
 check('keyboard tabs and escape work without requiring pointer input',async()=>{
   const h=harness();h.module.bind();h.module.open();const outline=h.button('作品大纲'),characters=h.button('人物卡片');await outline.dispatch('keydown',{key:'ArrowRight',preventDefault(){}});assert.equal(characters.attributes['aria-selected'],'true');assert.equal(h.ctx.document.activeElement,characters);

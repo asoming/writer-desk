@@ -9,7 +9,7 @@
 
 顶部保存状态左侧的太阳／月亮图标可切换白天和黑夜模式。「设置 → 通用」中可开启护眼模式，白天使用暖纸色，黑夜使用暖灰色；外观选择保存在本机，重开后恢复。
 
-界面预览：[作品大纲侧栏](docs/work-plan-v0.4.13.jpg) · [删除章节历史](docs/chapter-history-v0.4.13.jpg) · [图片对话](docs/chat-images-v0.4.12.jpg) · [自适应提示词](docs/chat-prompt-v0.4.12.jpg) · [夜间写作](docs/appearance-night-v0.4.11.jpg) · [护眼设置](docs/appearance-settings-v0.4.11.jpg) · [统一写作入口 · 长篇](docs/writing-long-v0.4.10.png) · [短篇](docs/writing-short-v0.4.10.png) · [短篇单正文](docs/short-writing-v0.4.9.png) · [章节改名与总字数](docs/chapter-rename-v0.4.9.png) · [分组设置](docs/settings-v0.4.8.png) · [模型选择与分栏](docs/layout-v0.4.8.png) · [大纲与写作对话栏](docs/chat-v0.4.7.png) · [封面模板与随机书名](docs/covers-v0.4.5.png) · [AI 封面与书名](docs/ai-cover-v0.4.5.png) · [简洁 AI 面板](docs/ai-v0.4.3.png) · [逐书导出](docs/export-v0.4.4.png) · [30 天回收站](docs/trash-v0.4.4.png) · [写作 Skill](docs/skills-v0.4.1.png) · [历史与自动备份](docs/backups-v0.4.0.png) · [流程检查与分类索引](docs/workflow-v0.3.6.png) · [内置设置](docs/app-settings-v0.3.5.png) · [书架与作品文件夹](docs/book-folders-v0.3.3.png) · [人物脉络与分类](docs/people-v0.3.1.png) · [完整大纲阅读](docs/outline-v0.3.1.png)。
+界面预览：[作品大纲侧栏](docs/work-plan-v0.4.14.jpg) · [删除章节历史](docs/chapter-history-v0.4.14.jpg) · [图片对话](docs/chat-images-v0.4.12.jpg) · [自适应提示词](docs/chat-prompt-v0.4.12.jpg) · [夜间写作](docs/appearance-night-v0.4.11.jpg) · [护眼设置](docs/appearance-settings-v0.4.11.jpg) · [统一写作入口 · 长篇](docs/writing-long-v0.4.10.png) · [短篇](docs/writing-short-v0.4.10.png) · [短篇单正文](docs/short-writing-v0.4.9.png) · [章节改名与总字数](docs/chapter-rename-v0.4.9.png) · [分组设置](docs/settings-v0.4.8.png) · [模型选择与分栏](docs/layout-v0.4.8.png) · [大纲与写作对话栏](docs/chat-v0.4.7.png) · [封面模板与随机书名](docs/covers-v0.4.5.png) · [AI 封面与书名](docs/ai-cover-v0.4.5.png) · [简洁 AI 面板](docs/ai-v0.4.3.png) · [逐书导出](docs/export-v0.4.4.png) · [30 天回收站](docs/trash-v0.4.4.png) · [写作 Skill](docs/skills-v0.4.1.png) · [历史与自动备份](docs/backups-v0.4.0.png) · [流程检查与分类索引](docs/workflow-v0.3.6.png) · [内置设置](docs/app-settings-v0.3.5.png) · [书架与作品文件夹](docs/book-folders-v0.3.3.png) · [人物脉络与分类](docs/people-v0.3.1.png) · [完整大纲阅读](docs/outline-v0.3.1.png)。
 
 首次打开书架即有原创群像小说《潮汐档案馆》，含六卷三十六章、三十二位人物、四十九条大纲节点、六个主题分图和三十五条手动关系。升级已有作品库也会补入缺少的完整示例，保留已有作品及修改。书架的「载入长篇示例」仍可新建独立副本。正文共 101,506 个非空白字符，字数包含标点和英文字母；完整验证结果见 [验收记录](docs/acceptance-report.md)。
 
@@ -39,7 +39,7 @@
 
 字数包含标点和英文字母，不计空格、换行；正文字号可在 16–26 px 之间调整。
 
-写作工具栏的「作品大纲」位于所属卷与 AI 辅助之间，可在侧栏编辑世界观、角色、剧情大纲和故事梗概，直接使用当前作品的大纲节点。空白框显示完整填写参考，溢出文字缓慢上下移动，不显示滚动条；开始输入后只显示所写内容。系统减少动态效果时停止动画，提示仍可滚动阅读。人物卡片复用已有资料并可跳转人物脉络；短篇提示使用一篇连续故事。
+写作工具栏的「作品大纲」位于所属卷与 AI 辅助之间，可在侧栏编辑世界观、角色、剧情大纲和故事梗概，直接使用当前作品的大纲节点。空白框显示完整填写参考，内容超出时由鼠标滚轮或键盘上下查看，不显示滚动条；开始输入后只显示所写内容。人物卡片复用已有资料并可跳转人物脉络；短篇提示使用一篇连续故事。
 
 大纲与写作页的目录、正文和 AI / 资料栏边界可拖动调整，按页面记住宽度。双击边线恢复默认，也可用键盘方向键调整。设置使用浅灰侧栏与白色分组内容，按通用、AI、写作 Skill、保存、快捷操作、升级和关于分类。
 
