@@ -31,6 +31,91 @@ const imageDialog = document.querySelector('.image-dialog');
 const dialogImage = imageDialog.querySelector('img');
 let language = 'zh';
 let currentView = 'writing';
+const starLinks = Array.from(document.querySelectorAll('[data-star-link]'));
+const starCounts = Array.from(document.querySelectorAll('[data-star-count]'));
+const STAR_CACHE_KEY = 'writer-desk-site-stars-v1';
+const STAR_REFRESH_INTERVAL = 5 * 60 * 1000;
+let starCount = null;
+let starUpdatedAt = 0;
+let starLastAttemptAt = 0;
+let starRequestPending = false;
+
+function renderStarCount() {
+  const available = starCount !== null;
+  const exactCount = available ? starCount.toLocaleString(language === 'en' ? 'en-US' : 'zh-CN') : '';
+  const shortCount = available ? new Intl.NumberFormat('en-US', {
+    notation: starCount >= 1000 ? 'compact' : 'standard', maximumFractionDigits: 1,
+  }).format(starCount) : '—';
+  for (const element of starCounts) element.textContent = shortCount;
+  for (const link of starLinks) {
+    const label = language === 'en'
+      ? `Star Writer's Desk on GitHub${available ? ` · ${exactCount} ${starCount === 1 ? 'star' : 'stars'}` : ''} (opens in a new tab)`
+      : `在 GitHub 给作家工作台点 Star${available ? ` · ${exactCount} 个 Star` : ''}（新窗口）`;
+    link.setAttribute('aria-label', label);
+    link.title = label;
+  }
+}
+
+function restoreStarCount() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(STAR_CACHE_KEY));
+    if (cached && Number.isSafeInteger(cached.count) && cached.count >= 0
+      && Number.isFinite(cached.updatedAt) && cached.updatedAt > 0 && cached.updatedAt <= Date.now()) {
+      starCount = cached.count;
+      starUpdatedAt = cached.updatedAt;
+      starLastAttemptAt = Number.isFinite(cached.checkedAt) && cached.checkedAt >= cached.updatedAt
+        && cached.checkedAt <= Date.now() ? cached.checkedAt : cached.updatedAt;
+    }
+  } catch { /* Storage is optional; the public API can still be used. */ }
+}
+
+async function fetchStarData(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, {
+      credentials: 'omit', cache: 'no-cache', signal: controller.signal,
+      headers: { Accept: 'application/vnd.github+json' },
+    });
+    if (!response.ok) throw new Error('Star count unavailable');
+    return await response.json();
+  } finally { clearTimeout(timeout); }
+}
+
+function acceptStarCount(repository, count, updatedAt) {
+  if (repository !== 'asoming/writer-desk' || !Number.isSafeInteger(count) || count < 0
+    || !Number.isFinite(updatedAt) || updatedAt <= 0) throw new Error('Invalid star count');
+  if (updatedAt >= starUpdatedAt) {
+    starCount = count;
+    starUpdatedAt = Math.min(updatedAt, Date.now());
+    renderStarCount();
+  }
+}
+
+async function refreshStarCount() {
+  if (document.visibilityState !== 'visible' || starRequestPending
+    || Date.now() - starLastAttemptAt < STAR_REFRESH_INTERVAL) return;
+  starLastAttemptAt = Date.now();
+  starRequestPending = true;
+  try {
+    try {
+      const repository = await fetchStarData('https://api.github.com/repos/asoming/writer-desk');
+      acceptStarCount(repository.full_name, repository.stargazers_count, Date.now());
+    } catch {
+      // The published snapshot keeps a first visit useful during public API rate limits.
+      const snapshot = await fetchStarData('./github-stars.json');
+      acceptStarCount(snapshot.repository, snapshot.count, snapshot.updatedAt);
+    }
+  } catch { /* Keep the last known count, or the placeholder if none is known. */ }
+  finally {
+    try {
+      if (starCount !== null) localStorage.setItem(STAR_CACHE_KEY, JSON.stringify({
+        count: starCount, updatedAt: starUpdatedAt, checkedAt: starLastAttemptAt,
+      }));
+    } catch { /* The count remains available for this visit. */ }
+    starRequestPending = false;
+  }
+}
 
 function updatePreview() {
   const view = views[currentView];
@@ -67,6 +152,7 @@ function setLanguage(nextLanguage, updateAddress = false) {
       : 'https://github.com/asoming/writer-desk/blob/main/docs/quickstart-zh.md';
   }
   updatePreview();
+  renderStarCount();
   try { localStorage.setItem('writer-desk-site-language', language); } catch { /* Optional preference only. */ }
   if (updateAddress) {
     const url = new URL(location.href);
@@ -111,4 +197,9 @@ let initialLanguage = new URLSearchParams(location.search).get('lang');
 if (!['zh', 'en'].includes(initialLanguage)) {
   try { initialLanguage = localStorage.getItem('writer-desk-site-language'); } catch { /* Chinese remains the default. */ }
 }
+restoreStarCount();
 setLanguage(initialLanguage);
+void refreshStarCount();
+setInterval(refreshStarCount, STAR_REFRESH_INTERVAL);
+window.addEventListener('focus', refreshStarCount);
+document.addEventListener('visibilitychange', refreshStarCount);

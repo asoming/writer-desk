@@ -7,6 +7,8 @@ on:
       - 'website/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
 
 permissions:
   contents: read
@@ -33,6 +35,37 @@ jobs:
         uses: actions/checkout@v6
       - name: Configure Pages
         uses: actions/configure-pages@v5
+      - name: Refresh public Star snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+          import time
+          from pathlib import Path
+
+          repository = "asoming/writer-desk"
+          result = subprocess.run(
+              ["gh", "api", f"repos/{repository}", "--jq",
+               "{repository: .full_name, count: .stargazers_count, private: .private}"],
+              check=True, capture_output=True, text=True,
+          )
+          metadata = json.loads(result.stdout)
+          count = metadata.get("count")
+          updated_at = time.time_ns() // 1_000_000
+          max_safe_integer = 2**53 - 1
+          if metadata.get("repository") != repository or metadata.get("private") is not False:
+              raise ValueError("Star snapshot must refer to the expected public repository")
+          if type(count) is not int or not 0 <= count <= max_safe_integer:
+              raise ValueError("Invalid Star count")
+          if not 0 < updated_at <= max_safe_integer:
+              raise ValueError("Invalid snapshot timestamp")
+          snapshot = {"repository": repository, "count": count, "updatedAt": updated_at}
+          Path("website/github-stars.json").write_text(
+              json.dumps(snapshot, indent=2) + "\n", encoding="utf-8",
+          )
+          PY
       - name: Upload website only
         uses: actions/upload-pages-artifact@v4
         with:
