@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Exercise only disposable data with the packaged native service and desktop."""
 import argparse
-from contextlib import closing
+from contextlib import closing, contextmanager
+import ctypes
+from ctypes import wintypes
 import json
 import os
 from pathlib import Path
@@ -20,6 +22,80 @@ import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def cleanup_disposable_directory(directory, timeout=5):
+    """Windows may release Chromium cache handles just after the process exits."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            directory.cleanup()
+            return
+        except PermissionError:
+            if sys.platform != "win32" or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.1)
+
+
+@contextmanager
+def disposable_library():
+    directory = tempfile.TemporaryDirectory(prefix="writer-native-smoke-")
+    try:
+        yield Path(directory.name)
+    finally:
+        cleanup_disposable_directory(directory)
+
+
+def close_windows_desktop(child, user32=None, timeout=30):
+    """Use the real close/save path, targeting only this smoke process's window."""
+    callback_type = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    if user32 is None:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+        user32.EnumWindows.restype = wintypes.BOOL
+        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        user32.IsWindowVisible.argtypes = [wintypes.HWND]
+        user32.IsWindowVisible.restype = wintypes.BOOL
+        user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        user32.PostMessageW.restype = wintypes.BOOL
+    deadline, previous = time.monotonic() + timeout, None
+    while time.monotonic() < deadline:
+        if child.poll() is not None:
+            raise RuntimeError("Desktop exited before its window could close normally")
+        windows = []
+
+        @callback_type
+        def collect(handle, _):
+            owner = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(handle, ctypes.byref(owner))
+            if owner.value == child.pid and user32.IsWindowVisible(handle):
+                windows.append(handle)
+            return True
+
+        if not user32.EnumWindows(collect, 0):
+            raise RuntimeError("Could not enumerate the isolated desktop window")
+        if len(windows) > 1:
+            raise RuntimeError("Expected one visible window owned by the isolated desktop process")
+        # Wait for the same visible window on two polls, allowing its load/save
+        # handlers to settle without bypassing the app's normal save gate.
+        if windows and windows[0] == previous:
+            owner = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(previous, ctypes.byref(owner))
+            if owner.value != child.pid or child.poll() is not None:
+                raise RuntimeError("Isolated desktop window ownership changed before close")
+            if not user32.PostMessageW(previous, 0x0010, 0, 0):  # WM_CLOSE
+                raise RuntimeError("Windows rejected the isolated desktop close request")
+            try:
+                child.wait(timeout=max(0.01, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired as error:
+                raise RuntimeError("Desktop did not finish its normal save/close path") from error
+            if child.returncode != 0:
+                raise RuntimeError(f"Desktop did not exit cleanly ({child.returncode})")
+            return
+        previous = windows[0] if windows else None
+        time.sleep(0.05)
+    raise RuntimeError("Isolated desktop did not show a stable visible window")
 
 
 class Process:
@@ -163,7 +239,14 @@ def desktop_smoke(executable, data):
         database = data / "data/writer.sqlite3"
         with closing(sqlite3.connect(database)) as connection:
             assert connection.execute("select count(*) from books").fetchone()[0] >= 3
-        return ["native Electron window loaded", "packaged child service", "isolated desktop data seeded"]
+        checks = ["native Electron window loaded", "packaged child service", "isolated desktop data seeded"]
+        if sys.platform == "win32":
+            close_windows_desktop(process.child)
+            process.reader.join(timeout=10)
+            if process.reader.is_alive():
+                raise RuntimeError("Desktop output pipe remained open after normal exit")
+            checks.append("Windows native close completes the app save gate")
+        return checks
     finally:
         process.cleanup()
 
@@ -178,8 +261,7 @@ def main():
     service = backend / ("writer-service.exe" if sys.platform == "win32" else "writer-service")
     subprocess.run([sys.executable, str(ROOT / "tests/verify_portable_library.py"), "--service", str(service)],
                    cwd=ROOT, check=True, env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}, timeout=180)
-    with tempfile.TemporaryDirectory(prefix="writer-native-smoke-") as temporary:
-        data = Path(temporary)
+    with disposable_library() as data:
         checks = ["installed frozen service: folders, backups, images, chapter restore and purge"]
         checks += service_smoke(backend, data / "service")
         if not args.service_only:
