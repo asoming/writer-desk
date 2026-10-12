@@ -73,8 +73,12 @@ async function testMainContract() {
   app.getPath = name => name === 'downloads' ? temp : userData;
   app.setPath = () => {}; app.setName = () => {}; app.getVersion = () => 'test';
   app.requestSingleInstanceLock = () => true; app.whenReady = () => Promise.resolve();
-  app.quit = () => { app.quitCalled = true; }; app.isPackaged = false;
-  let win, child, headersHandler, requestHandler, lastSent, folderReply, shellError = '', shellThrows = false;
+  app.quit = () => {
+    const event = { preventDefault() { this.prevented = true; } }; app.emit('before-quit', event);
+    assert.equal(event.prevented, undefined, 'The final explicit quit must not be blocked');
+    assert.notEqual(child?.exitCode, null, 'Electron must wait for the service exit'); app.quitCalled = true; app.emit('quit');
+  }; app.isPackaged = false;
+  let win, child, headersHandler, requestHandler, lastSent, folderReply, finishService, pipeClosed = 0, shellError = '', shellThrows = false;
   const folderRequests = [], openedFolders = [], sentEvents = [], edits = [], dialogs = [];
   const httpFake = { request: (url, options, callback) => {
     const request = new EventEmitter();
@@ -103,7 +107,7 @@ async function testMainContract() {
     }
     isDestroyed() { return !!this.destroyed; }
     loadURL(url) { this.url = url; this.webContents.mainFrame.url = url; return Promise.resolve(); }
-    destroy() { this.destroyed = true; this.emit('closed'); }
+    destroy() { this.destroyed = true; this.emit('closed'); app.emit('window-all-closed'); }
     show() {} focus() {} isMinimized() { return this.minimized; }
     minimize() { this.minimized = true; }
     isMaximized() { return this.maximized; }
@@ -120,7 +124,8 @@ async function testMainContract() {
   const electron = { app, ipcMain, BrowserWindow: FakeWindow, session: { fromPartition: () => fakeSession }, Menu: { buildFromTemplate: () => assert.fail('Native menus must not be rebuilt'), setApplicationMenu: value => { app.menu = value; } }, dialog: { showErrorBox: () => assert.fail('unexpected startup failure'), showMessageBox: async (_window, options) => { dialogs.push(options); return { response: 0 }; } }, shell: { openExternal: async () => {}, openPath: async folder => { openedFolders.push(folder); if (shellThrows) throw new Error('private OS failure'); return shellError; } } };
   const spawnFake = () => {
     child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.exitCode = null;
-    child.kill = () => { child.exitCode = 0; queueMicrotask(() => child.emit('exit', 0)); };
+    child.kill = () => assert.fail('Normal close must use the EOF shutdown');
+    child.stdin = { end() { pipeClosed++; finishService = () => { child.exitCode = 0; child.emit('exit', 0); }; } };
     queueMicrotask(() => child.stdout.emit('data', Buffer.from('WRITER_READY {"url":"http://127.0.0.1:38123"}\n')));
     return child;
   };
@@ -302,6 +307,10 @@ async function testMainContract() {
   const finalClose = action('close');
   ipcMain.emit('writer:save-result', event(), { token: 'wrong', saved: true }); assert.equal(win.destroyed, undefined);
   ipcMain.emit('writer:save-result', event(), { token: lastSent.token, saved: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(win.destroyed, true); assert.equal(pipeClosed, 1); assert.equal(child.exitCode, null); assert.equal(app.quitCalled, undefined);
+  const pendingQuit = { preventDefault() { this.prevented = true; } }; app.emit('before-quit', pendingQuit); assert.equal(pendingQuit.prevented, true);
+  finishService();
   const closedState = await finalClose; assert.equal(Object.keys(closedState).length, 0);
   assert.equal(win.destroyed, true); assert.equal(child.exitCode, 0); assert.equal(app.quitCalled, true);
   console.log('PASS: authenticated book-folder bridge, trusted frame/ID checks, path and symlink isolation, localized file-manager errors');

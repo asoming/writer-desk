@@ -156,8 +156,12 @@ async function testInstallation() {
 async function testUpdateBridge() {
   const app = new EventEmitter(), ipcMain = new EventEmitter(); ipcMain.handle = (name, callback) => { ipcMain[name] = callback; };
   app.setPath = app.setName = () => {}; app.getPath = () => temp; app.getVersion = () => '0.4.0'; app.isPackaged = false;
-  app.requestSingleInstanceLock = () => true; app.whenReady = () => Promise.resolve(); app.quit = () => { app.quitCalled = true; };
-  let win, child, sent, selected = { canceled: true, filePaths: [] }, pickerCalls = 0, staged = 0, planned = 0, stageError = null, restartError = null;
+  app.requestSingleInstanceLock = () => true; app.whenReady = () => Promise.resolve(); app.quit = () => {
+    const event = { preventDefault() { this.prevented = true; } }; app.emit('before-quit', event);
+    assert.equal(event.prevented, undefined, 'The final restart quit must not be blocked');
+    assert.notEqual(child?.exitCode, null, 'Restart must wait for the service exit'); app.quitCalled = true; app.emit('quit');
+  };
+  let win, child, sent, finishService, pipeClosed = 0, selected = { canceled: true, filePaths: [] }, pickerCalls = 0, staged = 0, planned = 0, stageError = null, restartError = null;
   const fakeUpdater = { ...updater, paths: () => ({ root: path.join(temp, 'bridge-install'), applications: path.join(temp, 'bridge-apps') }),
     info: () => ({ updateSupported: true, installPath: '/isolated', installedVersion: '0.4.0', pendingVersion: staged ? '0.4.1' : '' }),
     stageArchive: async file => { assert.equal(file, '/native/picker/release.tar.gz'); if (stageError) throw stageError; staged++; return { pendingVersion: '0.4.1', restartRequired: true, checksumVerified: true }; },
@@ -165,11 +169,11 @@ async function testUpdateBridge() {
   class FakeWindow extends EventEmitter {
     constructor() { super(); win = this; this.webContents = new EventEmitter(); this.webContents.mainFrame = { url: '' }; this.webContents.send = (channel, token) => { sent = { channel, token }; }; this.webContents.setWindowOpenHandler = () => {}; this.webContents.getZoomFactor = () => 1; }
     setMenu() {} setMenuBarVisibility() {} isDestroyed() { return !!this.destroyed; } isFullScreen() { return false; } isMaximized() { return false; }
-    loadURL(url) { this.webContents.mainFrame.url = url; return Promise.resolve(); } destroy() { this.destroyed = true; this.emit('closed'); }
+    loadURL(url) { this.webContents.mainFrame.url = url; return Promise.resolve(); } destroy() { this.destroyed = true; this.emit('closed'); app.emit('window-all-closed'); }
   }
   const session = new EventEmitter(); session.webRequest = { onBeforeRequest() {}, onBeforeSendHeaders() {} }; session.setPermissionRequestHandler = session.setPermissionCheckHandler = () => {};
   const electron = { app, ipcMain, BrowserWindow: FakeWindow, Menu: { setApplicationMenu() {} }, session: { fromPartition: () => session }, shell: {}, dialog: { showErrorBox: () => assert.fail('startup'), showOpenDialog: async () => { pickerCalls++; return selected; }, showMessageBox: async () => ({ response: 0 }) } };
-  const fakeSpawn = () => { child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.exitCode = null; child.kill = () => { child.exitCode = 0; queueMicrotask(() => child.emit('exit', 0)); }; queueMicrotask(() => child.stdout.emit('data', Buffer.from('WRITER_READY {"url":"http://127.0.0.1:39887"}\n'))); return child; };
+  const fakeSpawn = () => { child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.exitCode = null; child.kill = () => assert.fail('Update restart must use the EOF shutdown'); child.stdin = { end() { pipeClosed++; finishService = () => { child.exitCode = 0; child.emit('exit', 0); }; } }; queueMicrotask(() => child.stdout.emit('data', Buffer.from('WRITER_READY {"url":"http://127.0.0.1:39887"}\n'))); return child; };
   const context = { require: name => name === 'electron' ? electron : name === './updater.cjs' ? fakeUpdater : name === 'node:child_process' ? { spawn: fakeSpawn } : require(name), __dirname: path.join(project, 'desktop'), process: { ...process, argv: [], env: { ...process.env, WRITER_DESK_USER_DATA: path.join(temp, 'bridge-data') } }, console, setTimeout, clearTimeout, URL, Buffer };
   vm.runInNewContext(fs.readFileSync(path.join(project, 'desktop/main.cjs'), 'utf8'), context); await new Promise(resolve => setImmediate(resolve));
   const event = () => ({ sender: win.webContents, senderFrame: win.webContents.mainFrame });
@@ -204,6 +208,10 @@ async function testUpdateBridge() {
   assert.equal(invokes.at(-1).args.length, 0);
   ipcMain.emit('writer:save-result', event(), { token: 'wrong', saved: true }); assert.equal(app.relaunchOptions, undefined);
   ipcMain.emit('writer:save-result', event(), { token: sent.token, saved: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(win.destroyed, true); assert.equal(pipeClosed, 1); assert.equal(child.exitCode, null); assert.equal(app.quitCalled, undefined);
+  const pendingQuit = { preventDefault() { this.prevented = true; } }; app.emit('before-quit', pendingQuit); assert.equal(pendingQuit.prevented, true);
+  finishService();
   assert.equal((await restart).restarting, true); assert.equal(app.relaunchOptions.execPath, '/verified/0.4.1/writer-desk');
   assert.equal(app.relaunchOptions.args[0], '--writer-activate-update'); assert.equal(win.destroyed, true); assert.equal(child.exitCode, 0); assert.equal(app.quitCalled, true);
   passed('native update bridge rejects arbitrary paths/frames, preserves old app on save/verification/relaunch failure, then gracefully restarts only after the saved token');

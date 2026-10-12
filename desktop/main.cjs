@@ -14,7 +14,7 @@ app.setPath('userData', userData);
 app.setName("Writer's Desk");
 const hasLock = app.requestSingleInstanceLock();
 let window = null, service = null, origin = '', closing = false, allowQuit = false, saveReady = false;
-let closeRequest = null, lastServiceLog = '', updateBusy = false;
+let closeRequest = null, lastServiceLog = '', updateBusy = false, stoppingService = false;
 const serviceToken = randomBytes(32).toString('hex');
 const settingsPath = path.join(userData, 'settings.json');
 const storagePath = path.join(userData, 'client-storage.json');
@@ -287,16 +287,19 @@ async function requestClose() {
 async function stopService() {
   if (!service || service.exitCode !== null) return;
   const child = service;
-  await new Promise(resolve => {
-    const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 2000);
-    child.once('exit', () => { clearTimeout(timer); resolve(); });
-    try {
-      // The service watches this pipe. EOF lets it close its HTTP server and
-      // SQLite connections cleanly on Windows as well as Unix.
-      if (typeof child.stdin?.end === 'function') child.stdin.end();
-      else child.kill('SIGTERM');
-    } catch { child.kill('SIGTERM'); }
-  });
+  stoppingService = true;
+  try {
+    await new Promise(resolve => {
+      const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 2000);
+      child.once('exit', () => { clearTimeout(timer); resolve(); });
+      try {
+        // The service watches this pipe. EOF lets it close its HTTP server and
+        // SQLite connections cleanly on Windows as well as Unix.
+        if (typeof child.stdin?.end === 'function') child.stdin.end();
+        else child.kill('SIGTERM');
+      } catch { child.kill('SIGTERM'); }
+    });
+  } finally { stoppingService = false; }
 }
 function startService() {
   const packaged = app.isPackaged;
@@ -406,8 +409,13 @@ if (!hasLock) app.quit();
 else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
   app.on('activate', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
-  app.on('before-quit', event => { if (!allowQuit && window) { event.preventDefault(); requestClose(); } });
-  app.on('window-all-closed', () => { if (allowQuit) app.quit(); });
+  app.on('before-quit', event => {
+    if (stoppingService) { event.preventDefault(); return; }
+    if (!allowQuit && window) { event.preventDefault(); requestClose(); }
+  });
+  // Closing the renderer happens before the service's asynchronous EOF exit.
+  // Each quit/restart path explicitly awaits stopService() before app.quit().
+  app.on('window-all-closed', () => {});
   app.on('quit', () => { if (service && service.exitCode === null) service.kill(); });
   app.whenReady().then(async () => {
     try {
