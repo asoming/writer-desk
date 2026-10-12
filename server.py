@@ -73,13 +73,96 @@ def empty_profile():
 
 def new_book(title="未命名作品", kind="long"):
     book_id = uid()
-    return {"id": book_id, "title": title, "kind": kind, "cover": "", "coverTemplate": "",
+    book = {"id": book_id, "title": title, "kind": kind, "cover": "", "coverTemplate": "",
             "volumes": [first_volume(book_id)] if kind == "long" else [], "chapters": [],
             "notes": [], "outline": [], "relations": []}
+    return normalize_short_book(book)
+
+
+def utf16_length(value):
+    """Browser text selections count UTF-16 units, including emoji pairs."""
+    return len(value.encode("utf-16-le")) // 2
+
+
+def normalize_short_book(book):
+    """Expose one short-story manuscript without rewriting stored revisions.
+
+    Recycled text stays separate. Old active text is joined verbatim, with
+    source IDs/titles retained as navigation aliases instead of visible chapters.
+    """
+    if book.get("kind") != "short":
+        return book
+    active = [item for item in book["chapters"] if not item.get("deletedAt")]
+    if not active:
+        item = chapter("正文")
+        prefix = book["id"][:70] + "-manuscript"
+        item["id"] = prefix
+        # A recycled body may already use the default ID. Never reuse its ID.
+        occupied = {item["id"] for item in book["chapters"]}
+        suffix = 1
+        while item["id"] in occupied:
+            item["id"] = prefix + "-" + str(suffix)
+            suffix += 1
+        book["chapters"].append(item)
+        active = [item]
+    manuscript = active[0]
+    original_sections = book.get("shortSections", [])
+    section_owner = next((item for item in active if original_sections and item["id"] == original_sections[0]["id"]), manuscript)
+    sections, pieces, offset = [], [], 0
+    for index, item in enumerate(active):
+        if index:
+            pieces.append("\n\n")
+            offset += 2
+        body = item["body"]
+        length = utf16_length(body)
+        if item is section_owner and original_sections:
+            for section in original_sections:
+                sections.append({**section, "start": offset + min(section["start"], length),
+                                 "end": offset + min(section["end"], length)})
+        elif len(active) > 1:
+            sections.append({"id": item["id"], "title": item["title"], "start": offset, "end": offset + length})
+        pieces.append(body)
+        offset += length
+    manuscript.update(body="".join(pieces), volumeId=None)
+    book["chapters"] = [item for item in book["chapters"] if item is manuscript or item.get("deletedAt")]
+    if sections:
+        # Old backups can contain the same aliases after a recovered body is
+        # merged again. Keep the original location once, preserving text above.
+        seen = set()
+        book["shortSections"] = []
+        for item in sections:
+            if item["id"] not in seen:
+                seen.add(item["id"])
+                book["shortSections"].append(item)
+    else:
+        book.pop("shortSections", None)
+    aliases = {item["id"] for item in active} | {item["id"] for item in book.get("shortSections", [])}
+    recycled = {item["id"] for item in book["chapters"] if item.get("deletedAt")}
+    for item in book.get("notes", []) + book.get("outline", []) + book.get("relations", []):
+        item["chapterIds"] = list(dict.fromkeys(manuscript["id"] if value in aliases and value not in recycled else value
+                                                for value in item.get("chapterIds", [])))
+    return book
+
+
+def short_chapter_ids(book, chapter_ids):
+    """Resolve saved AI selections from before short stories became one body."""
+    if book.get("kind") != "short" or not isinstance(chapter_ids, list):
+        return chapter_ids
+    # Do not turn invalid duplicate/oversized input into a valid selection.
+    if len(chapter_ids) > 500 or any(not isinstance(value, str) for value in chapter_ids) or len(set(chapter_ids)) != len(chapter_ids):
+        return chapter_ids
+    manuscript = next((item for item in book["chapters"] if not item.get("deletedAt")), None)
+    if manuscript is None:
+        return chapter_ids
+    aliases = {item["id"] for item in book.get("shortSections", [])}
+    recycled = {item["id"] for item in book["chapters"] if item.get("deletedAt")}
+    mapped = [manuscript["id"] if value in aliases and value not in recycled else value
+              for value in chapter_ids]
+    return list(dict.fromkeys(mapped))
 
 
 def upgrade_book(book):
-    """Add new fields without changing existing text, IDs or revisions."""
+    """Upgrade the read view without rewriting stored payloads or revisions."""
     book.setdefault("kind", "long")
     book.setdefault("cover", "")
     book.setdefault("coverTemplate", "")
@@ -105,7 +188,7 @@ def upgrade_book(book):
         item.setdefault("type", "other")
         item.setdefault("stage", "")
         item.setdefault("volumeIds", [])
-    return book
+    return normalize_short_book(book)
 
 
 def sample_book():
@@ -309,7 +392,8 @@ def validate_book(data):
 
     for key in ("chapters", "notes"):
         items = data.get(key)
-        if not isinstance(items, list) or len(items) > 10000:
+        limit = 10001 if key == "chapters" and result["kind"] == "short" else 10000
+        if not isinstance(items, list) or len(items) > limit:
             raise ValueError("章节或资料列表格式不正确")
         result[key] = []
         seen = set()
@@ -324,7 +408,7 @@ def validate_book(data):
             if deleted_at is not None:
                 checked_string(deleted_at, "回收时间", 100, False)
             clean = {"id": item_id, "title": checked_string(item.get("title"), "标题", 200),
-                     "body": checked_string(item.get("body"), "正文", 5_000_000), "deletedAt": deleted_at}
+                     "body": checked_string(item.get("body"), "正文", MAX_BOOK if key == "chapters" and result["kind"] == "short" else 5_000_000), "deletedAt": deleted_at}
             if key == "notes":
                 if item.get("type") not in ("人物", "地点", "世界观", "灵感"):
                     raise ValueError("资料类型不正确")
@@ -358,6 +442,23 @@ def validate_book(data):
                     raise ValueError("活动章节不能归入已回收的卷")
             result[key].append(clean)
     chapter_ids = {c["id"] for c in result["chapters"]}
+    if "shortSections" in data:
+        sections = data["shortSections"]
+        if result["kind"] != "short" or not isinstance(sections, list) or len(sections) > 10000:
+            raise ValueError("短篇正文定位格式不正确")
+        result["shortSections"], section_ids = [], set()
+        for section in sections:
+            if not isinstance(section, dict):
+                raise ValueError("短篇正文定位格式不正确")
+            section_id = checked_string(section.get("id"), "正文定位编号", 100, False)
+            start, end = section.get("start"), section.get("end")
+            if (section_id in section_ids or type(start) is not int or type(end) is not int
+                    or not 0 <= start <= end <= MAX_BOOK * 2):
+                raise ValueError("短篇正文定位格式不正确")
+            section_ids.add(section_id)
+            result["shortSections"].append({"id": section_id, "title": checked_string(section.get("title"), "原正文标题", 200),
+                                             "start": start, "end": end})
+        chapter_ids.update(section_ids)
     def checked_links(value):
         if not isinstance(value, list) or len(value) > 10000 or any(not isinstance(v, str) or v not in chapter_ids for v in value):
             raise ValueError("关联正文必须指向本作品的章节")
@@ -433,6 +534,7 @@ def validate_book(data):
                 raise ValueError("大纲层级不能循环或指向其他作品")
             seen.add(parent_id)
             parent_id = parents[parent_id]
+    normalize_short_book(result)
     if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > MAX_BOOK:
         raise ValueError("单部作品超过 25 MB，请拆分为多部作品")
     return result
@@ -714,7 +816,10 @@ def manuscript_text(book):
     for title, items in manuscript_groups(book):
         if title:
             parts.append(title)
-        parts.extend((item["title"] or "未命名章节") + "\n\n" + item["body"] for item in items)
+        if book["kind"] == "short":
+            parts.extend(item["body"] for item in items)
+        else:
+            parts.extend((item["title"] or "未命名章节") + "\n\n" + item["body"] for item in items)
     return "\ufeff" + "\n\n".join(parts) + "\n"
 
 
@@ -925,7 +1030,7 @@ def handle_ai_request(path, data):
     book = book_result(row)["book"]
     operation = service.preview if match.group(2) else service.run
     # Never hold a database transaction while waiting for an external service.
-    return operation(book, data.get("action"), data.get("chapterIds"), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"), chat=data.get("chat", False), history=data.get("history"), model=data.get("model"))
+    return operation(book, data.get("action"), short_chapter_ids(book, data.get("chapterIds")), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"), chat=data.get("chat", False), history=data.get("history"), model=data.get("model"))
 
 
 class Handler(BaseHTTPRequestHandler):
