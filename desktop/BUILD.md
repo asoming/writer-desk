@@ -4,11 +4,11 @@
 
 ## Source and release status
 
-当前源码版本为 0.7.0，新增书架稿件导入和写作工具栏「校对与批注」，包括离线规则校对、段落批注与书签。当前已发布安装包仍为 [0.6.1](https://github.com/asoming/writer-desk/releases/tag/v0.6.1)；下方安装示例沿用已发布包，不表示 0.7.0 已完成原生发行。新功能操作与截图见[使用指南](../docs/user-guide-zh.md)，本轮冻结服务、原生包和安装状态见[0.7.0 验收](../docs/acceptance-v0.7.0.md)。
+当前已发布测试版为 [0.7.0](https://github.com/asoming/writer-desk/releases/tag/v0.7.0)，新增书架稿件导入和写作工具栏「校对与批注」，包括离线规则校对、段落批注与书签。冻结服务、Electron 和四平台原生安装包验收已通过。新功能操作与截图见[使用指南](../docs/user-guide-zh.md)，完整检查与安装记录见[0.7.0 验收](../docs/acceptance-v0.7.0.md)。
 
 ## Run a Linux release
 
-Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。系统安装使用 `sudo apt install ./WriterDesk-0.6.1-linux-amd64.deb`；`apt` 会安装依赖，在 `/opt/Writer's Desk` 放置程序、注册应用菜单，作品仍使用下文的原有数据目录。也可解压 `WriterDesk-0.6.1-linux-x64.tar.gz` 后直接运行目录里的 `writer-desk`，或执行 `bash install-linux.sh` 注册当前用户的固定安装入口。安装脚本使用包内 Electron 的 Node 运行时，不需要系统 Python 或 Node。
+Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。系统安装使用 `sudo apt install ./WriterDesk-0.7.0-linux-amd64.deb`；`apt` 会安装依赖，在 `/opt/Writer's Desk` 放置程序、注册应用菜单，作品仍使用下文的原有数据目录。也可解压 `WriterDesk-0.7.0-linux-x64.tar.gz` 后直接运行目录里的 `writer-desk`，或执行 `bash install-linux.sh` 注册当前用户的固定安装入口。安装脚本使用包内 Electron 的 Node 运行时，不需要系统 Python 或 Node。
 
 以前通过 `.tar.gz` 安装时，`~/.local/share/applications/writer-desk.desktop` 会优先于 `.deb` 的系统菜单入口，导致图标继续打开旧版。迁移到 `.deb` 时，先保存并退出旧版，确认直接运行 `/opt/Writer's Desk/writer-desk` 能打开新版，再将旧用户入口改名为 `writer-desk.desktop.backup`；设置了 `XDG_DATA_HOME` 时使用其 `applications/` 目录。保留旧 `versions/` 目录和作品目录。系统安装脚本不会遍历或修改用户 home；不要混用两套升级入口。后续系统版重新安装新版 `.deb`，用户安装版继续用下述离线 `.tar.gz` 升级。
 
@@ -16,7 +16,7 @@ Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11
 
 ## Offline installation and upgrades
 
-在“设置 → 安装与升级 → 安装升级包”选择可信来源的 `WriterDesk-<版本号>-linux-x64.tar.gz`。同一目录必须有同名 `.sha256` 校验文件，例如 `WriterDesk-0.6.1-linux-x64.sha256`，其内容包含完整压缩包文件名与 SHA256。也支持 `.tar.gz.sha256` 后缀。安装器检查压缩包校验、发行清单、文件散列、架构和版本，拒绝路径穿越、链接、特殊文件以及未列入清单的文件。每个版本的发行目录包含自动生成的 `release-manifest.json`；清单不包含自身的散列。
+在“设置 → 安装与升级 → 安装升级包”选择可信来源的 `WriterDesk-<版本号>-linux-x64.tar.gz`。同一目录必须有同名 `.sha256` 校验文件，例如 `WriterDesk-0.7.0-linux-x64.sha256`，其内容包含完整压缩包文件名与 SHA256。也支持 `.tar.gz.sha256` 后缀。安装器检查压缩包校验、发行清单、文件散列、架构和版本，拒绝路径穿越、链接、特殊文件以及未列入清单的文件。每个版本的发行目录包含自动生成的 `release-manifest.json`；清单不包含自身的散列。
 
 准备完成只记录 `pending.json`，保持当前版本。点击“重启完成升级”后，程序先确认正文已保存、复验准备好的文件、优雅停止本机服务，再启动新版本。新版本的服务和窗口成功载入后才更新 `current` 与菜单入口；启动失败保留原入口。保存或校验失败会留在原窗口。安装器和设置入口均拒绝降级或用不同文件覆盖同一版本。
 
@@ -61,7 +61,7 @@ Windows 包支持 Windows 10+ x64，提供可选择目录的当前用户 NSIS �
 
 手动工作流 `.github/workflows/native-packages.yml` 使用 Ubuntu 22.04 x64、Windows Server 2022 x64、macOS 15 arm64 和 macOS 15 Intel 的原生 runner。触发输入须与 `package.json` 版本完全相同。四个任务先跑存储回归，构建后再跑冻结服务的文件夹、备份、图片、章节历史和删除流程；随后从真正的 `.deb`、`.exe`、`.dmg` 提取/安装 App，检查本机保存、重启持久化、101,506 字示例和 Electron 窗口载入。验证都使用临时作品库；Windows NSIS 验证限定在一次性的 GitHub Actions runner。真实触控板手感、Gatekeeper 下载体验和真实 Windows 桌面仍需人工验收。
 
-只有四个原生任务全部成功才收集 SHA256、校验报告、源码 zip 和安装包到 GitHub 草稿 release；工作流不会自动公开发布。0.7.0 源码可用 `gh workflow run native-packages.yml --ref main -f version=0.7.0` 触发；该命令创建候选检查，不代表已有可下载发行版。验收草稿后单独发布。已公开 release 或不同源码提交的同版本草稿不会被覆盖。
+只有四个原生任务全部成功才收集 SHA256、校验报告、源码 zip 和安装包到 GitHub 草稿 release；工作流不会自动公开发布。后续发行通过手动工作流指定与 `package.json` 一致的待发布版本，验收草稿后单独发布。0.7.0 已完成原生检查与发布，不用同一版本覆盖已公开产物。已公开 release 或不同源码提交的同版本草稿不会被覆盖。
 
 Linux 的 `after-pack.cjs` 先将普通文件权限统一为 `0644`、可执行文件统一为 `0755` 并生成初始清单；DEB 目标完成后，对最终目录重生成并严格校验清单，纳入后加的 AppArmor 文件。TAR 完成后，构建器使用生产升级器校验真实压缩包，并运行包内安装脚本到临时根，检查固定入口与作品目录隔离；该报告也是发行收集的必需条件。压缩包根目录必须是 `WriterDesk/`，只含普通文件与目录。升级读取器支持 USTAR 和常规 PAX 路径、大小、时间元数据。发行压缩包完成后生成对应 `.sha256`，不要再改包内文件。
 
@@ -76,9 +76,9 @@ npm run test:desktop
 
 ## 0.7.0 feature verification
 
-本轮源码回归覆盖 22 个 Python 测试套件及全部当前 Node 测试。冻结后端通过稿件导入的 4 项真实 HTTP 检查和隔离便携书库验证，36 章示例副本已进行浏览器交互检查；Electron 与四平台原生包、发行校验和用户安装仍以[验收记录](../docs/acceptance-v0.7.0.md)的实际结果为准。
+本轮源码回归覆盖 22 个 Python 测试套件及全部当前 Node 测试。冻结后端通过稿件导入的 4 项真实 HTTP 检查和隔离便携书库验证，36 章示例副本完成浏览器交互检查，Electron 原生跳转与输入检查通过。四平台原生包及发行收集均通过 [本轮 CI](https://github.com/asoming/writer-desk/actions/runs/38679616794)，发行目录与 TAR 的 196 个文件完整校验通过；下载后的源码、安装包摘要及五份平台 / TAR 报告一致。完整结果与安装记录见[验收记录](../docs/acceptance-v0.7.0.md)。
 
-原生检查应覆盖新静态资源、DOCX / TXT / Markdown 导入后保存重开、每书词典和批注 / 书签 JSON 往返，以及章节彻删后的引用清理。导入解析及离线校对无需 AI 密钥或网络服务；发行包不携带用于检查的临时稿件或个人书库。
+原生检查覆盖新静态资源、DOCX / TXT / Markdown 导入后保存重开、每书词典和批注 / 书签 JSON 往返，以及章节彻删后的引用清理。导入解析及离线校对无需 AI 密钥或网络服务；发行包不携带用于检查的临时稿件或个人书库。
 
 ## Runtime boundaries
 

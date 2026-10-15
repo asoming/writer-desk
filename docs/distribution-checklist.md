@@ -1,21 +1,23 @@
 # 跨平台发行状态
 
-当前已发布测试版为 [0.6.1](https://github.com/asoming/writer-desk/releases/tag/v0.6.1)。0.7.0 源码新增稿件导入、离线校对、段落批注和书签，定向、源码及冻结后端检查已通过，Electron 和四平台原生发行验收仍在进行；下表继续列出已发布 0.6.1 文件。具体进度见 [0.7.0 验收记录](acceptance-v0.7.0.md)。
+当前已发布测试版为 [0.7.0](https://github.com/asoming/writer-desk/releases/tag/v0.7.0)。稿件导入、离线校对、段落批注和书签已通过定向、源码、浏览器、Electron、冻结服务及四平台原生安装包检查。下表列出本轮已发布文件，完整结果见 [0.7.0 验收记录](acceptance-v0.7.0.md)。
 
 安装包由同一份源码，在对应操作系统与处理器架构上构建。每个安装包附带 SHA256 校验文件；源码和产物保存在 GitHub 仓库，不包含个人作品库、AI 密钥或本机导入的写作 Skill。
 
 | 系统 | 安装包 | 要求 |
 | --- | --- | --- |
-| Linux | `WriterDesk-0.6.1-linux-amd64.deb` | Ubuntu 22.04+ / 兼容 Debian 系统，amd64 |
-| Windows | `WriterDesk-0.6.1-windows-x64.exe` | Windows 10 / 11，64 位 |
-| Mac，Apple 芯片 | `WriterDesk-0.6.1-mac-arm64.dmg` | macOS 13+，M 系列芯片 |
-| Mac，Intel | `WriterDesk-0.6.1-mac-x64.dmg` | macOS 13+，Intel 芯片 |
+| Linux | `WriterDesk-0.7.0-linux-amd64.deb` | Ubuntu 22.04+ / 兼容 Debian 系统，amd64 |
+| Windows | `WriterDesk-0.7.0-windows-x64.exe` | Windows 10 / 11，64 位 |
+| Mac，Apple 芯片 | `WriterDesk-0.7.0-mac-arm64.dmg` | macOS 13+，M 系列芯片 |
+| Mac，Intel | `WriterDesk-0.7.0-mac-x64.dmg` | macOS 13+，Intel 芯片 |
 
-Linux 仍提供 `WriterDesk-0.6.1-linux-x64.tar.gz`，供既有用户使用本机离线升级器。
+Linux 仍提供 `WriterDesk-0.7.0-linux-x64.tar.gz`，供既有用户使用本机离线升级器。
 
 Windows 安装向导可选择安装位置，安装后创建桌面与开始菜单入口；卸载保留作品数据。Mac 打开 DMG 后，将 App 拖到 Applications，再从 Applications 启动，升级时先保存退出旧版。Mac 的最低系统要求依据 [Electron 44 支持范围](https://www.electronjs.org/blog/electron-44-0)。
 
 本轮是未配置发布者证书的测试发行。Windows 安装包未作 Authenticode 签名；Mac 使用本机临时签名，未作 Developer ID 签名和 Apple 公证。测试机能够启动，不代表下载后已通过 Gatekeeper 或 SmartScreen。公开分发前需接入相应证书，并在下载的新副本上验证系统检查。[Apple 的 App 打开与安全说明](https://support.apple.com/en-gb/102445)解释了签名与公证的作用。
+
+本轮 [原生 CI](https://github.com/asoming/writer-desk/actions/runs/38679616794) 的四平台任务与发行收集全部通过，发行源码提交为 `b97e1a64237bbe3b2ca162ad60a97b00ad940ef2`。下载后的源码 ZIP、安装包摘要、四平台报告和 Linux TAR 报告再次核对一致；TAR 的完整发行清单含 196 个文件。Linux 最终清单沿用 [0.6.1 的打包修复](acceptance-v0.6.1.md)。
 
 ## 0.7.0 功能与资料
 

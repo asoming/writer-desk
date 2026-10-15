@@ -2,20 +2,20 @@
 
 作家工作台是本地小说写作 App。长篇按卷章组织，短篇直接编辑一篇连续正文。写作、保存、备份、本地策划、稿件导入与规则校对无需联网；AI 按需配置。
 
-[使用指南](user-guide-zh.md) · [下载](https://github.com/asoming/writer-desk/releases) · [0.7.0 验收进度](acceptance-v0.7.0.md) · [0.6.1 打包验收](acceptance-v0.6.1.md)
+[使用指南](user-guide-zh.md) · [下载](https://github.com/asoming/writer-desk/releases) · [0.7.0 功能验收](acceptance-v0.7.0.md) · [0.6.1 打包验收](acceptance-v0.6.1.md)
 
-本文新增功能适用于 0.7.0 源码及候选版本，尚在完成浏览器、冻结服务和四平台原生验收。当前可下载的发行版是 0.6.1，尚无稿件导入、本地校对和段落批注 / 书签。
+本文适用于已发布的 0.7.0 测试版，包含稿件导入、本地校对和段落批注 / 书签。十万字示例、浏览器、Electron、冻结服务和四平台原生安装包检查均已通过。
 
 ## 安装与启动
 
-0.6.1 已通过 Linux、Windows、Mac Apple 芯片与 Intel 四平台原生安装包验收，从[发行页](https://github.com/asoming/writer-desk/releases/tag/v0.6.1)下载对应文件与校验清单。
+0.7.0 已通过 Linux、Windows、Mac Apple 芯片与 Intel 四平台原生安装包验收，从[发行页](https://github.com/asoming/writer-desk/releases/tag/v0.7.0)下载对应文件与校验清单。
 
-| 系统 | 0.6.1 安装包 | 安装方式 |
+| 系统 | 0.7.0 安装包 | 安装方式 |
 | --- | --- | --- |
-| Ubuntu 22.04+ / 兼容 Debian 桌面，x64 | `WriterDesk-0.6.1-linux-amd64.deb` | 使用系统软件安装器，或 `sudo apt install ./WriterDesk-0.6.1-linux-amd64.deb` |
-| Windows 10 / 11，x64 | `WriterDesk-0.6.1-windows-x64.exe` | 运行安装向导 |
-| macOS 13+，Apple 芯片 | `WriterDesk-0.6.1-mac-arm64.dmg` | 将 App 拖入 Applications |
-| macOS 13+，Intel | `WriterDesk-0.6.1-mac-x64.dmg` | 将 App 拖入 Applications |
+| Ubuntu 22.04+ / 兼容 Debian 桌面，x64 | `WriterDesk-0.7.0-linux-amd64.deb` | 使用系统软件安装器，或 `sudo apt install ./WriterDesk-0.7.0-linux-amd64.deb` |
+| Windows 10 / 11，x64 | `WriterDesk-0.7.0-windows-x64.exe` | 运行安装向导 |
+| macOS 13+，Apple 芯片 | `WriterDesk-0.7.0-mac-arm64.dmg` | 将 App 拖入 Applications |
+| macOS 13+，Intel | `WriterDesk-0.7.0-mac-x64.dmg` | 将 App 拖入 Applications |
 
 桌面包包含运行环境，无需另外安装 Python 或 Node.js。升级前保存并正常退出旧版，安装后从固定应用入口打开，在「设置 → 关于」确认版本。个人作品保存在用户数据目录，独立于安装目录。
 
@@ -23,7 +23,7 @@ Linux 压缩包用户的升级入口与 DEB 不同；旧菜单入口可能仍优
 
 ## 用十万字示例检查功能
 
-首次启动的长篇书架包含《潮汐档案馆》：101,506 个非空白字符、6 卷 36 章、32 位人物、49 个大纲节点、6 个主题分图、35 条手动关系。0.6.0 还包含 12 条伏笔和 18 个故事事件。
+首次启动的长篇书架包含《潮汐档案馆》：101,506 个非空白字符、6 卷 36 章、32 位人物、49 个大纲节点、6 个主题分图、35 条手动关系。另包含 12 条伏笔、18 个故事事件；0.7.0 新增 6 个书签和 3 条批注，其中 1 条已解决，正文保持不变。
 
 1. 点击书名或封面进入「写作」，从目录打开任一章；长篇目录可折叠分卷，章名可在目录或正文标题处修改，两处同步。
 2. 打开「大纲」与「人物脉络」，点击关联章节跳转正文，再通过返回入口回到原条目。切换另一本书请返回书架。

@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.6.1">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.7.0">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.6.1"><img src="https://img.shields.io/badge/release-v0.6.1%20preview-6366f1" alt="Release v0.6.1 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.7.0"><img src="https://img.shields.io/badge/release-v0.7.0%20preview-6366f1" alt="Release v0.7.0 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -27,11 +27,11 @@
 
 *A local-first writing studio for novels and short stories, with outlines, character maps and optional AI assistance.*
 
-[下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.6.1) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
+[下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.7.0) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
 
-> 当前测试版：**0.6.1**。Linux、Windows 与两种 Mac 架构的原生安装包已通过验收；Linux 离线包另通过包内安装脚本与固定入口检查。[下载与校验](https://github.com/asoming/writer-desk/releases/tag/v0.6.1)。Windows 发布者签名与 Apple 公证尚未配置。
+> 当前测试版：**0.7.0**。Linux、Windows 与两种 Mac 架构的原生安装包已通过验收；Linux 离线包另通过包内安装脚本与固定入口检查。[下载与校验](https://github.com/asoming/writer-desk/releases/tag/v0.7.0)。Windows 发布者签名与 Apple 公证尚未配置。
 
-0.7.0 源码新增稿件导入、离线校对、段落批注与书签，定向测试及隔离书库检查已通过，原生安装包与发布验收仍在进行。当前下载入口保持 0.6.1，尚不包含这三项新功能；进度见 [0.7.0 验收记录](docs/acceptance-v0.7.0.md)。
+0.7.0 新增稿件导入、离线校对、段落批注与书签，已使用十万字示例完成隔离书库、浏览器、Electron、冻结服务及四平台原生安装包检查。详见 [0.7.0 验收记录](docs/acceptance-v0.7.0.md)。
 
 ## 功能
 
@@ -41,8 +41,8 @@
 | 大纲 | 全书、分卷、章节、情节与设定分层；主题分类与搜索；连续阅读；按大纲生成卷章目录 |
 | 人物脉络 | 人物档案、别名、分卷变化与关系；主题分图、阵营分组、关系筛选；与正文双向跳转 |
 | 写作 | 长篇卷章、短篇连续正文；自动保存、全书查找替换、章节改名、专注模式、可调分栏 |
-| 稿件导入（0.7.0 源码） | DOCX / TXT / Markdown 本地预览，调整卷章名、识别策略及编码；确认创建独立书籍，短篇连续正文 |
-| 校对与批注（0.7.0 源码） | 离线规则校对、每书词典；段落批注与命名书签，定位原文、标记解决及重新关联 |
+| 稿件导入 | DOCX / TXT / Markdown 本地预览，调整卷章名、识别策略及编码；确认创建独立书籍，短篇连续正文 |
+| 校对与批注 | 离线规则校对、每书词典；段落批注与命名书签，定位原文、标记解决及重新关联 |
 | 创作工具 | 伏笔状态与未回收筛选；自定义故事时间线；每日目标、写作日历与 7 / 30 天趋势 |
 | 数据保护 | 每本书独立导出、自动备份与历史恢复；正文差异对比、逐段恢复；回收站与删除章节记录 |
 | 排版导出 | Word / EPUB / PDF；封面、目录、卷章样式及纸张字号选择 |
@@ -51,7 +51,7 @@
 
 大纲、人物与正文的关联定位到**章节**，改名和排序后仍保留。姓名匹配与同章提及使用本地规则，供作者核对；人物关系可手动编写，AI 提取结果需确认后采用。
 
-## 0.7.0 新功能入口（源码及候选版本）
+## 0.7.0 新功能入口
 
 | 操作 | 入口与规则 |
 | --- | --- |
@@ -83,7 +83,7 @@ Word 仅导入文字、表格文字与标题结构；旧 `.doc`、图片、Word 
 [伏笔追踪](docs/foreshadows-v0.6.0.png) · [故事时间线](docs/timeline-v0.6.0.png) · [版本差异](docs/versions-v0.6.0.png) · [写作统计](docs/statistics-v0.6.0.png) · [长篇记忆](docs/memory-v0.6.0.png) · [流式回复](docs/streaming-v0.6.0.png) · [作品大纲侧栏](docs/work-plan-v0.4.14.jpg) · [图片对话](docs/chat-images-v0.4.12.jpg) · [夜间模式](docs/appearance-night-v0.4.11.jpg)
 
 <details>
-<summary>0.7.0 源码实际界面：稿件导入、校对与批注</summary>
+<summary>0.7.0 实际界面：稿件导入、校对与批注</summary>
 
 ![稿件导入预览：分卷分章、标题与正文](docs/import-v0.7.0.png)
 
@@ -91,28 +91,28 @@ Word 仅导入文字、表格文字与标题结构；旧 `.doc`、图片、Word 
 
 ![段落批注与书签：关联原文及管理](docs/annotations-v0.7.0.png)
 
-截图来自隔离的十万字示例副本；0.7.0 安装包发布仍在验收。
+截图来自隔离的十万字示例副本，记录 0.7.0 实际界面。
 
 </details>
 
 ## 下载与安装
 
-从 [GitHub 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.6.1) 下载对应安装包。0.6.1 已通过四平台原生构建与实际安装包验收。桌面安装包已包含运行环境，使用时无需另外安装 Python 或 Node.js。
+从 [GitHub 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.7.0) 下载对应安装包。0.7.0 已通过四平台原生构建、冻结服务与实际安装包验收。桌面安装包已包含运行环境，使用时无需另外安装 Python 或 Node.js。
 
-| 平台 | 系统要求 | 0.6.1 安装包 |
+| 平台 | 系统要求 | 0.7.0 安装包 |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ 或兼容 Debian 桌面环境，glibc 2.35+ | [WriterDesk-0.6.1-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11，64 位 | [WriterDesk-0.6.1-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-windows-x64.exe) |
-| Mac · Apple 芯片 | macOS 13+，M 系列芯片 | [WriterDesk-0.6.1-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-mac-arm64.dmg) |
-| Mac · Intel | macOS 13+，Intel 处理器 | [WriterDesk-0.6.1-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ 或兼容 Debian 桌面环境，glibc 2.35+ | [WriterDesk-0.7.0-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11，64 位 | [WriterDesk-0.7.0-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-windows-x64.exe) |
+| Mac · Apple 芯片 | macOS 13+，M 系列芯片 | [WriterDesk-0.7.0-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-mac-arm64.dmg) |
+| Mac · Intel | macOS 13+，Intel 处理器 | [WriterDesk-0.7.0-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-mac-x64.dmg) |
 
-- **Linux：**在下载目录运行 `sudo apt install ./WriterDesk-0.6.1-linux-amd64.deb`，随后从应用菜单打开「作家工作台」。
+- **Linux：**在下载目录运行 `sudo apt install ./WriterDesk-0.7.0-linux-amd64.deb`，随后从应用菜单打开「作家工作台」。
 - **Windows：**运行 EXE，按安装向导选择目录；安装后创建桌面与开始菜单入口。
 - **macOS：**打开 DMG，将 App 拖入 Applications，再从 Applications 启动。
 
 升级前先保存并退出旧版。使用系统安装包的用户，通过相应平台的新版安装包升级；作品保留在独立的用户数据目录。
 
-Linux 另提供便携压缩包 [WriterDesk-0.6.1-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-linux-x64.tar.gz)，保留既有用户安装与离线升级方式。0.6.1 修复了 0.6.0 TAR 文件清单漏项，请使用修正版。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
+Linux 另提供便携压缩包 [WriterDesk-0.7.0-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-linux-x64.tar.gz)，保留既有用户安装与离线升级方式。0.7.0 保留 0.6.1 对 0.6.0 TAR 文件清单漏项的修复；历史问题与校验记录见 [0.6.1 验收](docs/acceptance-v0.6.1.md)。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
 
 发行页附带各文件的 SHA256 校验文件和汇总清单。平台签名状态、原生验收范围及 Mac 实机检查项见 [跨平台发行说明](docs/distribution-checklist.md)。Mac 支持双指滚动、人物图平移与捏合缩放，以及保存后返回书架的手势；实体触控板手感仍需实机验收。
 
@@ -264,7 +264,7 @@ writer-desk/
 - [桌面构建说明](desktop/BUILD.md)：开发环境、平台构建、升级与数据迁移。
 - [跨平台发行说明](docs/distribution-checklist.md)：系统要求、签名状态和 Mac 验收边界。
 - [官网维护](docs/website.md)：本地预览、中英文内容与 GitHub Pages 部署。
-- [0.7.0 验收进度](docs/acceptance-v0.7.0.md)：稿件导入、本地校对、批注与书签的示例和测试范围。
+- [0.7.0 功能验收](docs/acceptance-v0.7.0.md)：稿件导入、本地校对、批注与书签的示例和测试范围。
 - [0.6.1 打包修正版验收](docs/acceptance-v0.6.1.md)：真实 TAR 安装、固定入口及四平台原生检查。
 - [0.6.0 功能验收](docs/acceptance-v0.6.0.md)：上一轮功能验证、测试入口和验收边界。
 - [更新记录](CHANGELOG.md)：版本变化与兼容规则。

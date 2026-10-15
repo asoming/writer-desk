@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/?lang=en">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.6.1">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.7.0">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.6.1"><img src="https://img.shields.io/badge/release-v0.6.1%20preview-6366f1" alt="Release v0.6.1 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.7.0"><img src="https://img.shields.io/badge/release-v0.7.0%20preview-6366f1" alt="Release v0.7.0 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -25,11 +25,11 @@ Writer's Desk is a desktop writing app for novels and short stories. Each book h
 
 Writing, saving and backups work offline. AI assistance is optional. The interface supports Chinese and English, light and dark themes, and a warm eye-comfort mode.
 
-[Download](https://github.com/asoming/writer-desk/releases/tag/v0.6.1) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
+[Download](https://github.com/asoming/writer-desk/releases/tag/v0.7.0) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
 
-> Current preview: **0.6.1**. Native installer checks passed on Linux, Windows and both Mac architectures. The Linux TAR also passed its packaged installation script and stable launcher checks. [Downloads and checksums](https://github.com/asoming/writer-desk/releases/tag/v0.6.1). Windows publisher signing and Apple notarization are not configured.
+> Current preview: **0.7.0**. Native installer checks passed on Linux, Windows and both Mac architectures. The Linux TAR also passed its packaged installation script and stable launcher checks. [Downloads and checksums](https://github.com/asoming/writer-desk/releases/tag/v0.7.0). Windows publisher signing and Apple notarization are not configured.
 
-Version 0.7.0 source adds manuscript import, offline proofreading, paragraph annotations and bookmarks. Targeted tests and isolated-library checks have passed; native installer and release verification is still in progress. Downloads remain on 0.6.1, which does not include these additions. See the [0.7.0 verification progress](docs/acceptance-v0.7.0.md).
+Version 0.7.0 adds manuscript import, offline proofreading, paragraph annotations and bookmarks. The full sample novel was used in isolated-library, browser, Electron, frozen-service and native installer checks on all four targets. See the [0.7.0 verification record](docs/acceptance-v0.7.0.md).
 
 ## Features
 
@@ -39,8 +39,8 @@ Version 0.7.0 source adds manuscript import, offline proofreading, paragraph ann
 | Outlines | Organize book, volume, chapter, scene and setting notes; use topic categories and search; read a continuous outline; create a volume and chapter directory from the outline. |
 | Character maps | Maintain profiles, aliases, development across volumes and relationships; arrange themed maps and groups; filter relationships; jump between notes and chapters. |
 | Writing | Novel chapters or one continuous short-story manuscript; autosave, whole-book find and replace, chapter renaming, focus mode and resizable panels. |
-| Manuscript import (0.7.0 source) | Preview local DOCX, TXT and Markdown files, adjust titles, splitting strategy and encoding, then create a separate book; short stories remain continuous. |
-| Proofreading and annotations (0.7.0 source) | Offline rules and per-book dictionaries; paragraph annotations and named bookmarks, with precise jumps, resolution status and manual relinking. |
+| Manuscript import | Preview local DOCX, TXT and Markdown files, adjust titles, splitting strategy and encoding, then create a separate book; short stories remain continuous. |
+| Proofreading and annotations | Offline rules and per-book dictionaries; paragraph annotations and named bookmarks, with precise jumps, resolution status and manual relinking. |
 | Story tools | Track foreshadow status and unresolved threads; order story events using custom time labels; set a daily goal and review the calendar and 7 / 30-day trends. |
 | Data protection | Per-book exports, backups and version history; compare prose revisions and restore selected paragraphs; recover recycled books or permanently remove app-managed copies after confirmation. |
 | Formatted exports | Word, EPUB and PDF, with covers, contents, volume and chapter styles, paper size and font options. |
@@ -58,7 +58,7 @@ Actual 0.6.0 interface using an isolated copy of the full sample novel.
 [Foreshadows](docs/foreshadows-v0.6.0.png) · [Timeline](docs/timeline-v0.6.0.png) · [Version comparison](docs/versions-v0.6.0.png) · [Writing statistics](docs/statistics-v0.6.0.png) · [Outline sidebar](docs/work-plan-v0.4.14.jpg) · [Image chat](docs/chat-images-v0.4.12.jpg) · [Dark theme](docs/appearance-night-v0.4.11.jpg)
 
 <details>
-<summary>Actual 0.7.0 source UI: import, proofreading and annotations</summary>
+<summary>Actual 0.7.0 UI: import, proofreading and annotations</summary>
 
 ![Manuscript import preview with volumes, chapters and prose](docs/import-v0.7.0.png)
 
@@ -66,11 +66,11 @@ Actual 0.6.0 interface using an isolated copy of the full sample novel.
 
 ![Paragraph annotations and bookmarks linked to prose](docs/annotations-v0.7.0.png)
 
-Captured using an isolated copy of the full sample novel. Version 0.7.0 installer release checks are still in progress.
+Captured from the actual 0.7.0 interface using an isolated copy of the full sample novel.
 
 </details>
 
-## New in 0.7.0 source and candidate builds
+## New in 0.7.0
 
 | Action | Where to find it |
 | --- | --- |
@@ -95,22 +95,22 @@ Activity covers the last 90 days using the computer's local date. It counts posi
 
 ## Download and install
 
-Download an installer from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.6.1). The 0.6.1 packages passed native build and actual installer verification on all four targets. Desktop packages include the runtime; end users do not need Python or Node.js.
+Download an installer from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.7.0). The 0.7.0 packages passed native builds, frozen-service checks and actual installer verification on all four targets. Desktop packages include the runtime; end users do not need Python or Node.js.
 
-| Platform | Requirements | 0.6.1 installer |
+| Platform | Requirements | 0.7.0 installer |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.6.1-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.6.1-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-windows-x64.exe) |
-| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.6.1-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-mac-arm64.dmg) |
-| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.6.1-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.7.0-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.7.0-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-windows-x64.exe) |
+| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.7.0-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-mac-arm64.dmg) |
+| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.7.0-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-mac-x64.dmg) |
 
-- **Linux:** run `sudo apt install ./WriterDesk-0.6.1-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
+- **Linux:** run `sudo apt install ./WriterDesk-0.7.0-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
 - **Windows:** run the EXE and follow the installer. It creates desktop and Start menu shortcuts.
 - **macOS:** open the DMG, drag the app to Applications, then launch it from Applications.
 
 Save your work and quit the older app before upgrading. Install the new package for your platform; personal books stay in a separate user data directory.
 
-The Linux [WriterDesk-0.6.1-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-linux-x64.tar.gz) supports the existing per-user installation and offline updater. Version 0.6.1 fixes an incomplete manifest in the 0.6.0 TAR; use the corrected package. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
+The Linux [WriterDesk-0.7.0-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-linux-x64.tar.gz) supports the existing per-user installation and offline updater. Version 0.7.0 retains the 0.6.1 fix for the incomplete 0.6.0 TAR manifest; see the [0.6.1 verification record](docs/acceptance-v0.6.1.md) for the historical issue. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
 
 The release includes SHA256 checksum files and native verification reports. See the [distribution checklist](docs/distribution-checklist.md) for signing and verification details. Mac supports two-finger scrolling, map panning and pinch-to-zoom, and a save-aware swipe back to the bookshelf. Physical trackpad feel still needs hands-on verification.
 
@@ -224,7 +224,7 @@ The app uses Electron, a vanilla JavaScript interface and a Python saving servic
 - [Chinese quick start](docs/quickstart-zh.md): first use after installation.
 - [0.6.1 packaging verification](docs/acceptance-v0.6.1.md): actual TAR installation, stable launcher and native CI.
 - [0.6.0 verification record](docs/acceptance-v0.6.0.md): completed checks and remaining limits.
-- [0.7.0 verification progress](docs/acceptance-v0.7.0.md): manuscript import, offline proofreading, annotations and bookmark tests.
+- [0.7.0 verification record](docs/acceptance-v0.7.0.md): manuscript import, offline proofreading, annotations and bookmark tests.
 - [Changelog](CHANGELOG.md): version changes and compatibility.
 - [Chinese user guide](docs/user-guide-zh.md): books, outlines, characters, recovery and AI.
 - [Desktop build guide](desktop/BUILD.md): development, native builds, upgrades and migration.
