@@ -1,4 +1,5 @@
 """Private local usage ledger. Never stores prompts, replies, URLs or credentials."""
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 import json
@@ -63,16 +64,20 @@ class UsageLedger:
     def __init__(self, data_dir):
         self.path = Path(data_dir) / 'ai-usage.sqlite3'
 
+    @contextmanager
     def _connect(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.is_symlink():
             raise ValueError('AI 用量记录文件不可为符号链接。')
-        conn = sqlite3.connect(str(self.path), timeout=10)
-        if os.name != 'nt':
-            os.chmod(self.path, 0o600)
-        conn.execute('PRAGMA journal_mode=DELETE')
-        conn.execute('CREATE TABLE IF NOT EXISTS usage (id TEXT PRIMARY KEY, book_id TEXT, created_at TEXT NOT NULL, data TEXT NOT NULL)')
-        return conn
+        # SQLite's transaction context commits/rolls back but does not close.
+        # Own the handle from creation so setup failures also release it.
+        with closing(sqlite3.connect(str(self.path), timeout=10)) as conn:
+            with conn:
+                if os.name != 'nt':
+                    os.chmod(self.path, 0o600)
+                conn.execute('PRAGMA journal_mode=DELETE')
+                conn.execute('CREATE TABLE IF NOT EXISTS usage (id TEXT PRIMARY KEY, book_id TEXT, created_at TEXT NOT NULL, data TEXT NOT NULL)')
+                yield conn
 
     def record(self, *, book_id, action, settings, usage, duration_ms, result):
         pricing = pricing_checked(settings.get('pricing'))

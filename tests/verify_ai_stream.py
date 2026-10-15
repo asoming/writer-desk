@@ -1,6 +1,7 @@
 """Streaming uses fake credentials and a disposable loopback provider only."""
 import copy
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from http_fixtures import LoopbackHTTPServer
 import json
 from pathlib import Path
 import sys
@@ -81,7 +82,7 @@ class Provider(BaseHTTPRequestHandler):
 class StreamTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+        cls.server = LoopbackHTTPServer(("127.0.0.1", 0), Provider)
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
     @classmethod
@@ -188,7 +189,7 @@ class StreamTests(unittest.TestCase):
         http = None
         try:
             app.initialize()
-            http = ThreadingHTTPServer(("127.0.0.1", 0), Quiet)
+            http = LoopbackHTTPServer(("127.0.0.1", 0), Quiet)
             threading.Thread(target=http.serve_forever, daemon=True).start()
             base = "http://127.0.0.1:" + str(http.server_port)
             def request(path, data=None, headers=None):

@@ -8,7 +8,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
-from http.server import ThreadingHTTPServer
+from http_fixtures import LoopbackHTTPServer
 import urllib.error
 import urllib.request
 
@@ -23,7 +23,7 @@ from verify_skills import fixture
 class ChatTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.provider = ThreadingHTTPServer(('127.0.0.1', 0), Stub)
+        cls.provider = LoopbackHTTPServer(('127.0.0.1', 0), Stub)
         cls.provider_thread = threading.Thread(target=cls.provider.serve_forever, daemon=True)
         cls.provider_thread.start()
         cls.endpoint = 'http://127.0.0.1:' + str(cls.provider.server_port) + '/v1'
@@ -277,7 +277,7 @@ class ChatTests(unittest.TestCase):
         http = None
         try:
             app.initialize()
-            http = ThreadingHTTPServer(('127.0.0.1', 0), Quiet)
+            http = LoopbackHTTPServer(('127.0.0.1', 0), Quiet)
             thread = threading.Thread(target=http.serve_forever, daemon=True)
             thread.start()
             base = 'http://127.0.0.1:' + str(http.server_port)

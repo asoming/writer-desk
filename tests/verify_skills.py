@@ -9,7 +9,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
-from http.server import ThreadingHTTPServer
+from http_fixtures import LoopbackHTTPServer
 import urllib.error
 import urllib.request
 
@@ -48,7 +48,7 @@ def fixture(home):
 class SkillTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.http = ThreadingHTTPServer(("127.0.0.1", 0), Stub)
+        cls.http = LoopbackHTTPServer(("127.0.0.1", 0), Stub)
         cls.thread = threading.Thread(target=cls.http.serve_forever, daemon=True)
         cls.thread.start()
         cls.endpoint = "http://127.0.0.1:" + str(cls.http.server_port) + "/v1"
@@ -229,7 +229,7 @@ class SkillTests(unittest.TestCase):
         http = None
         try:
             app.initialize()
-            http = ThreadingHTTPServer(("127.0.0.1", 0), Quiet)
+            http = LoopbackHTTPServer(("127.0.0.1", 0), Quiet)
             thread = threading.Thread(target=http.serve_forever, daemon=True)
             thread.start()
             def request(path, method="GET", data=None):

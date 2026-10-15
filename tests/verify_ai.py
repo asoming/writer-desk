@@ -1,7 +1,8 @@
 """AI requests go only to a disposable loopback stub with a fake credential."""
 import copy
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from http_fixtures import LoopbackHTTPServer
 from pathlib import Path
 import stat
 import sys
@@ -76,7 +77,7 @@ class Stub(BaseHTTPRequestHandler):
 class AITests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), Stub)
+        cls.server = LoopbackHTTPServer(('127.0.0.1', 0), Stub)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         cls.endpoint = 'http://127.0.0.1:' + str(cls.server.server_address[1]) + '/v1'
@@ -375,7 +376,7 @@ class AITests(unittest.TestCase):
         http = None
         try:
             app.initialize()
-            http = ThreadingHTTPServer(('127.0.0.1', 0), Quiet)
+            http = LoopbackHTTPServer(('127.0.0.1', 0), Quiet)
             thread = threading.Thread(target=http.serve_forever, daemon=True)
             thread.start()
             base = 'http://127.0.0.1:' + str(http.server_port)

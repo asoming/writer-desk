@@ -2,7 +2,8 @@
 import base64
 import copy
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from http_fixtures import LoopbackHTTPServer
 import json
 import os
 from pathlib import Path
@@ -48,7 +49,7 @@ class ImageProvider(BaseHTTPRequestHandler):
 class ChatImageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.provider = ThreadingHTTPServer(("127.0.0.1", 0), ImageProvider)
+        cls.provider = LoopbackHTTPServer(("127.0.0.1", 0), ImageProvider)
         cls.thread = threading.Thread(target=cls.provider.serve_forever, daemon=True)
         cls.thread.start()
         cls.endpoint = "http://127.0.0.1:" + str(cls.provider.server_port) + "/v1"
@@ -222,7 +223,7 @@ class ChatImageTests(unittest.TestCase):
         http = None
         try:
             server.initialize()
-            http = ThreadingHTTPServer(("127.0.0.1", 0), Quiet)
+            http = LoopbackHTTPServer(("127.0.0.1", 0), Quiet)
             thread = threading.Thread(target=http.serve_forever, daemon=True)
             thread.start()
             base = "http://127.0.0.1:" + str(http.server_port)

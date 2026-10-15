@@ -1,17 +1,23 @@
 """Private profile/usage accounting against a disposable loopback provider."""
 import copy
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from contextlib import closing, contextmanager
+from http.server import BaseHTTPRequestHandler
+from http_fixtures import LoopbackHTTPServer
 import json
 from pathlib import Path
+import sqlite3
 import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from ai_service import AIService, AIError
-from ai_usage import cost_for, pricing_checked, usage_checked
+from ai_usage import UsageLedger, cost_for, pricing_checked, usage_checked
+
+REAL_CONNECT = sqlite3.connect
 
 BOOK = {'id': 'usage-book', 'kind': 'long', 'title': '测试', 'chapters': [], 'volumes': [], 'outline': [], 'notes': [], 'relations': []}
 
@@ -52,7 +58,7 @@ class Provider(BaseHTTPRequestHandler):
 class ProfileUsageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(('127.0.0.1',0),Provider)
+        cls.server = LoopbackHTTPServer(('127.0.0.1',0),Provider)
         threading.Thread(target=cls.server.serve_forever,daemon=True).start()
     @classmethod
     def tearDownClass(cls):
@@ -132,5 +138,94 @@ class ProfileUsageTests(unittest.TestCase):
             with self.assertRaises(ValueError):pricing_checked(value)
         self.assertEqual(pricing_checked({'input':0})['input'],0)
         with self.assertRaises(AIError):self.service.save_settings({'pricing':{'input':-1}})
+
+
+class UsageConnectionTests(unittest.TestCase):
+    """Keep real SQLite handles alive so garbage collection cannot hide leaks."""
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.ledger = UsageLedger(self.directory.name)
+
+    @contextmanager
+    def connections(self, fail_sql=None):
+        handles = []
+        class TrackedConnection(sqlite3.Connection):
+            closes = 0
+            def execute(self, sql, *args, **kwargs):
+                if fail_sql and sql.startswith(fail_sql):
+                    raise sqlite3.OperationalError('injected statement failure')
+                return super().execute(sql, *args, **kwargs)
+            def close(self):
+                self.closes += 1
+                return super().close()
+        def connect(*args, **kwargs):
+            handle = REAL_CONNECT(*args, factory=TrackedConnection, **kwargs)
+            handles.append(handle)
+            return handle
+        try:
+            with patch('ai_usage.sqlite3.connect', side_effect=connect):
+                yield handles
+        finally:
+            # A failing regression assertion must not strand the test's own file.
+            for handle in handles:
+                if not handle.closes:
+                    handle.close()
+
+    def assert_closed(self, handles, expected):
+        self.assertEqual(len(handles), expected)
+        for handle in handles:
+            self.assertEqual(handle.closes, 1)
+            with self.assertRaises(sqlite3.ProgrammingError):
+                handle.execute('SELECT 1')
+
+    def record(self, book_id='connection-test'):
+        return self.ledger.record(book_id=book_id, action='custom', settings={},
+                                  usage={'inputTokens': 2, 'outputTokens': 1, 'totalTokens': 3},
+                                  duration_ms=4, result='complete')
+
+    def saved_count(self):
+        with closing(REAL_CONNECT(str(self.ledger.path))) as handle:
+            return handle.execute('SELECT count(*) FROM usage').fetchone()[0]
+
+    def test_successful_record_summary_and_clear_close_immediately_and_commit(self):
+        with self.connections() as handles:
+            self.record()
+            self.assert_closed(handles, 1)
+            self.assertEqual(self.saved_count(), 1, 'A separate real connection sees the committed row')
+            self.assertEqual(self.ledger.summary()['totals']['requests'], 1)
+            self.assert_closed(handles, 2)
+            self.assertEqual(self.ledger.clear()['totals']['requests'], 0)
+            self.assert_closed(handles, 5)  # DELETE, VACUUM, then returned summary.
+            self.assertEqual(self.saved_count(), 0)
+
+    def test_record_failure_rolls_back_insert_before_close(self):
+        self.ledger.summary()  # Commit the schema before the failing transaction.
+        with self.connections('DELETE FROM usage WHERE id IN') as handles:
+            with self.assertRaisesRegex(sqlite3.OperationalError, 'injected'):
+                self.record()
+            self.assert_closed(handles, 1)
+            self.assertEqual(self.saved_count(), 0, 'The earlier INSERT must be rolled back')
+
+    def test_summary_delete_and_vacuum_errors_release_real_handles(self):
+        self.record()
+        for sql in ('SELECT data FROM usage', 'DELETE FROM usage', 'VACUUM'):
+            with self.subTest(sql=sql), self.connections(sql) as handles:
+                with self.assertRaisesRegex(sqlite3.OperationalError, 'injected'):
+                    self.ledger.summary() if sql.startswith('SELECT') else self.ledger.clear()
+                self.assert_closed(handles, 2 if sql == 'VACUUM' else 1)
+                self.assertEqual(self.saved_count(), 0 if sql == 'VACUUM' else 1)
+
+    def test_connection_setup_errors_close_before_propagating(self):
+        for sql in ('PRAGMA journal_mode=DELETE', 'CREATE TABLE IF NOT EXISTS usage'):
+            with self.subTest(sql=sql), self.connections(sql) as handles:
+                with self.assertRaisesRegex(sqlite3.OperationalError, 'injected'):
+                    self.ledger.summary()
+                self.assert_closed(handles, 1)
+        if sys.platform != 'win32':
+            with self.connections() as handles, patch('ai_usage.os.chmod', side_effect=OSError('injected permissions failure')):
+                with self.assertRaisesRegex(OSError, 'permissions'):
+                    self.ledger.summary()
+                self.assert_closed(handles, 1)
 
 if __name__=='__main__':unittest.main(verbosity=2)

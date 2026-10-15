@@ -2,7 +2,7 @@
 import base64
 import copy
 import json
-from http.server import ThreadingHTTPServer
+from http_fixtures import LoopbackHTTPServer
 from pathlib import Path
 import sys
 import tempfile
@@ -26,7 +26,7 @@ WEBP = 'UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoCAAMAAUAmJaACdLoAA5gA/vtV4/+lwf/S4P/p
 class CoverTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.stub = ThreadingHTTPServer(('127.0.0.1', 0), Stub)
+        cls.stub = LoopbackHTTPServer(('127.0.0.1', 0), Stub)
         cls.thread = threading.Thread(target=cls.stub.serve_forever, daemon=True)
         cls.thread.start()
         cls.endpoint = 'http://127.0.0.1:' + str(cls.stub.server_port) + '/custom/v1'
@@ -165,7 +165,7 @@ class CoverTests(unittest.TestCase):
         http = None
         try:
             server.initialize()
-            http = ThreadingHTTPServer(('127.0.0.1', 0), Quiet)
+            http = LoopbackHTTPServer(('127.0.0.1', 0), Quiet)
             worker = threading.Thread(target=http.serve_forever, daemon=True)
             worker.start()
             def request(path, method='GET', data=None):

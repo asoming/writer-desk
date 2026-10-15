@@ -1,6 +1,7 @@
 """Model discovery and selection use disposable loopback services and fake keys."""
 import copy
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from http_fixtures import LoopbackHTTPServer
 import json
 import os
 from pathlib import Path
@@ -58,7 +59,7 @@ class ModelsStub(BaseHTTPRequestHandler):
 class ModelTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.provider = ThreadingHTTPServer(('127.0.0.1', 0), ModelsStub)
+        cls.provider = LoopbackHTTPServer(('127.0.0.1', 0), ModelsStub)
         cls.thread = threading.Thread(target=cls.provider.serve_forever, daemon=True)
         cls.thread.start()
         cls.base = 'http://127.0.0.1:' + str(cls.provider.server_port)
@@ -177,7 +178,7 @@ class ModelTests(unittest.TestCase):
         http = None
         try:
             app.initialize()
-            http = ThreadingHTTPServer(('127.0.0.1', 0), Quiet)
+            http = LoopbackHTTPServer(('127.0.0.1', 0), Quiet)
             thread = threading.Thread(target=http.serve_forever, daemon=True)
             thread.start()
             base = 'http://127.0.0.1:' + str(http.server_port)

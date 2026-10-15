@@ -2,7 +2,7 @@
 """Disposable real-loopback API checks for the 0.8 desktop integrations."""
 import argparse
 import copy
-from http.server import ThreadingHTTPServer
+from http_fixtures import LoopbackHTTPServer
 import json
 from pathlib import Path
 import sqlite3
@@ -45,7 +45,7 @@ class ExtensionsAPI(unittest.TestCase):
         provider_fixture.Provider.mode = "json"
         provider_fixture.Provider.pause = provider_fixture.Provider.resume = None
         provider_fixture.Provider.usage = {"prompt_tokens": 1000, "completion_tokens": 400, "total_tokens": 1400, "prompt_tokens_details": {"cached_tokens": 200}}
-        provider = ThreadingHTTPServer(("127.0.0.1", 0), provider_fixture.Provider)
+        provider = LoopbackHTTPServer(("127.0.0.1", 0), provider_fixture.Provider)
         threading.Thread(target=provider.serve_forever, daemon=True).start()
         self.addCleanup(provider.server_close)
         self.addCleanup(provider.shutdown)
