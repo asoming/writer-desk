@@ -3856,6 +3856,539 @@
           "tide-person-a279295dd0c50586"
         ]
       }
-    ]
+    ],
+    "storyTools": {
+      "foreshadows": [
+        {
+          "id": "tide-hint-seven-cards",
+          "title": "七张空名卡",
+          "body": "第3章发现七处有槽印的空位，临时渡运支出与正式事故卷人数不合。第12章核实两死五生，第32章逐一核卡并保留学生甲乙的公开代号，空位获得可查的身份与权限。",
+          "chapterIds": [
+            "tide-chapter-4e07408562bedb8b",
+            "tide-chapter-7902699be42c8a8e",
+            "tide-chapter-6b51d431df5d7f14",
+            "tide-chapter-e29c9c180c6279b0"
+          ],
+          "personIds": [
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-a25736a2c1c0f1c8",
+            "tide-person-bb293188dc98d593",
+            "tide-person-b6cb84018a26ce30"
+          ],
+          "status": "resolved"
+        },
+        {
+          "id": "tide-hint-withheld-report",
+          "title": "检修报告与两本账",
+          "body": "第3章的收文目录有报告，附件袋却是空的。第6、11章用收条与两本账核出检修款改列木桩，第15章魏峤署名承认截留报告，第21章再以声段、日期和签收序号交叉核验。",
+          "chapterIds": [
+            "tide-chapter-4e07408562bedb8b",
+            "tide-chapter-e7f6c011776e8db7",
+            "tide-chapter-4fc82b26aecb47d2",
+            "tide-chapter-e629fa6598d73276",
+            "tide-chapter-6f4b6612125fb3a0"
+          ],
+          "personIds": [
+            "tide-person-9658cde691382c03",
+            "tide-person-3504733cd02eb5ce",
+            "tide-person-a279295dd0c50586",
+            "tide-person-50606cacd7c6e48c"
+          ],
+          "status": "resolved"
+        },
+        {
+          "id": "tide-hint-gate-order",
+          "title": "全开指令的来源",
+          "body": "贺安留下闸房收条线索，第12章副条保留全开与收令时刻，但发令格缺角。第21章听录确认原批分段试开、魏峤通过承包线擅传全开。第28章的具名回读与逐段观察回应旧事故。",
+          "chapterIds": [
+            "tide-chapter-e7f6c011776e8db7",
+            "tide-chapter-6b51d431df5d7f14",
+            "tide-chapter-6f4b6612125fb3a0",
+            "tide-chapter-59e19706d51d39f6"
+          ],
+          "personIds": [
+            "tide-person-ee3e93829fc3f814",
+            "tide-person-a279295dd0c50586",
+            "tide-person-07d95974fd62d629",
+            "tide-person-9658cde691382c03"
+          ],
+          "status": "resolved"
+        },
+        {
+          "id": "tide-hint-ticket-voice",
+          "title": "船票背面的父亲声音",
+          "body": "第1章模糊先声中的指代并不明确。第22章船票留下八十秒救援指挥，沈峦与莫云折返救人；声段在最后时刻前停止，死亡认定仍由搜寻记录承担，不能补写告别。",
+          "chapterIds": [
+            "tide-chapter-6b86b273ff34fce1",
+            "tide-chapter-6b51d431df5d7f14",
+            "tide-chapter-785f3ec7eb32f30b",
+            "tide-chapter-e29c9c180c6279b0"
+          ],
+          "personIds": [
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-197500ff55aa5a4d",
+            "tide-person-23faa6b2d372f150",
+            "tide-person-b816f04687ad7226"
+          ],
+          "status": "resolved"
+        },
+        {
+          "id": "tide-hint-rescue-boat",
+          "title": "陈汀的救援船与腕疤",
+          "body": "第4章洗衣店旧账的救援款由陈汀经手，姚远回避旧船。第10章她确认主动下船牵绳，两船并修账与周岚旧账互证；第22、33章分别留下救援事实和母子私下谈话的范围。",
+          "chapterIds": [
+            "tide-chapter-4b227777d4dd1fc6",
+            "tide-chapter-4a44dc15364204a8",
+            "tide-chapter-785f3ec7eb32f30b",
+            "tide-chapter-c6f3ac57944a5314"
+          ],
+          "personIds": [
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-2cea500cffca9fb3",
+            "tide-person-c90c5a73f94e7df6",
+            "tide-person-52d702248a19208f"
+          ],
+          "status": "resolved"
+        },
+        {
+          "id": "tide-hint-late-signal",
+          "title": "被贴纸遮住的迟报时间",
+          "body": "第5章维修簿的贴纸遮住原报修时间，许照承认迟报故障。第21章维修簿声段被独立听录，第23章韩铎承认删去灯号迟报与挪动报告先后，第27章许照在值守交接中再次说明责任。",
+          "chapterIds": [
+            "tide-chapter-ef2d127de37b942b",
+            "tide-chapter-9400f1b21cb527d7",
+            "tide-chapter-6f4b6612125fb3a0",
+            "tide-chapter-535fa30d7e25dd8a",
+            "tide-chapter-670671cd97404156"
+          ],
+          "personIds": [
+            "tide-person-e4e2fa5cfb5094c0",
+            "tide-person-ab1cb001845d4813",
+            "tide-person-6439db0fb486b715"
+          ],
+          "status": "resolved"
+        },
+        {
+          "id": "tide-hint-student-replies",
+          "title": "两名离城学生的回函",
+          "body": "第7章只凭转学存根与邮务转递发函，不能先填现状。第18章回函仍未到；第32章两封来信按正常信路交到江临手中，真实姓名与现址封存，公开目录沿用学生甲乙代号。",
+          "chapterIds": [
+            "tide-chapter-7902699be42c8a8e",
+            "tide-chapter-4ec9599fc203d176",
+            "tide-chapter-eb1e33e8a81b697b",
+            "tide-chapter-e29c9c180c6279b0"
+          ],
+          "personIds": [
+            "tide-person-b6cb84018a26ce30",
+            "tide-person-b816f04687ad7226",
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-bb293188dc98d593"
+          ],
+          "status": "resolved"
+        },
+        {
+          "id": "tide-hint-mother-letter",
+          "title": "陈汀交给乔渡的信",
+          "body": "第20章陈汀给儿子的信仍未拆，第30章母子约定睡过之后再读。第33章危机之后私下读信，陈汀说明主动下船与多年隐瞒，家事没有被挪入公开报道。",
+          "chapterIds": [
+            "tide-chapter-f5ca38f748a1d6ea",
+            "tide-chapter-624b60c58c9d8bfb",
+            "tide-chapter-c6f3ac57944a5314"
+          ],
+          "personIds": [
+            "tide-person-2cea500cffca9fb3",
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-50606cacd7c6e48c"
+          ],
+          "status": "resolved"
+        },
+        {
+          "id": "tide-hint-recording-permission",
+          "title": "误录私话后的许可边界",
+          "body": "第16章未获许可的底噪测试录入私话，众人见证停用并覆盖误录。第20章分别确认现场核对、原声保留与报道引用；第33、36章按许可删去私事并分级开放目录。",
+          "chapterIds": [
+            "tide-chapter-b17ef6d19c7a5b1e",
+            "tide-chapter-f5ca38f748a1d6ea",
+            "tide-chapter-535fa30d7e25dd8a",
+            "tide-chapter-c6f3ac57944a5314",
+            "tide-chapter-76a50887d8f1c2e9"
+          ],
+          "personIds": [
+            "tide-person-85529cecd6ed9a88",
+            "tide-person-2cea500cffca9fb3",
+            "tide-person-ee3e93829fc3f814",
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-50606cacd7c6e48c"
+          ],
+          "status": "resolved"
+        },
+        {
+          "id": "tide-hint-unrepaired-wire",
+          "title": "备用灯尚未修复的线路",
+          "body": "第5章发现备用灯走线与旧图不同，第17、19章明确停用且未接入。第27章确认受潮绝缘破损，师徒共同隔离、签停用木牌，通信使用既备的蓄电无线电。故障已经查明，未修线路仍须后查，不能把灯写成恢复可用。",
+          "chapterIds": [
+            "tide-chapter-ef2d127de37b942b",
+            "tide-chapter-4523540f1504cd17",
+            "tide-chapter-9400f1b21cb527d7",
+            "tide-chapter-670671cd97404156"
+          ],
+          "personIds": [
+            "tide-person-ab1cb001845d4813",
+            "tide-person-e4e2fa5cfb5094c0",
+            "tide-person-4bfc1c7b64a0369d"
+          ],
+          "status": "developing"
+        },
+        {
+          "id": "tide-hint-unchecked-boxes",
+          "title": "旧馆四只待查箱子",
+          "body": "第29章十二箱先转出四箱，第31章再取三箱。余下五箱中一箱确认损坏、四箱待可进后查。第36章毁损缺文仍留空缺；未确认材料不能提前写成保全或全损。",
+          "chapterIds": [
+            "tide-chapter-35135aaa6cc23891",
+            "tide-chapter-eb1e33e8a81b697b",
+            "tide-chapter-76a50887d8f1c2e9"
+          ],
+          "personIds": [
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-bb293188dc98d593",
+            "tide-person-448fc37b095c8d63",
+            "tide-person-24f5c1e229f9bb7d"
+          ],
+          "status": "developing"
+        },
+        {
+          "id": "tide-hint-unconfirmed-address",
+          "title": "新地址簿里待本人确认的一户",
+          "body": "第36章一户无人应门，邻居只知搬家而不知去处。赵翎记为待本人确认，准备再访旧屋，并在午后返回邮务桌核待查旧件。书末没有给出确认结果，旧址与待查状态仍应保留。",
+          "chapterIds": [
+            "tide-chapter-76a50887d8f1c2e9"
+          ],
+          "personIds": [
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-efb22f9f1b2ff539"
+          ],
+          "status": "planted"
+        }
+      ],
+      "timeline": [
+        {
+          "id": "tide-event-old-accident",
+          "title": "白沙渡事故与临时救援",
+          "body": "十八年前的错误开闸指令、被截留检修报告及临时救援构成旧案。后来核实沈峦、莫云死亡，陈汀、秦澈、贺安及学生甲乙生还；死亡认定、声段和当事人证词分开取证。",
+          "chapterIds": [
+            "tide-chapter-6b51d431df5d7f14",
+            "tide-chapter-6f4b6612125fb3a0",
+            "tide-chapter-785f3ec7eb32f30b",
+            "tide-chapter-535fa30d7e25dd8a",
+            "tide-chapter-e29c9c180c6279b0"
+          ],
+          "personIds": [
+            "tide-person-197500ff55aa5a4d",
+            "tide-person-23faa6b2d372f150",
+            "tide-person-2cea500cffca9fb3",
+            "tide-person-ee3e93829fc3f814",
+            "tide-person-b816f04687ad7226",
+            "tide-person-a279295dd0c50586"
+          ],
+          "storyTime": "十八年前·白沙渡事故夜"
+        },
+        {
+          "id": "tide-event-ticket-found",
+          "title": "船票转为待查材料",
+          "body": "沈砚取出拟销毁的白沙渡船票，听见模糊先声，与江临分开记录；韩铎给出三天移交期限，孟苇提示查临时支出。",
+          "chapterIds": [
+            "tide-chapter-6b86b273ff34fce1"
+          ],
+          "personIds": [
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-bb293188dc98d593",
+            "tide-person-6439db0fb486b715",
+            "tide-person-a25736a2c1c0f1c8"
+          ],
+          "storyTime": "返潮前六日·初查开始"
+        },
+        {
+          "id": "tide-event-map-cards",
+          "title": "旧水路与七个空位",
+          "body": "唐霁撤销错误基准测量，结合林穗手绘图核查侧渠；江临按名卡编号找到七处空位，众人保留空槽与原编号。",
+          "chapterIds": [
+            "tide-chapter-d4735e3a265e16ee",
+            "tide-chapter-4e07408562bedb8b"
+          ],
+          "personIds": [
+            "tide-person-9658cde691382c03",
+            "tide-person-6184c19b460a5a91",
+            "tide-person-07d95974fd62d629",
+            "tide-person-bb293188dc98d593",
+            "tide-person-a25736a2c1c0f1c8"
+          ],
+          "storyTime": "返潮前六日至前四日·第一轮核验"
+        },
+        {
+          "id": "tide-event-survivors",
+          "title": "幸存者与救援船交叉核验",
+          "body": "秦澈说明学生转移和两人折返，邵闻交临时转送表；陈汀说明主动下船，姚远的两船修理私账与周岚的救援款对上。",
+          "chapterIds": [
+            "tide-chapter-7902699be42c8a8e",
+            "tide-chapter-4a44dc15364204a8"
+          ],
+          "personIds": [
+            "tide-person-b816f04687ad7226",
+            "tide-person-b6cb84018a26ce30",
+            "tide-person-2cea500cffca9fb3",
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-c90c5a73f94e7df6",
+            "tide-person-52d702248a19208f"
+          ],
+          "storyTime": "返潮前四日至前二日·查访与核账"
+        },
+        {
+          "id": "tide-event-report-order",
+          "title": "检修款、副条与死亡记录",
+          "body": "陆衡逐笔核出检修款改列货场木桩。贺安授权核指令副条，孟苇与邵闻找到搜寻和死亡认定副页，七个空位先核成两死五生。",
+          "chapterIds": [
+            "tide-chapter-4fc82b26aecb47d2",
+            "tide-chapter-6b51d431df5d7f14"
+          ],
+          "personIds": [
+            "tide-person-3504733cd02eb5ce",
+            "tide-person-ee3e93829fc3f814",
+            "tide-person-a25736a2c1c0f1c8",
+            "tide-person-b6cb84018a26ce30",
+            "tide-person-6a6d6de6b034f0c1"
+          ],
+          "storyTime": "返潮前四日至前二日·取得副条"
+        },
+        {
+          "id": "tide-event-shared-gate-plan",
+          "title": "共同复核分段开闸图",
+          "body": "唐霁、庞勤、林穗复核旧泄水口，设停工线；唐霁、范启、许照共同签图，明确具名指令、回读、观察与断联待令，季川请求复核备用灯。",
+          "chapterIds": [
+            "tide-chapter-3fdba35f04dc8c46",
+            "tide-chapter-4523540f1504cd17"
+          ],
+          "personIds": [
+            "tide-person-9658cde691382c03",
+            "tide-person-32a9401adde585a5",
+            "tide-person-6184c19b460a5a91",
+            "tide-person-07d95974fd62d629",
+            "tide-person-e4e2fa5cfb5094c0",
+            "tide-person-ab1cb001845d4813"
+          ],
+          "storyTime": "返潮前二日至前夜·水路与值守演练"
+        },
+        {
+          "id": "tide-event-move-delayed",
+          "title": "取消原迁馆腾空期限",
+          "body": "韩铎签字取消原腾空期限并保留核验联络点。齐朔分开人员与货运，先送卧具、分级转存易损纸件，夜班轮替后沈砚休息。",
+          "chapterIds": [
+            "tide-chapter-4ec9599fc203d176"
+          ],
+          "personIds": [
+            "tide-person-6439db0fb486b715",
+            "tide-person-448fc37b095c8d63",
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-bb293188dc98d593"
+          ],
+          "storyTime": "返潮前夜·第一箱转运"
+        },
+        {
+          "id": "tide-event-time-permission",
+          "title": "校时并分别确认许可",
+          "body": "季川检查垫片偏位，潮钟、摆钟和快两秒的怀表独立计时。陈汀、秦澈、贺安分别确认许可，沈砚为父亲船票保留事后审阅边界。",
+          "chapterIds": [
+            "tide-chapter-9400f1b21cb527d7",
+            "tide-chapter-f5ca38f748a1d6ea"
+          ],
+          "personIds": [
+            "tide-person-ab1cb001845d4813",
+            "tide-person-4bfc1c7b64a0369d",
+            "tide-person-2cea500cffca9fb3",
+            "tide-person-b816f04687ad7226",
+            "tide-person-ee3e93829fc3f814",
+            "tide-person-6a6d6de6b034f0c1"
+          ],
+          "storyTime": "返潮当日清晨·窗口开始前"
+        },
+        {
+          "id": "tide-event-first-three-minutes",
+          "title": "副条、账页与维修簿回放",
+          "body": "前三分钟依次听三份旧纸，结束读数分别为五十五秒、两分零五秒、两分五十五秒。证据确认原批分段试开与承包线擅传全开，当下承认另行编号。",
+          "chapterIds": [
+            "tide-chapter-6f4b6612125fb3a0"
+          ],
+          "personIds": [
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-4bfc1c7b64a0369d",
+            "tide-person-bb293188dc98d593",
+            "tide-person-a279295dd0c50586",
+            "tide-person-3504733cd02eb5ce",
+            "tide-person-e4e2fa5cfb5094c0"
+          ],
+          "storyTime": "返潮九分钟·第0至3分钟"
+        },
+        {
+          "id": "tide-event-ticket-playback",
+          "title": "船票的八十秒救援指挥",
+          "body": "第三至第五分钟，船票重现沈峦、莫云组织救援及陈汀接绳。声段在最后时刻之前停止，西窗一字仍有听录分歧，沈砚不补写希望听到的告别。",
+          "chapterIds": [
+            "tide-chapter-785f3ec7eb32f30b"
+          ],
+          "personIds": [
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-197500ff55aa5a4d",
+            "tide-person-23faa6b2d372f150",
+            "tide-person-2cea500cffca9fb3",
+            "tide-person-b816f04687ad7226"
+          ],
+          "storyTime": "返潮九分钟·第3至5分钟"
+        },
+        {
+          "id": "tide-event-window-ended",
+          "title": "韩铎更正与九分钟结束",
+          "body": "馆务声段和韩铎当下陈述核出删节。余下时间重听指令与争议数字，含糊处仍待核；九分钟准时结束，纸声停止，午后外堤漏水进入现实联络。",
+          "chapterIds": [
+            "tide-chapter-535fa30d7e25dd8a"
+          ],
+          "personIds": [
+            "tide-person-6439db0fb486b715",
+            "tide-person-a25736a2c1c0f1c8",
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-4bfc1c7b64a0369d",
+            "tide-person-bb293188dc98d593"
+          ],
+          "storyTime": "返潮九分钟·第5至9分钟"
+        },
+        {
+          "id": "tide-event-evacuation",
+          "title": "外堤缺口与逐户撤离",
+          "body": "外堤出现缺口，唐霁撤销低处车路，齐朔转运行动困难者。周岚等逐户核对离开与抵达，苏遥完成明确交班，旧错误名单留存并标停用。",
+          "chapterIds": [
+            "tide-chapter-c2356069e9d1e79c",
+            "tide-chapter-b7a56873cd771f2c",
+            "tide-chapter-5f9c4ab08cac7457"
+          ],
+          "personIds": [
+            "tide-person-9658cde691382c03",
+            "tide-person-448fc37b095c8d63",
+            "tide-person-52d702248a19208f",
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-efb22f9f1b2ff539",
+            "tide-person-c067ab937648e2e7",
+            "tide-person-a3f158e5a494e26d"
+          ],
+          "storyTime": "返潮当日午后至夜间·洪潮转移"
+        },
+        {
+          "id": "tide-event-gate-opened",
+          "title": "隔离故障灯并分段开闸",
+          "body": "季川隔离破损线路，许照复核，无线电片段指令被要求重报。唐霁、范启、贺安按共同签图分段操作，每步具名回读，下游观察后再继续；旧馆按可取与暂留分箱。",
+          "chapterIds": [
+            "tide-chapter-670671cd97404156",
+            "tide-chapter-59e19706d51d39f6",
+            "tide-chapter-35135aaa6cc23891"
+          ],
+          "personIds": [
+            "tide-person-ab1cb001845d4813",
+            "tide-person-e4e2fa5cfb5094c0",
+            "tide-person-9658cde691382c03",
+            "tide-person-07d95974fd62d629",
+            "tide-person-ee3e93829fc3f814",
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-448fc37b095c8d63"
+          ],
+          "storyTime": "返潮当夜·闸房操作与旧馆转运"
+        },
+        {
+          "id": "tide-event-last-boat",
+          "title": "最后一船与具名回报闭合",
+          "body": "最后转运完成，林穗、庞勤不以也许补人数，赵翎查出临时亲属重记。住户与值守班组逐项确认无失联，危险通道继续封闭，众人轮班休息。",
+          "chapterIds": [
+            "tide-chapter-624b60c58c9d8bfb"
+          ],
+          "personIds": [
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-c90c5a73f94e7df6",
+            "tide-person-6184c19b460a5a91",
+            "tide-person-32a9401adde585a5",
+            "tide-person-efb22f9f1b2ff539",
+            "tide-person-4bfc1c7b64a0369d"
+          ],
+          "storyTime": "返潮次日天明·最后转运"
+        },
+        {
+          "id": "tide-event-loss-inventory",
+          "title": "原件、残页与损失清点",
+          "body": "齐朔先检查禁入范围，再取出三箱。白榆、沈砚分别记录原件、后补抄件和修复动作；十二箱已取七箱，余下一损四待查，缺页不靠推测补齐。",
+          "chapterIds": [
+            "tide-chapter-eb1e33e8a81b697b"
+          ],
+          "personIds": [
+            "tide-person-448fc37b095c8d63",
+            "tide-person-24f5c1e229f9bb7d",
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-bb293188dc98d593",
+            "tide-person-6439db0fb486b715"
+          ],
+          "storyTime": "返潮次日午后·清点损失"
+        },
+        {
+          "id": "tide-event-seven-cards-filled",
+          "title": "七张名卡与回函复核",
+          "body": "离城学生两封来信按正常邮路送达。七张卡逐一核名，保留旧污名、更正与抽卡说明；学生甲乙真实身份和现址封存，公开保持稳定代号。",
+          "chapterIds": [
+            "tide-chapter-e29c9c180c6279b0"
+          ],
+          "personIds": [
+            "tide-person-bb293188dc98d593",
+            "tide-person-a25736a2c1c0f1c8",
+            "tide-person-b6cb84018a26ce30",
+            "tide-person-b816f04687ad7226",
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-6a6d6de6b034f0c1"
+          ],
+          "storyTime": "返潮后第三日·七卡核验"
+        },
+        {
+          "id": "tide-event-report-handover",
+          "title": "刊稿、私信与权责交接",
+          "body": "第六天顾棠排清样，经当事人逐句核定后刊出；陈汀与乔渡私下读信。第八天陆衡核欠薪、拒续约，韩铎交出钥匙印章但继续承担删节说明义务。",
+          "chapterIds": [
+            "tide-chapter-c6f3ac57944a5314",
+            "tide-chapter-86e5014965866131"
+          ],
+          "personIds": [
+            "tide-person-50606cacd7c6e48c",
+            "tide-person-2cea500cffca9fb3",
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-3504733cd02eb5ce",
+            "tide-person-a279295dd0c50586",
+            "tide-person-6439db0fb486b715"
+          ],
+          "storyTime": "返潮后第六日至第八日·报道与交接"
+        },
+        {
+          "id": "tide-event-new-map-address",
+          "title": "共绘新图与新的投递地址",
+          "body": "第十天唐霁与林穗复测住户实际通行限制，夜校迁入旅店底层。第十四天新目录分级开放、新旧地址按本人确认更新，赵翎继续核待查旧件，乔渡将普通伞扣凭条交秦澈签收。",
+          "chapterIds": [
+            "tide-chapter-9f14025af0065b30",
+            "tide-chapter-76a50887d8f1c2e9"
+          ],
+          "personIds": [
+            "tide-person-9658cde691382c03",
+            "tide-person-6184c19b460a5a91",
+            "tide-person-9784448ac865665b",
+            "tide-person-6a6d6de6b034f0c1",
+            "tide-person-bb293188dc98d593",
+            "tide-person-efb22f9f1b2ff539",
+            "tide-person-32477119e2f3e3a6",
+            "tide-person-b816f04687ad7226"
+          ],
+          "storyTime": "返潮后第十日至第十四日·恢复日常"
+        }
+      ],
+      "dailyGoal": 2000
+    }
   }
 }
