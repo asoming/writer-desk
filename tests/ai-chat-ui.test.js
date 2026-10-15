@@ -14,6 +14,15 @@ class Element{
 }
 const descendants=node=>node.children.flatMap(child=>[child,...descendants(child)]);
 const find=(node,predicate)=>[node,...descendants(node)].find(predicate);
+async function waitFor(h,predicate,label,timeoutMs=5000){
+  const deadline=performance.now()+timeoutMs;
+  while(!predicate()){
+    assert.ok(performance.now()<deadline,'Timed out waiting for '+label);
+    // WebCrypto completes on the native worker pool. Event-loop turns are not
+    // a completion signal, so yield until the observable verification settles.
+    await h.tick();
+  }
+}
 function harness(storage=new Map()){
   const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);},timers=new Map();let nextTimer=0;
   const h={calls:[],saves:[],storage,get,timers,candidates:[],notes:[],renders:0,toasts:[],settings:{enabled:true,endpoint:'http://127.0.0.1:9999/v1',model:'stub',contextMode:'auto'}};
@@ -48,13 +57,22 @@ test('stream cancel aborts transport and ignores late tokens and candidates',asy
 test('AI memory is an explicit task, preserves source hash, and adopts only checked editable candidates',async()=>{
   const h=harness(),{createHash,webcrypto}=require('node:crypto');h.context.crypto=webcrypto;h.context.TextEncoder=TextEncoder;h.context.Uint8Array=Uint8Array;vm.runInContext(fs.readFileSync(path.join(root,'public/story-memory.js'),'utf8'),h.context);h.useRealRenderer();
   const hash=createHash('sha256').update('第一章\n正文一').digest('hex');h.response=request=>({bookId:'one',action:'memory',chapterIds:request.chapterIds,chat:true,reply:'这是待确认的章节记忆。',data:{entries:[{chapterId:'a',sourceHash:hash,summary:'事件摘要',characterStates:'人物状态',settingNotes:''}]}});
-  await h.open();h.run("toggleAIChat('memory')");await h.flush();assert.match(h.field('ai-chat-prompt').value,/章节记忆/);assert.equal(h.state.book.storyMemory,undefined);await h.send();await h.tick();assert.equal(h.state.book.storyMemory,undefined);
-  const box=find(h.panel(),node=>node.tagName==='INPUT'&&node.type==='checkbox'&&!node.value);assert.ok(box);assert.equal(box.disabled,false);box.checked=true;const summary=find(h.panel(),node=>node.tagName==='TEXTAREA'&&node.id?.endsWith('-summary'));summary.value='作者修改后的摘要';await h.button('采用勾选的记忆').listeners.click();assert.equal(h.state.book.storyMemory.entries[0].summary,'作者修改后的摘要');assert.equal(h.state.book.storyMemory.entries[0].sourceHash,hash);
+  await h.open();h.run("toggleAIChat('memory')");await h.flush();assert.match(h.field('ai-chat-prompt').value,/章节记忆/);assert.equal(h.state.book.storyMemory,undefined);await h.send();assert.equal(h.state.book.storyMemory,undefined);
+  const box=find(h.panel(),node=>node.tagName==='INPUT'&&node.type==='checkbox'&&!node.value);assert.ok(box);await waitFor(h,()=>box.disabled===false,'verified memory source');box.checked=true;const summary=find(h.panel(),node=>node.tagName==='TEXTAREA'&&node.id?.endsWith('-summary'));summary.value='作者修改后的摘要';await h.button('采用勾选的记忆').listeners.click();assert.equal(h.state.book.storyMemory.entries[0].summary,'作者修改后的摘要');assert.equal(h.state.book.storyMemory.entries[0].sourceHash,hash);
 });
 
 test('a memory candidate from an earlier source revision is read only after chat restore',async()=>{
   const {createHash,webcrypto}=require('node:crypto'),hash=createHash('sha256').update('第一章\n旧正文').digest('hex');
-  const turn={id:'old-memory',user:'整理章节',action:'memory',chapterIds:['a'],status:'complete',reply:'待确认',data:{entries:[{chapterId:'a',sourceHash:hash,summary:'旧摘要',characterStates:'',settingNotes:''}]}},h=harness(new Map([['yejian.ai-chat.one.write',JSON.stringify({version:1,open:true,turns:[turn]})]]));h.context.crypto=webcrypto;h.context.TextEncoder=TextEncoder;h.context.Uint8Array=Uint8Array;vm.runInContext(fs.readFileSync(path.join(root,'public/story-memory.js'),'utf8'),h.context);h.useRealRenderer();await h.open();await h.tick();assert.ok(find(h.panel(),node=>node.textContent==='来源正文已变化，请重新整理记忆。'));const box=find(h.panel(),node=>node.tagName==='INPUT'&&node.type==='checkbox'&&!node.value);assert.equal(box.disabled,true);assert.equal(h.state.book.storyMemory,undefined);
+  const turn={id:'old-memory',user:'整理章节',action:'memory',chapterIds:['a'],status:'complete',reply:'待确认',data:{entries:[{chapterId:'a',sourceHash:hash,summary:'旧摘要',characterStates:'',settingNotes:''}]}},h=harness(new Map([['yejian.ai-chat.one.write',JSON.stringify({version:1,open:true,turns:[turn]})]]));h.context.crypto=webcrypto;h.context.TextEncoder=TextEncoder;h.context.Uint8Array=Uint8Array;vm.runInContext(fs.readFileSync(path.join(root,'public/story-memory.js'),'utf8'),h.context);h.useRealRenderer();await h.open();await waitFor(h,()=>find(h.panel(),node=>node.textContent==='来源正文已变化，请重新整理记忆。'),'stale memory source rejection');const box=find(h.panel(),node=>node.tagName==='INPUT'&&node.type==='checkbox'&&!node.value);assert.equal(box.disabled,true);assert.equal(h.state.book.storyMemory,undefined);
+});
+
+test('memory selection stays disabled until source verification actually resolves',async()=>{
+  const h=harness(),hash=require('node:crypto').createHash('sha256').update('第一章\n正文一').digest('hex');let verify;
+  h.context.WriterStoryMemory={sourceHash:()=>new Promise(resolve=>{verify=()=>resolve(hash);})};h.useRealRenderer();h.response=request=>({bookId:'one',action:'memory',chapterIds:request.chapterIds,chat:true,reply:'待核对来源',data:{entries:[{chapterId:'a',sourceHash:hash,summary:'候选摘要',characterStates:'',settingNotes:''}]}});
+  await h.open();h.run("toggleAIChat('memory')");await h.flush();await h.send();
+  const box=find(h.panel(),node=>node.tagName==='INPUT'&&node.type==='checkbox'&&!node.value);assert.ok(box);assert.equal(box.disabled,true);assert.equal(h.state.book.storyMemory,undefined);
+  await h.button('采用勾选的记忆').listeners.click();assert.equal(h.state.book.storyMemory,undefined);
+  verify();await waitFor(h,()=>box.disabled===false,'deliberately delayed source verification');box.checked=true;await h.button('采用勾选的记忆').listeners.click();assert.equal(h.state.book.storyMemory.entries[0].summary,'候选摘要');
 });
 
 test('planning and writing get a docked conversation, no service request on opening',async()=>{
