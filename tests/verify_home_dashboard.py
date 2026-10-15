@@ -6,11 +6,14 @@ from datetime import date, timedelta
 import hashlib
 import json
 import os
+import queue
 from pathlib import Path
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
+import uuid
 import unittest
 import urllib.error
 import urllib.request
@@ -132,20 +135,50 @@ class HomeHTTPTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory(prefix='writer-home-http-')
         self.addCleanup(self.directory.cleanup)
         self.data = Path(self.directory.name).resolve()
-        command = [str(SERVICE)] if SERVICE else [sys.executable, str(ROOT / 'server.py')]
-        self.process = subprocess.Popen([*command, '--port', '0', '--data-dir', str(self.data)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', env={**os.environ, 'PYTHONIOENCODING': 'utf-8', 'WRITER_DESKTOP_TOKEN': 'isolated-home-test'})
+        self.process = None
+        self.errors = None
         self.addCleanup(self.stop)
-        startup = self.process.stdout.readline().strip()
-        if '：http://127.0.0.1:' not in startup:
-            self.fail('Isolated home service did not start: ' + startup)
-        self.url = startup.split('：', 1)[1]
+        self.start()
+
+    def start(self):
+        command = [str(SERVICE)] if SERVICE else [sys.executable, str(ROOT / 'server.py')]
+        self.errors = open(self.data / ('service-' + uuid.uuid4().hex + '.log'), 'w+b')
+        # Use the real Electron protocol. Frozen Windows Python may ignore
+        # PYTHONIOENCODING; WRITER_READY stays ASCII-safe under cp1252.
+        self.process = subprocess.Popen(command + ['--desktop', '--port', '0', '--data-dir', str(self.data)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.errors, text=True, encoding='utf-8',
+            env={**os.environ, 'PYTHONIOENCODING': 'utf-8', 'WRITER_DESKTOP_TOKEN': 'isolated-home-test'})
+        ready = queue.Queue()
+        output = self.process.stdout
+        threading.Thread(target=lambda: ready.put(output.readline()), daemon=True).start()
+        try:
+            startup = ready.get(timeout=30).strip()
+        except queue.Empty:
+            startup = '(WRITER_READY timed out after 30 seconds)'
+        if not startup.startswith('WRITER_READY '):
+            self.errors.seek(0)
+            diagnostic = self.errors.read().decode('utf-8', errors='replace')[-12000:]
+            self.fail('Isolated home service did not start: ' + repr(startup) + '\n' + diagnostic)
+        self.url = json.loads(startup[len('WRITER_READY '):])['url']
 
     def stop(self):
         if self.process is not None:
-            if self.process.poll() is None:
-                self.process.terminate()
-            self.process.communicate(timeout=15)
-            self.process = None
+            process, self.process = self.process, None
+            if process.stdin is not None:
+                process.stdin.close()
+                process.stdin = None
+            try:
+                process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                try:
+                    process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate(timeout=5)
+        if self.errors is not None:
+            self.errors.close()
+            self.errors = None
 
     def tearDown(self):
         self.assertEqual(hashlib.sha256(CANONICAL.read_bytes()).hexdigest(), CANONICAL_HASH)
@@ -197,8 +230,7 @@ class HomeHTTPTests(unittest.TestCase):
         for resource in ('home-dashboard.js', 'home-dashboard.css', 'interface-polish.js', 'interface-polish.css'):
             self.assertGreater(len(self.request('/' + resource, json_body=False)), 100)
         self.stop()
-        self.process = subprocess.Popen(([str(SERVICE)] if SERVICE else [sys.executable, str(ROOT / 'server.py')]) + ['--port', '0', '--data-dir', str(self.data)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', env={**os.environ, 'PYTHONIOENCODING': 'utf-8', 'WRITER_DESKTOP_TOKEN': 'isolated-home-test'})
-        self.url = self.process.stdout.readline().strip().split('：', 1)[1]
+        self.start()
         self.assertEqual(self.request('/api/home')['settings']['dailyGoal'], 4321)
 
     def test_real_book_trash_restore_and_purge_refresh_library_counts_and_activity(self):
