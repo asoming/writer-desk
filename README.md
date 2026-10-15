@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.7.0">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.0">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.7.0"><img src="https://img.shields.io/badge/release-v0.7.0%20preview-6366f1" alt="Release v0.7.0 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.0"><img src="https://img.shields.io/badge/release-v0.8.0%20preview-6366f1" alt="Release v0.8.0 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -27,11 +27,11 @@
 
 *A local-first writing studio for novels and short stories, with outlines, character maps and optional AI assistance.*
 
-[下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.7.0) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
+[下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.8.0) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
 
-> 当前测试版：**0.7.0**。Linux、Windows 与两种 Mac 架构的原生安装包已通过验收；Linux 离线包另通过包内安装脚本与固定入口检查。[下载与校验](https://github.com/asoming/writer-desk/releases/tag/v0.7.0)。Windows 发布者签名与 Apple 公证尚未配置。
+> 当前测试版：**0.8.0**。安装包与 SHA256 校验见[发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.0)，各平台验收状态见[0.8.0 验收记录](docs/acceptance-0.8.0.md)。Windows 安装包未签名；macOS 使用临时签名，尚未进行 Apple 公证。
 
-0.7.0 新增稿件导入、离线校对、段落批注与书签，已使用十万字示例完成隔离书库、浏览器、Electron、冻结服务及四平台原生安装包检查。详见 [0.7.0 验收记录](docs/acceptance-v0.7.0.md)。
+0.8.0 新增章节整理、双稿分屏、素材库、外部备份、多套 AI 服务、自定义排版、联网更新、手机写作与自建协作。
 
 ## 功能
 
@@ -40,32 +40,38 @@
 | 书架 | 长篇、短篇分别管理；封面与书名编辑；十款封面模板、图片上传、随机书名；打开每本书的独立文件夹 |
 | 大纲 | 全书、分卷、章节、情节与设定分层；主题分类与搜索；连续阅读；按大纲生成卷章目录 |
 | 人物脉络 | 人物档案、别名、分卷变化与关系；主题分图、阵营分组、关系筛选；与正文双向跳转 |
-| 写作 | 长篇卷章、短篇连续正文；自动保存、全书查找替换、章节改名、专注模式、可调分栏 |
+| 写作 | 长篇卷章、短篇连续正文；自动保存、拖动排序、批量移章、拆分合并、双稿分屏、全书查找替换、专注模式、可调分栏 |
 | 稿件导入 | DOCX / TXT / Markdown 本地预览，调整卷章名、识别策略及编码；确认创建独立书籍，短篇连续正文 |
 | 校对与批注 | 离线规则校对、每书词典；段落批注与命名书签，定位原文、标记解决及重新关联 |
 | 创作工具 | 伏笔状态与未回收筛选；自定义故事时间线；每日目标、写作日历与 7 / 30 天趋势 |
-| 数据保护 | 每本书独立导出、自动备份与历史恢复；正文差异对比、逐段恢复；回收站与删除章节记录 |
-| 排版导出 | Word / EPUB / PDF；封面、目录、卷章样式及纸张字号选择 |
-| AI 辅助 | 大纲与写作对话；可编辑预设提示词和自由提示词；模型列表读取；图片输入与显示；长篇记忆、流式回复与停止生成；书名与封面生成；本机写作 Skill |
-| 桌面体验 | Linux、Windows、macOS 安装包；中英文界面；日夜与护眼模式；Mac 原生窗口按钮及触控板操作 |
+| 数据保护 | 每本书独立导出、本机与外部自动备份、历史恢复；正文差异对比、逐段恢复；回收站与删除章节记录 |
+| 素材与搜索 | 每书保存图片、PDF、文字和网页摘录，关联正文及资料；跨书搜索并跳转原记录 |
+| 排版导出 | Word / EPUB / PDF；封面、目录和可复用模板，自定义纸张、字体、页边距及章节样式 |
+| AI 辅助 | 多套服务配置与实际用量记录；大纲与写作对话；可编辑预设提示词和自由提示词；模型列表读取；图片输入与显示；长篇记忆、流式回复与停止生成；书名与封面生成；本机写作 Skill |
+| 手机与协作 | 手机编辑正文、大纲和人物；可选自建同步、成员邀请、权限与冲突处理 |
+| 桌面体验 | Linux、Windows、macOS 安装包；App 内下载更新与校验；中英文界面；日夜与护眼模式；Mac 原生窗口按钮及触控板操作 |
 
 大纲、人物与正文的关联定位到**章节**，改名和排序后仍保留。姓名匹配与同章提及使用本地规则，供作者核对；人物关系可手动编写，AI 提取结果需确认后采用。
 
-## 0.8.0 发行候选
+## 0.8.0 新功能
 
-源码中的下一版增加章节整理、双稿对照、跨书搜索、素材库、外部备份、多套 AI 配置和用量、排版模板、联网更新，以及手机写作和可自建协作。目前下载链接仍指向已验收的 0.7.0，安装包通过后再切换。进度与边界见[0.8.0 验收记录](docs/acceptance-0.8.0.md)。
-
-| 操作 | 新入口 |
+| 功能 | 入口与行为 |
 | --- | --- |
-| 章节整理、拆分 / 合并、双稿对照、素材库 | 写作工具栏「写作工具」 |
-| 跨书搜索 | 顶栏搜索图标，定位正文或相关资料 |
-| 外部备份 | 设置中的外部备份，选择已有文件夹并启用 |
-| AI 配置和费用 | 设置 → AI 辅助；对话输入框旁切换服务；「AI 用量记录」按作品查看 |
-| 可复用排版模板 | 逐书「导出与备份 → 排版导出」，编辑样式、预览并保存模板 |
-| 联网更新 | 设置 → 联网更新，下载验证后保存并安装；预览版可选 |
-| 手机与协作 | 设置 → 同步与协作，或按[自建说明](docs/self-host-sync.md)运行独立服务 |
+| 外部自动备份 | 设置 → 保存 → 外部备份；选择另一硬盘、移动硬盘或同步目录中的已有文件夹，本机快照独立保留 |
+| 卷章整理 | 写作工具 → 卷章整理；拖动排序、勾选章节后批量移动到其他卷 |
+| 拆分与合并 | 写作工具 → 拆分当前章；合并在卷章整理 → 合并选中。按光标或选区拆分，保留完整原文和关联记录；短篇仍是一篇正文 |
+| 跨书搜索 | 顶栏搜索图标；查找活动作品的正文、大纲、人物、资料与素材摘录，打开原记录 |
+| 双稿分屏 | 写作工具 → 双稿分屏；独立选择和编辑两章、修改章名、调整边界，各自保留滚动与原生撤销 |
+| 素材库 | 写作工具 → 素材库；保存图片、PDF、文字及手动填写的网页摘录，关联章节与资料 |
+| 增强本地校对 | 校对与批注 → 本地校对；新增冗余表达、语句搭配及指代不明提醒，由作者判断 |
+| 多套 AI 服务 | 设置 → AI 服务；保存独立地址、密钥与模型，在对话输入框旁切换服务 |
+| AI 用量记录 | AI 服务 → AI 用量记录；按作品查看服务实际返回的 Token、耗时与按自填单价计算的费用，未知值显示不可用 |
+| 自定义排版模板 | 逐书导出与备份 → 排版导出；设置纸张、页边距、字体、行距和章标题，预览后导出 Word / EPUB / PDF |
+| 联网更新 | 设置 → 安装与升级 → 联网更新；检查、下载、取消和校验对应平台的安装包，保存退出后安装，可选择预览版 |
+| 手机写作 | 手机打开自建服务地址，长篇按章、短篇连续编辑；先保存到本机，再同步到服务 |
+| 自建协作 | 设置 → 同步与协作 → 打开同步设置；本机 / 局域网启动服务，邀请可编辑或只读成员，保留冲突原稿供处理；详见[自建说明](docs/self-host-sync.md) |
 
-外部盘离线时保留待清理记录，不宣称已清除离线副本。手机 PWA 安装与离线启动需要可信 HTTPS，普通局域网 HTTP 可在线写作。多人协作使用定期同步与三方合并，冲突保留原稿；macOS 更新打开验证后的 DMG 安装引导。增强校对仍为有限本地规则，AI 费用仅在实际用量与单价均已知时计算。
+手机 PWA 安装和离线启动需要可信 HTTPS，并先完成一次在线缓存；普通局域网 HTTP 可在线写作。多人协作使用定期同步与三方合并，不提供逐键共同光标。外部盘和其他设备离线时保留待清理记录，彻底删除无法远程擦除离线或已撤销的设备。本地校对不代替完整语义分析，也不自动改写语法。macOS 更新打开验证后的 DMG 安装引导。
 
 ## 0.7.0 新功能入口
 
@@ -92,18 +98,25 @@ Word 仅导入文字、表格文字与标题结构；旧 `.doc`、图片、Word 
 
 ## 界面预览
 
-![0.6.0 长篇写作：卷章目录、正文与创作工具](docs/writing-v0.6.0.png)
+![0.8.0 双稿分屏：独立编辑、卷章目录与可调分栏](docs/split-v0.8.0.png)
 
-上图为 0.6.0 实际界面，使用隔离的十万字示例作品。
-
-[伏笔追踪](docs/foreshadows-v0.6.0.png) · [故事时间线](docs/timeline-v0.6.0.png) · [版本差异](docs/versions-v0.6.0.png) · [写作统计](docs/statistics-v0.6.0.png) · [长篇记忆](docs/memory-v0.6.0.png) · [流式回复](docs/streaming-v0.6.0.png) · [作品大纲侧栏](docs/work-plan-v0.4.14.jpg) · [图片对话](docs/chat-images-v0.4.12.jpg) · [夜间模式](docs/appearance-night-v0.4.11.jpg)
+上图为 0.8.0 实际界面，使用隔离的十万字示例作品。
 
 <details>
-<summary>0.8.0 发行候选：双稿与手机写作</summary>
+<summary>0.8.0 手机写作</summary>
 
-![双稿分屏与独立卷章目录](docs/split-v0.8.0.png)
+![0.8.0 手机正文编辑](docs/mobile-v0.8.0.png)
 
-[手机离线写作实际界面](docs/mobile-v0.8.0.png)。截图来自隔离示例，当前已发布安装包版本以下载区为准。
+截图来自自建服务的手机界面。安装 PWA 和离线启动需要可信 HTTPS。
+
+</details>
+
+<details>
+<summary>历史写作界面与创作工具</summary>
+
+![0.6.0 长篇写作：卷章目录、正文与创作工具](docs/writing-v0.6.0.png)
+
+[伏笔追踪](docs/foreshadows-v0.6.0.png) · [故事时间线](docs/timeline-v0.6.0.png) · [版本差异](docs/versions-v0.6.0.png) · [写作统计](docs/statistics-v0.6.0.png) · [长篇记忆](docs/memory-v0.6.0.png) · [流式回复](docs/streaming-v0.6.0.png) · [作品大纲侧栏](docs/work-plan-v0.4.14.jpg) · [图片对话](docs/chat-images-v0.4.12.jpg) · [夜间模式](docs/appearance-night-v0.4.11.jpg)
 
 </details>
 
@@ -122,24 +135,24 @@ Word 仅导入文字、表格文字与标题结构；旧 `.doc`、图片、Word 
 
 ## 下载与安装
 
-从 [GitHub 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.7.0) 下载对应安装包。0.7.0 已通过四平台原生构建、冻结服务与实际安装包验收。桌面安装包已包含运行环境，使用时无需另外安装 Python 或 Node.js。
+从 [GitHub 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.0) 下载对应安装包。安装包可用状态与各平台检查结果见发行页和[本轮验收记录](docs/acceptance-0.8.0.md)。桌面安装包已包含运行环境，使用时无需另外安装 Python 或 Node.js。
 
-| 平台 | 系统要求 | 0.7.0 安装包 |
+| 平台 | 系统要求 | 0.8.0 安装包 |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ 或兼容 Debian 桌面环境，glibc 2.35+ | [WriterDesk-0.7.0-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11，64 位 | [WriterDesk-0.7.0-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-windows-x64.exe) |
-| Mac · Apple 芯片 | macOS 13+，M 系列芯片 | [WriterDesk-0.7.0-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-mac-arm64.dmg) |
-| Mac · Intel | macOS 13+，Intel 处理器 | [WriterDesk-0.7.0-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ 或兼容 Debian 桌面环境，glibc 2.35+ | [WriterDesk-0.8.0-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11，64 位 | [WriterDesk-0.8.0-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-windows-x64.exe) |
+| Mac · Apple 芯片 | macOS 13+，M 系列芯片 | [WriterDesk-0.8.0-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-mac-arm64.dmg) |
+| Mac · Intel | macOS 13+，Intel 处理器 | [WriterDesk-0.8.0-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-mac-x64.dmg) |
 
-- **Linux：**在下载目录运行 `sudo apt install ./WriterDesk-0.7.0-linux-amd64.deb`，随后从应用菜单打开「作家工作台」。
+- **Linux：**在下载目录运行 `sudo apt install ./WriterDesk-0.8.0-linux-amd64.deb`，随后从应用菜单打开「作家工作台」。
 - **Windows：**运行 EXE，按安装向导选择目录；安装后创建桌面与开始菜单入口。
 - **macOS：**打开 DMG，将 App 拖入 Applications，再从 Applications 启动。
 
 升级前先保存并退出旧版。使用系统安装包的用户，通过相应平台的新版安装包升级；作品保留在独立的用户数据目录。
 
-Linux 另提供便携压缩包 [WriterDesk-0.7.0-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.7.0/WriterDesk-0.7.0-linux-x64.tar.gz)，保留既有用户安装与离线升级方式。0.7.0 保留 0.6.1 对 0.6.0 TAR 文件清单漏项的修复；历史问题与校验记录见 [0.6.1 验收](docs/acceptance-v0.6.1.md)。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
+Linux 另提供便携压缩包 [WriterDesk-0.8.0-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-linux-x64.tar.gz)，保留既有用户安装与离线升级方式。0.8.0 保留 0.6.1 对 0.6.0 TAR 文件清单漏项的修复；历史问题与校验记录见 [0.6.1 验收](docs/acceptance-v0.6.1.md)。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
 
-发行页附带各文件的 SHA256 校验文件和汇总清单。平台签名状态、原生验收范围及 Mac 实机检查项见 [跨平台发行说明](docs/distribution-checklist.md)。Mac 支持双指滚动、人物图平移与捏合缩放，以及保存后返回书架的手势；实体触控板手感仍需实机验收。
+发行页列出各文件的 SHA256 校验文件、汇总清单与平台检查结果。平台签名状态、原生验收范围及 Mac 实机检查项见 [跨平台发行说明](docs/distribution-checklist.md)。Mac 支持双指滚动、人物图平移与捏合缩放，以及保存后返回书架的手势；实体触控板手感仍需实机验收。
 
 ## 快速上手
 
@@ -175,18 +188,21 @@ Linux 另提供便携压缩包 [WriterDesk-0.7.0-linux-x64.tar.gz](https://githu
 | macOS | `~/Library/Application Support/writer-desk/data/writer.sqlite3` |
 | 源码网页版 | 项目目录下的 `data/writer.sqlite3` |
 
-- **逐书备份：**TXT / Markdown 导出活动正文；完整 JSON 包含封面、卷章、大纲、人物、关系、伏笔、时间线、每日目标、已保存长篇记忆及回收内容；0.7.0 还包含每书词典、批注与书签。导入会新建作品，保留现有作品。
+- **逐书备份：**TXT / Markdown 导出活动正文；完整 JSON 包含封面、卷章、大纲、人物、关系、伏笔、时间线、每日目标、已保存长篇记忆及回收内容；完整 v4 JSON 还包含每书词典、批注、书签与内嵌素材。仍可导入 v1–v3；旧版 App 拒绝 v4，避免静默丢失附件。导入会新建作品，保留现有作品。
+- **外部备份：**在设置选择已有目录，App 只管理其中带所有权标记的专有子目录。外部盘离线不阻止写作，待清理记录在重新连接后重试。
 - **作品文件夹：**「打开文件夹」生成该书的 `正文.txt` 和 `作品.yejian.json`，以后随成功保存更新。外部修改过的文件会受保护，外部改动不会自动导入。
 - **历史恢复：**自动备份默认开启，每 5 分钟在成功保存后生成快照，每本书保留最近 20 份，可在设置调整。恢复前先预览，并保留当前版本。
-- **删除与回收：**整本书回收后保留 30 天，到期清理；章节历史显示删除时间，可恢复或确认彻底删除。彻底删除会清理 App 管理的相应副本，自行导出和系统备份不在清理范围内。
+- **删除与回收：**整本书回收后保留 30 天，到期清理；章节历史显示删除时间，可恢复或确认彻底删除。彻底删除会清理 App 管理的对应正文、历史、外部备份和同步副本；不可用的位置保留待清理记录，离线或已撤销设备无法远程擦除。自行导出和系统备份不在清理范围内。
 
-请将重要作品的完整 JSON 另存到其他磁盘。写作活动统计保存在本机数据库，完整 JSON 包含每日目标，未包含活动记录。AI 对话、聊天图片、密钥和本机 Skill 不包含在作品 JSON 中；个人数据库与本机配置不纳入源码发行包。详细恢复与删除规则见 [使用指南](docs/user-guide-zh.md)。
+图片和 PDF 素材随完整 v4 JSON 迁移，正文及排版导出不包含整个素材库。请将重要作品的完整 JSON 另存到其他磁盘。写作活动统计保存在本机数据库，完整 JSON 包含每日目标，未包含活动记录。AI 对话、聊天图片、密钥和本机 Skill 不包含在作品 JSON 中；个人数据库与本机配置不纳入源码发行包。详细恢复与删除规则见 [使用指南](docs/user-guide-zh.md)。
 
 ## 可选 AI 辅助
 
 在「设置 → AI 服务」配置兼容 **Chat Completions** 的 API 基础地址、密钥和模型。支持读取服务的 `/models` 列表，不支持列表的服务可手动填写模型名称。服务地址支持 HTTPS 和本机 HTTP。
 
 大纲与写作页提供右侧流式对话栏，可停止本轮生成，使用预设任务或自由提示词；预设提示词可以修改。生成的大纲、正文、人物关系、章节记忆、书名与封面先预览，再由作者决定采用。长篇记忆默认由本机摘录原文，按相关性选取前文；正文变化后旧摘要标记过期。已勾选的正文资料仍完整发送，不以摘要替换。图片识别和封面生成分别需要服务支持相应的视觉模型与 Images API。
+
+可保存多套服务配置，在对话栏快速切换。用量记录保存提供商实际返回的 Token、耗时和可选费用，不保存提示词与回复；单价及币种由作者填写。
 
 作品资料和图片仅在发送请求时交给所配置的服务；正常写作、保存与本地提及索引无需 AI。上下文默认由模型服务校验，App 不设固定字符上限或自动截断资料。密钥保存在本机独立配置中。
 
@@ -200,6 +216,7 @@ Linux 另提供便携压缩包 [WriterDesk-0.7.0-linux-x64.tar.gz](https://githu
 | --- | --- |
 | 本地浏览器运行 | Python 3.9+，保存服务仅使用标准库 |
 | 桌面开发 | Node.js 22.12+、npm，以及 Python 3.9+ |
+| 自建同步服务 | Python 3.10+，详见[自建同步说明](docs/self-host-sync.md) |
 | 原生安装包构建 | 上述环境、目标平台的构建工具及 `scripts/requirements-build.txt`；推荐 Python 3.12，与原生 CI 一致 |
 
 获取源码：
@@ -265,6 +282,11 @@ writer-desk/
 ├── website/            中英文产品官网（GitHub Pages）
 ├── desktop/            Electron 主进程、桥接与升级器
 ├── server.py           本机 HTTP 服务与 SQLite 保存
+├── collaboration.py    自建同步服务与手机访问
+├── sync_client.py      桌面同步、冲突与删除传播
+├── asset_library.py    每书素材与完整备份校验
+├── external_backups.py 外部自动备份与待清理记录
+├── library_search.py   跨书本地搜索
 ├── protection.py       自动备份与历史恢复
 ├── chapter_history.py  删除章节记录与清理
 ├── manuscript_import.py DOCX / TXT / Markdown 本地稿件导入
@@ -280,7 +302,7 @@ writer-desk/
 └── docs/               使用说明、截图与验收记录
 ```
 
-桌面版由 Electron、原生 JavaScript 界面和 Python 保存服务组成。正文采用纯文本；当前不提供账号、云端同步或多人协作。Word、EPUB、PDF 是逐书排版导出，编辑器本身保持纯文本。
+桌面版由 Electron、原生 JavaScript 界面和 Python 保存服务组成。正文采用纯文本；可选手机写作与协作通过自己在本机或局域网启动的服务完成，无需第三方托管账号。Word、EPUB、PDF 是逐书排版导出，编辑器本身保持纯文本。
 
 ## 文档与反馈
 
@@ -289,7 +311,7 @@ writer-desk/
 - [桌面构建说明](desktop/BUILD.md)：开发环境、平台构建、升级与数据迁移。
 - [跨平台发行说明](docs/distribution-checklist.md)：系统要求、签名状态和 Mac 验收边界。
 - [官网维护](docs/website.md)：本地预览、中英文内容与 GitHub Pages 部署。
-- [0.8.0 发行候选验收](docs/acceptance-0.8.0.md)：章节整理、素材、备份、AI 服务、同步及更新的实现与验证边界。
+- [0.8.0 验收](docs/acceptance-0.8.0.md)：章节整理、素材、备份、AI 服务、同步及更新的实现与验证边界。
 - [自建同步与手机写作](docs/self-host-sync.md)：局域网、HTTPS、手机离线及成员权限。
 - [0.7.0 功能验收](docs/acceptance-v0.7.0.md)：稿件导入、本地校对、批注与书签的示例和测试范围。
 - [0.6.1 打包修正版验收](docs/acceptance-v0.6.1.md)：真实 TAR 安装、固定入口及四平台原生检查。
@@ -300,4 +322,4 @@ writer-desk/
 
 ## 许可证
 
-源代码采用 [MIT License](LICENSE)。作品保存在作者本机，使用本软件不会自动上传或公开正文与资料。第三方界面依赖的许可证见 [public/vendor](public/vendor/README.md)。
+源代码采用 [MIT License](LICENSE)。作品默认保存在作者本机，不公开正文与资料；启用同步或发送 AI 请求时，数据交给作者配置的服务。第三方界面依赖的许可证见 [public/vendor](public/vendor/README.md)。
