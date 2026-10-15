@@ -5,7 +5,12 @@ const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
 const ordered=value=>Array.isArray(value)?value.map(ordered):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,ordered(value[key])])):value;
 
 test('the original 101506 character manuscript, 36 chapters, 32 people and planning examples remain unchanged',()=>{
-  assert.equal(sha(fs.readFileSync(path.join(root,'examples/潮汐档案馆.txt'))),'6aee9103c98a04ea6b79e8184aa372fb9366fc298b716560def609cdd2e9878b');
+  // Git may check out text with CRLF on Windows. Normalize checkout line
+  // endings only; the canonical manuscript content hash stays unchanged.
+  const manuscript=fs.readFileSync(path.join(root,'examples/潮汐档案馆.txt'),'utf8'),canonical=text=>sha(text.replace(/\r\n/g,'\n')),expected='6aee9103c98a04ea6b79e8184aa372fb9366fc298b716560def609cdd2e9878b';
+  assert.equal(canonical(manuscript),expected);
+  assert.equal(canonical(manuscript.replace(/\r\n/g,'\n').replace(/\n/g,'\r\n')),expected);
+  assert.notEqual(canonical(manuscript.replace('沈砚把裁纸刀放下时','沈舟把裁纸刀放下时')),expected,'A changed manuscript character still fails the hash');
   assert.equal(book.chapters.length,36);assert.equal(book.volumes.length,6);assert.equal(book.notes.filter(item=>item.type==='人物').length,32);
   assert.equal(book.chapters.reduce((sum,chapter)=>sum+Array.from(chapter.body).filter(char=>!(/\s/u.test(char))).length,0),101506);
   assert.equal(sha(book.chapters.map(chapter=>chapter.id+'\0'+chapter.title+'\0'+chapter.body+'\0'+chapter.volumeId+'\n').join('')),'74a803a3b9a6fcbe8c0382f837ed03aeda22ec51af7c380f7e21c7459880681b');
