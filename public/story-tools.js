@@ -179,7 +179,6 @@ window.WriterStoryTools = (() => {
     const group = node('section', 'story-tools-links');
     const heading = node('div', 'story-tools-links-heading', translate(label));
     group.append(heading);
-    const active = new Set(items.map(item => item.id));
     const chips = node('div', 'story-tools-link-chips');
     for (const id of record[key]) {
       const item = items.find(candidate => candidate.id === id);
@@ -198,7 +197,7 @@ window.WriterStoryTools = (() => {
       const wrapper = node('label', 'story-tools-link-option'), checkbox = node('input'); checkbox.type = 'checkbox'; checkbox.dataset.linkId = item.id; checkbox.checked = record[key].includes(item.id);
       checkbox.addEventListener('change', () => {
         if (!current()) return;
-        const values = new Set(record[key].filter(id => active.has(id)));
+        const values = new Set(record[key]);
         if (checkbox.checked) values.add(item.id); else values.delete(item.id);
         record[key] = [...values]; changed();
         const replacement = linkSelector(record, key, label, items, itemLabel, jump);
@@ -283,11 +282,11 @@ window.WriterStoryTools = (() => {
     }
     section.append(grid); body.append(section);
   }
-  async function open(next = 'foreshadows') {
+  async function open(next = 'foreshadows', selectedId = null) {
     const book = options?.getBook?.();
     if (!book || !await options.saveNow() || options.getBook() !== book) return false;
     owner = book;
-    ensure(owner); tab = ['foreshadows', 'timeline', 'stats'].includes(next) ? next : 'foreshadows'; selected = null; statsData = null; statsRequest++;
+    ensure(owner); tab = ['foreshadows', 'timeline', 'stats'].includes(next) ? next : 'foreshadows'; selected = selectedId; if(selectedId)statusFilter='all'; statsData = null; statsRequest++;
     initializeDialog(); render(); if (!dialog.open) dialog.showModal(); return true;
   }
   function close() { if (dialog?.open) dialog.close(); else { owner = null; statsRequest++; } }

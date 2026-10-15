@@ -46,6 +46,19 @@ contextBridge.exposeInMainWorld('WriterDesktop', {
     return { version: result.version, dataPath: result.dataPath, ...checkedWindowState(result, true), updateSupported: result.updateSupported === true,
       installPath: typeof result.installPath === 'string' ? result.installPath : '', installedVersion: typeof result.installedVersion === 'string' ? result.installedVersion : '', pendingVersion: typeof result.pendingVersion === 'string' ? result.pendingVersion : '' };
   },
+  chooseBackupDirectory: async () => (await nativeRequest('writer:choose-backup-directory')).path,
+  networkInfo: () => nativeRequest('writer:network-info'),
+  networkCheck: () => nativeRequest('writer:network-check'),
+  networkDownload: () => nativeRequest('writer:network-download'),
+  networkCancel: () => nativeRequest('writer:network-cancel'),
+  networkInstall: () => nativeRequest('writer:network-install'),
+  networkSettings: value => nativeRequest('writer:network-settings', value),
+  onNetworkUpdate: callback => {
+    if (typeof callback !== 'function') throw new TypeError('An update callback is required');
+    const listener = (_event, value) => { if (value && typeof value === 'object' && !Array.isArray(value) && typeof value.phase === 'string') callback(value); };
+    ipcRenderer.on('writer:network-update-state', listener);
+    return () => ipcRenderer.removeListener('writer:network-update-state', listener);
+  },
   installUpdate: () => nativeRequest('writer:install-update'),
   restartAfterUpdate: () => nativeRequest('writer:restart-after-update'),
   performAppAction: async action => checkedWindowState(await nativeRequest('writer:app-action', action)),

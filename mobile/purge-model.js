@@ -1,0 +1,30 @@
+'use strict';
+(function(global){
+  const copy=value=>JSON.parse(JSON.stringify(value));
+  function sanitize(source,identities,remote=null){
+    const book=copy(source),ids=new Set(identities),replacements=new Map(),oldOwner=source.chapters.find(item=>!item.deletedAt);let spans=[];
+    if(book.kind==='short'&&oldOwner&&book.shortSections){
+      const owner=book.chapters.find(item=>item.id===oldOwner.id),body=owner.body;
+      const valid=at=>!(at>0&&at<body.length&&/[\uD800-\uDBFF]/.test(body[at-1])&&/[\uDC00-\uDFFF]/.test(body[at]));
+      for(const section of book.shortSections.filter(item=>ids.has(item.id))){let start=Math.max(0,Math.min(section.start,body.length)),end=Math.max(0,Math.min(section.end,body.length));if(!valid(start))start--;if(!valid(end))end++;if(start<end)spans.push([start,end]);}
+      const merged=[];for(const[start,end]of spans.sort((a,b)=>a[0]-b[0])){if(merged.length&&start<=merged.at(-1)[1])merged.at(-1)[1]=Math.max(end,merged.at(-1)[1]);else merged.push([start,end]);}spans=merged;
+      const adjusted=at=>at-spans.reduce((sum,[start,end])=>sum+(start<at?Math.max(0,Math.min(at,end)-start):0),0);
+      let clean='',last=0;for(const[start,end]of spans){clean+=body.slice(last,start);last=end;}owner.body=clean+body.slice(last);
+      const remaining=book.shortSections.filter(item=>!ids.has(item.id)).map(item=>({...item,start:adjusted(item.start),end:adjusted(item.end)}));
+      if(ids.has(owner.id)&&remaining.length){const occupied=new Set(book.chapters.filter(item=>item!==owner).map(item=>item.id));let next=remaining.find(item=>!occupied.has(item.id)&&!ids.has(item.id))?.id;next||=remote?.chapters.find(item=>!item.deletedAt&&!ids.has(item.id))?.id||book.id.slice(0,70)+'-purged-manuscript';replacements.set(owner.id,next);owner.id=next;}
+      book.shortSections=remaining;
+    }
+    book.chapters=book.chapters.filter(item=>!ids.has(item.id));
+    if(book.shortSections){book.shortSections=book.shortSections.filter(item=>!ids.has(item.id));if(!book.shortSections.length)delete book.shortSections;}
+    if(book.kind==='short'&&!book.chapters.some(item=>!item.deletedAt)){const clean=remote?.chapters.find(item=>!item.deletedAt&&!ids.has(item.id));book.chapters.push(clean?copy(clean):{id:book.id.slice(0,70)+'-purged-manuscript',title:'正文',body:'',volumeId:null,deletedAt:null});}
+    const links=values=>[...new Set((values||[]).filter(value=>replacements.has(value)||!ids.has(value)).map(value=>replacements.get(value)||value))];
+    for(const key of ['notes','outline','relations'])for(const item of book[key]||[])if(item.chapterIds)item.chapterIds=links(item.chapterIds);
+    for(const key of ['foreshadows','timeline'])for(const item of book.storyTools?.[key]||[])item.chapterIds=links(item.chapterIds);
+    if(book.storyMemory)book.storyMemory.entries=book.kind==='short'?[]:(book.storyMemory.entries||[]).filter(item=>!ids.has(item.chapterId));
+    for(const key of ['annotations','bookmarks']){const kept=[];for(const mark of book.reviewTools?.[key]||[]){const old=mark.chapterId,target=replacements.get(old)||old,chapter=book.chapters.find(item=>item.id===target);if((ids.has(old)&&!replacements.has(old))||!chapter)continue;if(spans.length&&old===oldOwner?.id){if(mark.status==='orphaned'||spans.some(([start,end])=>mark.start<end&&mark.end>start)||oldOwner.body.slice(mark.start,mark.end)!==mark.quote)continue;const adjusted=at=>at-spans.reduce((sum,[start,end])=>sum+(start<at?Math.max(0,Math.min(at,end)-start):0),0);mark.start=adjusted(mark.start);mark.end=adjusted(mark.end);}mark.chapterId=target;if(mark.status!=='orphaned'){if(chapter.body.slice(mark.start,mark.end)!==mark.quote){if(spans.length&&old===oldOwner?.id)continue;mark.status='orphaned';mark.prefix='';mark.suffix='';}else{const context=global.ManuscriptMarks?.contextAt(chapter.body,mark.start,mark.end)||{prefix:chapter.body.slice(Math.max(0,mark.start-64),mark.start),suffix:chapter.body.slice(mark.end,mark.end+64)};Object.assign(mark,context);}}kept.push(mark);}if(book.reviewTools)book.reviewTools[key]=kept;}
+    if(book.assetLibrary)book.assetLibrary.items=book.assetLibrary.items.filter(item=>{const touched=(item.chapterIds||[]).some(id=>ids.has(id));item.chapterIds=links(item.chapterIds);return!touched||item.chapterIds.length||(item.noteIds||[]).length;});
+    return book;
+  }
+  function mergeAfterSend(base,remote,local){const missing=Symbol('missing'),conflicts=[];const equal=(a,b)=>a===missing||b===missing?a===b:JSON.stringify(a)===JSON.stringify(b),clone=value=>value===missing?value:copy(value);function merge(a,b,c,path){if(equal(b,c))return clone(b);if(equal(b,a))return clone(c);if(equal(c,a))return clone(b);if([a,b,c].every(value=>value&&typeof value==='object'&&!Array.isArray(value))){const result={};for(const key of new Set([...Object.keys(a),...Object.keys(b),...Object.keys(c)])){const value=merge(key in a?a[key]:missing,key in b?b[key]:missing,key in c?c[key]:missing,path+'/'+key);if(value!==missing)result[key]=value;}return result;}if([a,b,c].every(value=>Array.isArray(value)&&value.every(item=>item&&typeof item.id==='string'))){const maps=[a,b,c].map(value=>new Map(value.map(item=>[item.id,item]))),orders=[a,b,c].map(value=>value.map(item=>item.id)),common=new Set(orders[0].filter(id=>maps[1].has(id)&&maps[2].has(id))),sequences=orders.map(order=>order.filter(id=>common.has(id)));if(!equal(sequences[1],sequences[0])&&!equal(sequences[2],sequences[0])&&!equal(sequences[1],sequences[2]))conflicts.push(path+'/order');const primary=equal(sequences[1],sequences[0])?orders[2]:orders[1],result=[];for(const id of new Set([...primary,...orders[1],...orders[2],...orders[0]])){const value=merge(...maps.map(map=>map.has(id)?map.get(id):missing),path+'/'+id);if(value!==missing)result.push(value);}return result;}conflicts.push(path);return clone(c);}return{book:merge(base,remote,local,''),conflicts};}
+  const model={sanitize,mergeAfterSend};if(typeof module==='object'&&module.exports)module.exports=model;else global.MobilePurge=model;
+})(typeof window==='undefined'?globalThis:window);

@@ -31,6 +31,10 @@ import review_tools
 import manuscript_import
 import story_memory
 import ai_stream
+import asset_library
+import external_backups
+import server_extensions
+from sync_client import SyncError
 from formatted_export import render_book_export
 from ai_service import AIService, AIError
 from chat_images import ChatImageStore
@@ -94,7 +98,7 @@ def new_book(title="未命名作品", kind="long"):
             "volumes": [first_volume(book_id)] if kind == "long" else [], "chapters": [],
             "notes": [], "outline": [], "relations": [],
             "storyTools": planning.defaults(), "storyMemory": story_memory.validate_memory(None),
-            "reviewTools": review_tools.defaults()}
+            "reviewTools": review_tools.defaults(), "assetLibrary": asset_library.defaults()}
     return normalize_short_book(book)
 
 
@@ -159,7 +163,7 @@ def normalize_short_book(book):
         book.pop("shortSections", None)
     aliases = {item["id"] for item in active} | {item["id"] for item in book.get("shortSections", [])}
     recycled = {item["id"] for item in book["chapters"] if item.get("deletedAt")}
-    for item in book.get("notes", []) + book.get("outline", []) + book.get("relations", []):
+    for item in book.get("notes", []) + book.get("outline", []) + book.get("relations", []) + book.get("assetLibrary", {}).get("items", []):
         item["chapterIds"] = list(dict.fromkeys(manuscript["id"] if value in aliases and value not in recycled else value
                                                 for value in item.get("chapterIds", [])))
     planning.remap_short_links(book, aliases, manuscript["id"], recycled)
@@ -189,6 +193,7 @@ def upgrade_book(book):
     book.setdefault("kind", "long")
     book.setdefault("cover", "")
     book.setdefault("coverTemplate", "")
+    book.setdefault("assetLibrary", asset_library.defaults())
     book.setdefault("storyMemory", story_memory.validate_memory(None))
     review_tools.normalize(book)
     legacy_volumes = "volumes" not in book
@@ -300,6 +305,8 @@ def initialize():
                     conn.execute("CREATE TABLE IF NOT EXISTS pending_book_purges(book_id TEXT PRIMARY KEY)")
                     conn.execute("CREATE TABLE IF NOT EXISTS manuscript_import_requests(request_id TEXT PRIMARY KEY,request_hash TEXT NOT NULL,book_id TEXT NOT NULL,created_at TEXT NOT NULL)")
                     protection.initialize(conn)
+                    external_backups.initialize(conn)
+                    conn.execute("CREATE TABLE IF NOT EXISTS sync_tombstones(book_id TEXT PRIMARY KEY,deleted_at TEXT NOT NULL)")
                     chapter_history.initialize(conn)
                     planning.initialize(conn)
                     seeded = conn.execute("SELECT 1 FROM app_migrations WHERE name IN (?,?) LIMIT 1", (INITIAL_LIBRARY_MIGRATION, DEFAULT_EXAMPLE_MIGRATION)).fetchone()
@@ -308,8 +315,7 @@ def initialize():
                         insert_book(conn, sample_short())
                     conn.execute("INSERT OR IGNORE INTO app_migrations(name,applied_at) VALUES(?,?)", (INITIAL_LIBRARY_MIGRATION, now()))
                     install_default_example(conn)
-                cleanup_expired_books()
-                return
+                break
             except sqlite3.OperationalError as exc:
                 # Concurrent first connections can race while enabling WAL,
                 # before BEGIN IMMEDIATE's regular busy timeout takes effect.
@@ -320,6 +326,9 @@ def initialize():
                 if not busy or time.monotonic() >= deadline:
                     raise
                 time.sleep(0.05)
+    # Sync cleanup may hold its own lock and call into this DB. Never keep the
+    # initialization lock while waiting for that cleanup.
+    cleanup_expired_books()
 
 
 def install_default_example(conn):
@@ -584,8 +593,10 @@ def validate_book(data):
     # Migrate aliases and UTF-16 offsets together with old short manuscripts
     # before validating anchors against their final continuous body.
     result["reviewTools"] = copy.deepcopy(data.get("reviewTools", review_tools.defaults()))
+    result["assetLibrary"] = copy.deepcopy(data.get("assetLibrary", asset_library.defaults()))
     normalize_short_book(result)
     review_tools.validate(result)
+    result["assetLibrary"] = asset_library.validate(result, result.get("assetLibrary"))
     if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > MAX_BOOK:
         raise ValueError("单部作品超过 25 MB，请拆分为多部作品")
     return result
@@ -670,7 +681,8 @@ def trash_expiry(deleted_at):
         return None
 
 
-def purge_book_rows(conn, book_id):
+def purge_book_rows(conn, book_id, deleted_at=None):
+    conn.execute("INSERT OR IGNORE INTO sync_tombstones(book_id,deleted_at) VALUES(?,?)", (book_id, deleted_at or now()))
     # The durable job survives crashes or filesystem failures after SQL commits.
     conn.execute("INSERT OR IGNORE INTO pending_book_purges(book_id) VALUES(?)", (book_id,))
     conn.execute("DELETE FROM history WHERE book_id=?", (book_id,))
@@ -681,19 +693,41 @@ def purge_book_rows(conn, book_id):
 
 
 def cleanup_pending_book_purges(book_id=None):
+    completed = []
     with DB_LOCK, connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         rows = conn.execute("SELECT book_id FROM pending_book_purges" + (" WHERE book_id=?" if book_id is not None else ""), (book_id,) if book_id is not None else ()).fetchall()
         for row in rows:
-            # Never clear files for any unexpectedly reintroduced active record.
             if conn.execute("SELECT 1 FROM books WHERE id=?", (row[0],)).fetchone():
                 continue
             try:
                 protection.purge_snapshots(DB_PATH, row[0], validate_book)
                 ChatImageStore(DB_PATH.parent).purge(row[0])
+                if not external_backups.clean_book(conn, row[0], validate_book):
+                    continue
+                AIService(DB_PATH.parent).clear_usage(row[0])
             except (protection.ProtectionError, OSError, AIError):
                 continue
-            conn.execute("DELETE FROM pending_book_purges WHERE book_id=?", (row[0],))
+            removed = conn.execute("SELECT deleted_at FROM sync_tombstones WHERE book_id=?", (row[0],)).fetchone()
+            completed.append((row[0], removed[0] if removed else now()))
+        conn.commit()
+        try:
+            busy = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]
+        except Exception:
+            busy = 1
+    synced = []
+    if not busy:
+        for identity, stamp in completed:
+            try:
+                if server_extensions.forget_book(chapter_history_context(), identity, stamp):
+                    synced.append(identity)
+            except Exception:
+                pass
+    with DB_LOCK, connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        for identity in synced:
+            if not conn.execute("SELECT 1 FROM books WHERE id=?", (identity,)).fetchone():
+                conn.execute("DELETE FROM pending_book_purges WHERE book_id=?", (identity,))
         return bool(conn.execute("SELECT 1 FROM pending_book_purges" + (" WHERE book_id=?" if book_id is not None else "") + " LIMIT 1", (book_id,) if book_id is not None else ()).fetchone())
 
 
@@ -818,7 +852,14 @@ def checkpoint_book(book_id, force=False):
         conn.execute("BEGIN IMMEDIATE")
         row = saved_book_row(conn, book_id)
         require_active_book(row)
-        return protection.checkpoint(conn, DB_PATH, row, validate_book, force=force, reason="manual" if force else "automatic")
+        result = protection.checkpoint(conn, DB_PATH, row, validate_book, force=force, reason="manual" if force else "automatic")
+        try:
+            external_backups.checkpoint(conn, row, book_result(row)["book"], validate_book, force=force)
+        except (OSError, ValueError, protection.ProtectionError):
+            # Commit the successful local checkpoint before surfacing the warning.
+            conn.commit()
+            raise protection.ProtectionError(external_backups.WARNING, 503)
+        return result
 
 
 def protection_route(path):
@@ -1033,7 +1074,7 @@ def sync_folder_files(folder_fd, book_id, book, revision, updated_at, create):
         return digest
 
     previous = {name: check_owned(name) for name in FOLDER_FILES}
-    backup = {"format": "yejian-backup", "version": 3, "exportedAt": updated_at, "book": book}
+    backup = {"format": "yejian-backup", "version": 4, "exportedAt": updated_at, "book": book}
     contents = {FOLDER_FILES[0]: manuscript_text(book).encode("utf-8"),
                 FOLDER_FILES[1]: json.dumps(backup, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"}
     hashes = {name: hashlib.sha256(content).hexdigest() for name, content in contents.items()}
@@ -1140,7 +1181,7 @@ def handle_ai_request(path, data):
     match = re.fullmatch(r"/api/books/([^/]+)/ai(/preview)?", path)
     if not match:
         return None
-    if not isinstance(data, dict) or set(data) - {"action", "chapterIds", "instruction", "skillIds", "skillMode", "chat", "history", "model", "attachments"}:
+    if not isinstance(data, dict) or set(data) - {"action", "chapterIds", "instruction", "skillIds", "skillMode", "chat", "history", "model", "attachments", "profileId"}:
         raise AIError(400, "AI 请求参数不正确。")
     if "model" in data and (not isinstance(data["model"], str) or not data["model"].strip()):
         raise AIError(400, "模型名称格式不正确或过长。")
@@ -1173,7 +1214,7 @@ def handle_ai_request(path, data):
     service.chat_image_guard = guard_chat_images
     operation = service.preview if match.group(2) else service.run
     # Never hold a database transaction while waiting for an external service.
-    result = operation(book, data.get("action"), short_chapter_ids(book, data.get("chapterIds")), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"), chat=data.get("chat", False), history=data.get("history"), model=data.get("model"), attachments=data.get("attachments"))
+    result = operation(book, data.get("action"), short_chapter_ids(book, data.get("chapterIds")), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"), chat=data.get("chat", False), history=data.get("history"), model=data.get("model"), attachments=data.get("attachments"), profile_id=data.get("profileId"))
     if result.get("images"):
         # A book can be purged while a provider is responding. Never leave the
         # late response's pictures behind after its durable cleanup has run.
@@ -1248,6 +1289,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = unquote(urlparse(self.path).path)
         try:
+            extension = server_extensions.handle(chapter_history_context(), "GET", self.path)
+            if extension is not None:
+                self.send_json(extension)
+                return
             image = read_chat_image(path)
             if image is not None:
                 self.send_bytes(image[0], content_type=image[1])
@@ -1326,8 +1371,10 @@ class Handler(BaseHTTPRequestHandler):
                 files["/chapter-history.js"] = "chapter-history.js"
                 files["/chapter-history.css"] = "chapter-history.css"
                 files["/content-cleanup.js"] = "content-cleanup.js"
-                for resource in ("story-tools.js", "story-tools.css", "story-memory.js", "ai-stream.js", "formatted-export.js", "formatted-export.css", "book-search.js", "version-diff.js", "revision-tools.css", "manuscript-import.js", "manuscript-import.css", "local-proofreading-model.js", "local-proofreading.js", "local-proofreading.css", "manuscript-marks.js", "manuscript-marks.css", "review-entry.js"):
+                for resource in ("workspace-expansion.js", "editor-tools.js", "editor-tools.css", "asset-library.js", "asset-library.css", "external-backups.js", "external-backups.css", "sync-panel.js", "sync-panel.css", "network-updater.js", "network-updater.css", "story-tools.js", "story-tools.css", "story-memory.js", "ai-stream.js", "formatted-export.js", "formatted-export.css", "book-search.js", "version-diff.js", "revision-tools.css", "manuscript-import.js", "manuscript-import.css", "local-proofreading-model.js", "local-proofreading.js", "local-proofreading.css", "manuscript-marks.js", "manuscript-marks.css", "review-entry.js"):
                     files["/" + resource] = resource
+                files['/purge-model.js'] = '../mobile/purge-model.js'
+                files['/live-sync.js'] = 'live-sync.js'
                 filename = files.get(path)
                 if not filename:
                     self.send_json({"error": "找不到这个页面"}, 404)
@@ -1335,10 +1382,12 @@ class Handler(BaseHTTPRequestHandler):
                 content = (ROOT / "public" / filename).read_bytes()
                 content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
                 self.send_bytes(content, content_type=content_type + ("; charset=utf-8" if filename.endswith((".html", ".css", ".js", ".svg")) else ""))
-        except (AIError, SkillError) as exc:
+        except (AIError, SkillError, SyncError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
             self.send_json({"error": str(exc), "conflict": exc.conflict, **({"deleted": True} if getattr(exc, "deleted", False) else {})}, exc.status)
+        except (ValueError, TypeError) as exc:
+            self.send_json({"error": str(exc)}, 400)
         except Exception as exc:
             print(f"读取失败: {exc}", file=sys.stderr)
             self.send_json({"error": "读取失败，原有文件仍保留在本机"}, 500)
@@ -1347,6 +1396,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            extension = server_extensions.handle(chapter_history_context(), "POST", self.path, data)
+            if extension is not None:
+                self.send_json(extension)
+                return
             if path in ("/api/manuscript-import/preview", "/api/manuscript-import/commit"):
                 committing = path.endswith("/commit")
                 preview = prepare_manuscript_request(data, committing)
@@ -1409,8 +1462,8 @@ class Handler(BaseHTTPRequestHandler):
                 book["cover"] = checked_cover(data.get("cover", ""))
                 book["coverTemplate"] = checked_cover_template(data.get("coverTemplate", ""))
             elif path == "/api/import":
-                if not isinstance(data, dict) or data.get("format") != "yejian-backup" or type(data.get("version")) is not int or data.get("version") not in (1, 2, 3):
-                    raise ValueError("请选择作家工作台导出的完整备份文件（v1、v2 或 v3）")
+                if not isinstance(data, dict) or data.get("format") != "yejian-backup" or type(data.get("version")) is not int or data.get("version") not in (1, 2, 3, 4):
+                    raise ValueError("请选择作家工作台导出的完整备份文件（v1 至 v4）")
                 book = restore_book(data.get("book"))
             elif path == "/api/examples/tide-archive":
                 example = ROOT / "examples" / "tide-archive.yejian.json"
@@ -1432,10 +1485,10 @@ class Handler(BaseHTTPRequestHandler):
             result = {"book": book, "revision": 1, "updatedAt": now()}
             try:
                 checkpoint_book(book["id"])
-            except Exception:
-                result["protectionWarning"] = protection.WARNING
+            except Exception as exc:
+                result["protectionWarning"] = external_backups.WARNING if str(exc) == external_backups.WARNING else protection.WARNING
             self.send_json(result, 201)
-        except (AIError, SkillError) as exc:
+        except (AIError, SkillError, SyncError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
             self.send_json({"error": str(exc), "conflict": exc.conflict, **({"deleted": True} if getattr(exc, "deleted", False) else {})}, exc.status)
@@ -1449,10 +1502,30 @@ class Handler(BaseHTTPRequestHandler):
             print(f"新建失败: {exc}", file=sys.stderr)
             self.send_json({"error": "无法写入本机，请检查磁盘空间后重试"}, 500)
 
+    def do_DELETE(self):
+        try:
+            data = self.read_json()
+            result = server_extensions.handle(chapter_history_context(), "DELETE", self.path, data)
+            self.send_json(result if result is not None else {"error": "找不到这个操作"}, 200 if result is not None else 404)
+        except (AIError, SkillError, SyncError) as exc:
+            self.send_json({"error": exc.message}, exc.status)
+        except protection.ProtectionError as exc:
+            self.send_json({"error": str(exc)}, exc.status)
+        except (ValueError, TypeError) as exc:
+            self.send_json({"error": str(exc)}, 400)
+        except PermissionError as exc:
+            self.send_json({"error": str(exc)}, 403)
+        except Exception:
+            self.send_json({"error": "无法完成删除，请重试。"}, 500)
+
     def do_PUT(self):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            extension = server_extensions.handle(chapter_history_context(), "PUT", self.path, data)
+            if extension is not None:
+                self.send_json(extension)
+                return
             if path == "/api/skills/settings":
                 self.send_json(SkillsService(DB_PATH.parent).save_settings(data))
                 return
@@ -1468,7 +1541,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "找不到这个操作"}, 404)
                 return
             book_id = path[len("/api/books/"):]
-            if data.get("saveReason", "edit") not in ("edit", "restore"):
+            if data.get("saveReason", "edit") not in ("edit", "restore", "structure"):
                 raise ValueError("保存类型不正确")
             book = validate_book(data.get("book"))
             if book["id"] != book_id or type(data.get("revision")) is not int:
@@ -1488,14 +1561,18 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 stamp = now()
                 preserve_history(conn, row, stamp)
-                if data.get("saveReason") != "restore":
-                    planning.record_save(conn, json.loads(row["payload"]), book, stamp)
+                before = json.loads(row["payload"])
+                def words(value):
+                    return sum(sum(not c.isspace() for c in item["body"]) for item in value["chapters"] if not item.get("deletedAt"))
+                relocated = data.get("saveReason") == "structure" and words(before) == words(book)
+                if data.get("saveReason") != "restore" and not relocated:
+                    planning.record_save(conn, before, book, stamp)
                 conn.execute("UPDATE books SET title=?,payload=?,revision=revision+1,updated_at=? WHERE id=?", (book["title"], json.dumps(book, ensure_ascii=False), stamp, book_id))
             result = {"revision": row["revision"] + 1, "updatedAt": stamp}
             try:
                 checkpoint_book(book_id)
-            except Exception:
-                result["protectionWarning"] = protection.WARNING
+            except Exception as exc:
+                result["protectionWarning"] = external_backups.WARNING if str(exc) == external_backups.WARNING else protection.WARNING
             try:
                 sync_book_folder(book_id)
             except Exception as exc:
@@ -1505,7 +1582,7 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, ValueError):
                     pass  # Logging cannot invalidate an already committed save.
             self.send_json(result)
-        except (AIError, SkillError) as exc:
+        except (AIError, SkillError, SyncError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
             self.send_json({"error": str(exc), "conflict": exc.conflict, **({"deleted": True} if getattr(exc, "deleted", False) else {})}, exc.status)
@@ -1587,6 +1664,7 @@ def main():
         cleanup_stop.set()
         cleanup_worker.join(timeout=1)
         server.server_close()
+        server_extensions.close()
 
 
 if __name__ == "__main__":

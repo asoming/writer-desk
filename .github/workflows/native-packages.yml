@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Package version from package.json (for example 0.7.0)
+        description: Package version from package.json (for example 0.8.0)
         required: true
         type: string
 
@@ -74,11 +74,17 @@ jobs:
         run: |
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/editor-layout-electron.cjs --report dist/editor-layout-regression.json
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/review-jump-electron.cjs --report dist/review-jump-regression.json
+          xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/editor-tools-electron.cjs --report dist/editor-tools-regression.json
+          xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/formatted-export-electron.cjs --report dist/formatted-export-regression.json
+          xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/expansion-workflow-electron.cjs --report dist/expansion-workflow-regression.json
       - name: Real editor typing and IME regression on Windows and macOS
         if: runner.os != 'Linux'
         run: |
           node node_modules/electron/cli.js tests/editor-layout-electron.cjs --report dist/editor-layout-regression.json
           node node_modules/electron/cli.js tests/review-jump-electron.cjs --report dist/review-jump-regression.json
+          node node_modules/electron/cli.js tests/editor-tools-electron.cjs --report dist/editor-tools-regression.json
+          node node_modules/electron/cli.js tests/formatted-export-electron.cjs --report dist/formatted-export-regression.json
+          node node_modules/electron/cli.js tests/expansion-workflow-electron.cjs --report dist/expansion-workflow-regression.json
       - name: Native storage and lifecycle regression tests
         run: python scripts/test-native.py
       - name: Linux desktop and updater contracts
@@ -90,6 +96,8 @@ jobs:
         run: node scripts/build-native.cjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
       - name: Frozen manuscript import and review workflow
         run: python -c "import pathlib, subprocess, sys; service = pathlib.Path('build/backend') / ('writer-service.exe' if sys.platform == 'win32' else 'writer-service'); subprocess.run([sys.executable, 'tests/verify_review_workflow.py', '--service', str(service.resolve())], check=True)"
+      - name: Frozen workspace expansion and synchronization routes
+        run: python -c "import pathlib, subprocess, sys; service = pathlib.Path('build/backend') / ('writer-service.exe' if sys.platform == 'win32' else 'writer-service'); subprocess.run([sys.executable, 'tests/verify_extensions_api.py', '--service', str(service.resolve())], check=True)"
       - name: Verify actual installer on Linux
         if: runner.os == 'Linux'
         run: xvfb-run -a python scripts/verify-installer.py
@@ -111,6 +119,9 @@ jobs:
             dist/installer-smoke.json
             dist/editor-layout-regression.json
             dist/review-jump-regression.json
+            dist/editor-tools-regression.json
+            dist/formatted-export-regression.json
+            dist/expansion-workflow-regression.json
             dist/linux-tar-verification.json
       - name: Upload failed native diagnostics
         if: failure()
@@ -125,6 +136,9 @@ jobs:
             dist/linux-tar-*.log
             dist/editor-layout-regression.json
             dist/review-jump-regression.json
+            dist/editor-tools-regression.json
+            dist/formatted-export-regression.json
+            dist/expansion-workflow-regression.json
             dist/builder-debug.yml
             build/backend/build-info.json
 

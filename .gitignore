@@ -8,3 +8,5 @@ dist/
 npm-debug.log
 *.sqlite3*
 *.log
+
+.playwright-cli/

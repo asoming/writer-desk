@@ -14,8 +14,10 @@ import stat
 
 import protection
 import planning
+import asset_library
+import external_backups
 
-PENDING_WARNING = "章节已从稿件和历史版本中删除，但本机副本清理尚未完成，将在后台重试。"
+PENDING_WARNING = "章节已从稿件和历史版本中删除，但备份或同步副本清理尚未完成，将在后台重试。"
 FOLDER_WARNING = "作品文件夹中的文件已被手动修改或无法确认归属。请先移走或删除这些文件，再彻底删除章节。"
 CONFLICT = "作品已在另一个窗口更新，请刷新历史记录后重试。"
 FOLDER_TEMP = re.compile(r"\.writer-desk-[a-f0-9]{32}\.tmp\Z")
@@ -100,6 +102,17 @@ def sanitize(book, chapter_ids):
         return result
     replacements = _short_ranges(result, chapter_ids) if result.get("kind") == "short" else {}
     result["chapters"] = [item for item in result.get("chapters", []) if item["id"] not in chapter_ids]
+    if result.get("kind") == "short" and not any(not item.get("deletedAt") for item in result["chapters"]):
+        # The continuous short manuscript must have an owner, but never reuse
+        # an ID whose content has just been permanently removed. A stable ID
+        # also keeps repeated cleanup of old snapshots deterministic.
+        occupied = set(chapter_ids) | {item["id"] for item in result["chapters"]}
+        prefix = result["id"][:70] + "-manuscript"
+        suffix = hashlib.sha256("\0".join(sorted(chapter_ids)).encode()).hexdigest()[:12]
+        identity = prefix + "-" + suffix
+        while identity in occupied:
+            identity += "x"
+        result["chapters"].append({"id": identity, "title": "正文", "body": "", "volumeId": None, "deletedAt": None})
     if "shortSections" in result:
         result["shortSections"] = [item for item in result["shortSections"] if item["id"] not in chapter_ids]
         if not result["shortSections"]:
@@ -121,7 +134,11 @@ def sanitize(book, chapter_ids):
             memory["entries"] = []
     result = planning.sanitize(result, chapter_ids, replacements)
     import review_tools
-    return review_tools.sanitize(result, chapter_ids, replacements, before=book)
+    result = review_tools.sanitize(result, chapter_ids, replacements, before=book)
+    # Preserve links to remaining text after a legacy short-story merge.
+    for item in result.get("assetLibrary", {}).get("items", []):
+        item["chapterIds"] = [replacements.get(value, value) for value in item.get("chapterIds", [])]
+    return asset_library.sanitize(result, chapter_ids)
 
 
 def valid_date(value):
@@ -237,7 +254,7 @@ def folder_temporaries(srv, folder, book_id, manifest, remove=False):
         if not owned:
             try:
                 value = json.loads(raw)
-                if (value.get("format") == "yejian-backup" and value.get("version") == 3
+                if (value.get("format") == "yejian-backup" and value.get("version") in (3, 4)
                         and set(value) == {"format", "version", "exportedAt", "book"}
                         and isinstance(value.get("exportedAt"), str)):
                     owned = srv.validate_book(value.get("book"))["id"] == book_id
@@ -270,7 +287,7 @@ def cleanup(srv, book_id=None):
         conn.execute("BEGIN IMMEDIATE")
         query = "SELECT book_id,images_cleared FROM pending_chapter_purges" + (" WHERE book_id=?" if book_id is not None else "")
         rows = conn.execute(query, (book_id,) if book_id is not None else ()).fetchall()
-        completed = []
+        completed = {}
         for job in rows:
             identity = job[0]
             row = conn.execute("SELECT * FROM books WHERE id=?", (identity,)).fetchone()
@@ -283,6 +300,8 @@ def cleanup(srv, book_id=None):
             try:
                 check_folder(srv, identity)
                 protection.rewrite_snapshots(srv.DB_PATH, identity, srv.validate_book, lambda value: sanitize(value, ids))
+                if not external_backups.clean_book(conn, identity, srv.validate_book, lambda value: sanitize(value, ids)):
+                    raise protection.ProtectionError(external_backups.WARNING, 503)
                 if os.path.lexists(srv.book_folder_path(identity)):
                     with srv.book_folder_directory(identity, False) as (folder, _):
                         if folder is not None:
@@ -298,7 +317,7 @@ def cleanup(srv, book_id=None):
                 # Never log payloads, local filenames or authored text. The
                 # job is retained across shutdown and retried at startup.
                 continue
-            completed.append(identity)
+            completed[identity] = ids
         # SQL was written with secure_delete. A successful checkpoint also
         # removes superseded payloads from the application's live WAL file.
         conn.commit()
@@ -306,9 +325,21 @@ def cleanup(srv, book_id=None):
             busy = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]
         except Exception:
             busy = 1
-        if not busy:
-            for identity in completed:
-                conn.execute("DELETE FROM pending_chapter_purges WHERE book_id=?", (identity,))
+    # A sync callback acquires DB_LOCK while holding the sync lock. Release
+    # this DB transaction before touching sync caches or contacting the hub.
+    synced = []
+    if not busy:
+        for identity, ids in completed.items():
+            try:
+                if srv.server_extensions.sanitize_chapters(srv, identity, ids):
+                    synced.append(identity)
+            except Exception:
+                pass  # Keep the durable job for offline/revoked spaces.
+    with srv.DB_LOCK, srv.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        for identity in synced:
+            if purged_ids(conn, identity) == completed[identity]:
+                conn.execute("DELETE FROM pending_chapter_purges WHERE book_id=? AND images_cleared=1", (identity,))
         pending_query = "SELECT book_id FROM pending_chapter_purges" + (" WHERE book_id=?" if book_id is not None else "") + " ORDER BY book_id"
         return [row[0] for row in conn.execute(pending_query, (book_id,) if book_id is not None else ())]
 

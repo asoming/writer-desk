@@ -31,7 +31,7 @@ window.WriterChapterHistory=(()=>{
       if(!Array.isArray(result.chapters)||result.chapters.some(record=>!validRecord(record)))throw new Error(T('历史记录无效，请重试。'));
       content.replaceChildren();
       if(state.book&&typeof showHistory==='function')content.append(action(T('历史版本与差异对比'),'secondary-button',()=>{if(current())showHistory(state.book.id);}));
-      if(result.cleanupPendingBooks?.length||pendingCopies.size){const pending=el('div','chapter-history-pending');pending.append(el('p','dialog-description',T('部分本机副本尚未清理完成，作家工作台会继续重试。')),action(T('重试'),'secondary-button',()=>retryCleanup(current)));content.append(pending);}
+      if(result.cleanupPendingBooks?.length||pendingCopies.size){const pending=el('div','chapter-history-pending');pending.append(el('p','dialog-description',T('部分备份或同步副本尚未清理完成，作家工作台会继续重试。')),action(T('重试'),'secondary-button',()=>retryCleanup(current)));content.append(pending);}
       if(!result.chapters.length){content.append(el('p','empty-hint',T('暂无删除的章节。')));return true;}
       const groups=new Map();
       result.chapters.forEach(record=>{if(!groups.has(record.bookId))groups.set(record.bookId,[]);groups.get(record.bookId).push(record);});
@@ -108,7 +108,7 @@ window.WriterChapterHistory=(()=>{
         try{await refreshBooks();}catch(error){toast(error.message);}renderShell();
         if(cleanupError)toast(cleanupError.message);
         else if(lateWarning)toast(lateWarning.message);
-        else if(result.cleanupPending)toast(T('章节已删除，本机备份清理尚未完成，请稍后重试。'));
+        else if(result.cleanupPending)toast(T('章节已删除，备份或同步清理尚未完成，请稍后重试。'));
         else if(result.cleanupWarning)toast(T(result.cleanupWarning));
         else toast(T(operation==='purge'?'章节已彻底删除。':'已恢复，原有关联也会保留。'));
         return true;

@@ -11,9 +11,9 @@ window.WriterContentCleanup=(()=>{
     if(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(key.slice(prefix.length)))return true;
     try{return JSON.parse(clientStorage.getItem(key))?.book?.id===bookId;}catch{return false;}
   }
-  function clear(bookId,purgedAt){
+  function clear(bookId,purgedAt,force=false){
     if(typeof bookId!=='string'||!bookId||typeof purgedAt!=='string'||!Number.isFinite(Date.parse(purgedAt)))throw new Error(T('章节清理记录无效。'));
-    if(clientStorage.getItem(marker(bookId))===purgedAt)return;
+    if(!force&&clientStorage.getItem(marker(bookId))===purgedAt)return;
     if(typeof clearAIChatBookHistory==='function')clearAIChatBookHistory(bookId);
     if(typeof clientStorage.clearBookContent==='function')clientStorage.clearBookContent(bookId,purgedAt);
     else{
@@ -25,6 +25,7 @@ window.WriterContentCleanup=(()=>{
     const result=await api('/api/history/chapter-purges');
     if(!Array.isArray(result.purges))throw new Error(T('章节清理记录无效。'));
     for(const item of result.purges)clear(item.bookId,item.purgedAt);
+    if(window.WriterLiveSync)await window.WriterLiveSync.refresh();
   }
   return{clear,sync};
 })();

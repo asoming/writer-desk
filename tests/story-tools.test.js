@@ -155,4 +155,10 @@ check('keyboard tab navigation exposes a single selected tab', async () => {
   const h = harness(); await h.module.open(); const tab = h.find('伏笔追踪'); await tab.dispatch('keydown', {key: 'ArrowRight', preventDefault() {}});
   assert.ok(h.find('+ 新建事件')); const selected = h.all().filter(item => item.attributes['aria-selected'] === 'true'); assert.equal(selected.length, 1); assert.equal(selected[0].textContent, '故事时间线');
 });
+check('editing visible links retains recycled chapter and character associations for later restore', async () => {
+  const initial = book(); initial.chapters.push({id:'recycled-chapter',title:'旧章',body:'旧正文',deletedAt:'2026-10-15T00:00:00Z'});initial.notes.push({id:'recycled-person',type:'人物',title:'旧人物',deletedAt:'2026-10-15T00:00:00Z'});
+  initial.storyTools.foreshadows.push({id:'retained-hint',title:'保留关联',body:'原说明',status:'planted',chapterIds:['recycled-chapter'],personIds:['recycled-person']});const h=harness(initial);await h.module.open();
+  assert.ok(!h.find('旧章 ↗'));assert.ok(!h.find('旧人物 ↗'));let checks=h.all().filter(item=>item.tagName==='INPUT'&&item.type==='checkbox');checks[0].checked=true;await checks[0].dispatch('change');checks=h.all().filter(item=>item.tagName==='INPUT'&&item.type==='checkbox');checks[1].checked=true;await checks[1].dispatch('change');
+  const record=initial.storyTools.foreshadows[0];assert.deepEqual([...record.chapterIds],['recycled-chapter','one-chapter']);assert.deepEqual([...record.personIds],['recycled-person','one-person']);assert.equal(initial.chapters[1].deletedAt,'2026-10-15T00:00:00Z');assert.equal(record.body,'原说明');
+});
 (async () => { for (const test of tests) { await test.run(); console.log('PASS ' + test.name); } console.log(tests.length + ' story tool groups passed.'); })().catch(error => { console.error(error); process.exitCode = 1; });

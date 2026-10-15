@@ -4,6 +4,9 @@ Credentials live outside book data. This module never writes manuscripts and
 never forwards provider error bodies (which may contain secrets or source text).
 """
 import json
+import copy
+import time
+import uuid
 import base64
 import binascii
 from contextlib import nullcontext
@@ -11,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import sqlite3
 import tempfile
 import threading
 import urllib.error
@@ -20,6 +24,7 @@ import zlib
 from skills import SkillsService, SkillError
 from chat_images import ChatImageStore, MAX_IMAGES_PER_MESSAGE, MAX_CHAT_IMAGE_BYTES, decode_image, image_name
 from story_memory import select_memory, source_hash
+from ai_usage import UsageLedger, usage_checked, pricing_checked
 
 
 class AIError(Exception):
@@ -34,7 +39,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         raise AIError(502, "AI 服务要求重定向，已停止请求。请填写最终服务地址。")
 
 
-DEFAULTS = {"enabled": False, "endpoint": "", "model": "", "imageModel": "", "contextMode": "auto", "maxContextChars": 250000, "timeoutSeconds": 60}
+DEFAULTS = {"enabled": False, "endpoint": "", "model": "", "imageModel": "", "contextMode": "auto", "maxContextChars": 250000, "timeoutSeconds": 60, "requestStreamUsage": False}
 RELATION_TYPES = {"friend", "mentor", "family", "conflict", "cooperate", "fate", "other"}
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_OUTPUT_CHARS = 100000
@@ -199,15 +204,16 @@ class AIService:
         self.lock = _CONFIG_LOCK
         self.chat_image_guard = None
         self.request_cancelled = None
+        self._usage_context = threading.local()
 
     def _read(self):
         if not self.path.exists() and not self.path.is_symlink():
-            return {**DEFAULTS, "apiKey": ""}
+            return {**DEFAULTS, "apiKey": "", "id": "default", "name": "默认服务", "pricing": pricing_checked(), "activeProfileId": "default", "profiles": [{**DEFAULTS, "apiKey": "", "id": "default", "name": "默认服务", "pricing": pricing_checked()}]}
         try:
             fd = os.open(self.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             with os.fdopen(fd, "r", encoding="utf-8") as handle:
                 info = os.fstat(handle.fileno())
-                if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
+                if not stat.S_ISREG(info.st_mode) or info.st_size > 1048576:
                     raise ValueError("invalid settings file")
                 if os.name != "nt":
                     os.fchmod(handle.fileno(), 0o600)
@@ -219,6 +225,19 @@ class AIService:
                 settings["contextMode"] = "auto" if settings["maxContextChars"] == 250000 else "manual"
             if settings["contextMode"] not in {"auto", "manual"} or type(settings["maxContextChars"]) is not int or not 1 <= settings["maxContextChars"] <= MAX_CONTEXT_CHARS:
                 raise ValueError("invalid context settings")
+            profiles = settings.get("profiles")
+            if profiles is None:
+                profiles = [{**{key: settings[key] for key in DEFAULTS}, "apiKey": settings.get("apiKey", ""), "id": "default", "name": "默认服务", "pricing": pricing_checked()}]
+            if not isinstance(profiles, list) or not 1 <= len(profiles) <= 30 or any(not isinstance(profile, dict) for profile in profiles):
+                raise ValueError("invalid profiles")
+            ids = [profile.get("id") for profile in profiles]
+            if any(not isinstance(id_, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", id_) for id_ in ids) or len(set(ids)) != len(ids):
+                raise ValueError("invalid profile ids")
+            active = settings.get("activeProfileId", ids[0])
+            selected = next((profile for profile in profiles if profile["id"] == active), None)
+            if selected is None:
+                raise ValueError("missing active profile")
+            settings.update({**DEFAULTS, **selected, "profiles": profiles, "activeProfileId": active})
             return settings
         except (OSError, ValueError, TypeError):
             raise AIError(500, "无法读取本机 AI 设置，请检查文件权限。") from None
@@ -226,15 +245,22 @@ class AIService:
     def get_settings(self):
         with self.lock:
             value = self._read()
-        return {**{key: value[key] for key in DEFAULTS}, "hasKey": bool(value.get("apiKey"))}
+        def public(profile):
+            return {**{key: profile.get(key, DEFAULTS[key]) for key in DEFAULTS}, "id": profile["id"], "name": profile.get("name", "默认服务"), "pricing": pricing_checked(profile.get("pricing")), "hasKey": bool(profile.get("apiKey"))}
+        return {**public(value), "activeProfileId": value["activeProfileId"], "profiles": [public(profile) for profile in value["profiles"]]}
 
     def save_settings(self, data):
-        if not isinstance(data, dict) or set(data) - set(DEFAULTS) - {"apiKey", "clearKey"}:
+        if not isinstance(data, dict) or set(data) - set(DEFAULTS) - {"apiKey", "clearKey", "profileId", "name", "pricing"}:
             raise AIError(400, "AI 设置参数不正确。")
         with self.lock:
             current = self._read()
-            value = {key: data.get(key, current[key]) for key in DEFAULTS}
-            if not isinstance(value["enabled"], bool) or not isinstance(data.get("clearKey", False), bool):
+            profile_id = data.get("profileId", current["activeProfileId"])
+            selected = next((profile for profile in current["profiles"] if profile["id"] == profile_id), None)
+            if selected is None:
+                raise AIError(404, "找不到这个 AI 服务配置。")
+            previous = {**DEFAULTS, **selected}
+            value = {key: data.get(key, previous[key]) for key in DEFAULTS}
+            if not isinstance(value["enabled"], bool) or not isinstance(value["requestStreamUsage"], bool) or not isinstance(data.get("clearKey", False), bool):
                 raise AIError(400, "AI 开关参数不正确。")
             value["endpoint"] = _endpoint(value["endpoint"])
             value["model"] = _text(value["model"], 200, "模型名称").strip()
@@ -247,28 +273,120 @@ class AIService:
             key = _text(data.get("apiKey", ""), 8192, "API Key").strip()
             if any(ord(char) < 32 or ord(char) == 127 for char in key):
                 raise AIError(400, "API Key 不能包含控制字符。")
-            value["apiKey"] = "" if data.get("clearKey") else key or current.get("apiKey", "")
-            self.data_dir.mkdir(parents=True, exist_ok=True)
-            temp_name = None
+            value["apiKey"] = "" if data.get("clearKey") else key or previous.get("apiKey", "")
+            name = _text(data.get("name", previous.get("name", "默认服务")), 100, "服务名称", True)
             try:
-                fd, temp_name = tempfile.mkstemp(prefix=".ai-settings-", dir=self.data_dir)
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    if os.name != "nt":
-                        os.fchmod(handle.fileno(), 0o600)
-                    json.dump(value, handle, ensure_ascii=False)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temp_name, self.path)
-            except OSError:
-                raise AIError(500, "无法保存本机 AI 设置，请检查磁盘与权限。") from None
-            finally:
-                if temp_name and os.path.exists(temp_name):
-                    os.unlink(temp_name)
+                pricing = pricing_checked(data.get("pricing", previous.get("pricing")))
+            except ValueError as error:
+                raise AIError(400, str(error)) from None
+            profile = {**value, "id": profile_id, "name": name, "pricing": pricing}
+            value.update({"id": profile_id, "name": name, "pricing": pricing, "activeProfileId": profile_id,
+                          "profiles": [profile if item["id"] == profile_id else item for item in current["profiles"]]})
+            self._write_settings(value)
         return self.get_settings()
 
-    def _configured(self, enabled=True, image=False):
+    def _write_settings(self, value):
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        temp_name = None
+        try:
+            fd, temp_name = tempfile.mkstemp(prefix=".ai-settings-", dir=self.data_dir)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                if os.name != "nt":
+                    os.fchmod(handle.fileno(), 0o600)
+                json.dump(value, handle, ensure_ascii=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, self.path)
+        except OSError:
+            raise AIError(500, "无法保存本机 AI 设置，请检查磁盘与权限。") from None
+        finally:
+            if temp_name and os.path.exists(temp_name):
+                os.unlink(temp_name)
+
+    def create_profile(self, data):
+        if not isinstance(data, dict) or set(data) - {"name"}:
+            raise AIError(400, "AI 服务配置参数不正确。")
+        name = _text(data.get("name", "新服务"), 100, "服务名称", True)
         with self.lock:
-            settings = self._read()
+            current = self._read()
+            if len(current["profiles"]) >= 30:
+                raise AIError(400, "最多保存 30 套 AI 服务配置。")
+            profile = {**DEFAULTS, "apiKey": "", "id": uuid.uuid4().hex, "name": name, "pricing": pricing_checked()}
+            self._write_settings({**profile, "activeProfileId": profile["id"], "profiles": [*current["profiles"], profile]})
+        return self.get_settings()
+
+    def delete_profile(self, profile_id):
+        with self.lock:
+            current = self._read()
+            profiles = [profile for profile in current["profiles"] if profile["id"] != profile_id]
+            if len(profiles) == len(current["profiles"]):
+                raise AIError(404, "找不到这个 AI 服务配置。")
+            if not profiles:
+                raise AIError(400, "至少保留一套 AI 服务配置。")
+            active = next((profile for profile in profiles if profile["id"] == current["activeProfileId"]), profiles[0])
+            self._write_settings({**active, "activeProfileId": active["id"], "profiles": profiles})
+        return self.get_settings()
+
+    def usage_summary(self, book_id=None):
+        return UsageLedger(self.data_dir).summary(book_id)
+
+    def clear_usage(self, book_id=None):
+        return UsageLedger(self.data_dir).clear(book_id)
+
+    def _capture_usage(self, response):
+        context = getattr(self._usage_context, "request", None)
+        if context is not None and isinstance(response, dict):
+            usage = usage_checked(response.get("usage"))
+            if usage is not None:
+                context["usage"] = usage
+            actual_model = response.get("model")
+            if isinstance(actual_model, str) and 0 < len(actual_model) <= 200 and not any(ord(char) < 32 or ord(char) == 127 for char in actual_model):
+                context["settings"]["model"] = actual_model
+
+    def _transport_started(self):
+        context = getattr(self._usage_context, "request", None)
+        if context is not None:
+            context["sent"] = True
+
+    def _logged(self, book_id, action, callback, *, profile_id=None, model=None, image=False):
+        settings = self._configured(enabled=action != "test", image=image, profile_id=profile_id)
+        if model is not None:
+            settings["model"] = _model_name(model)
+        context = {"settings": settings, "usage": None, "sent": False}
+        self._usage_context.request = context
+        started, status = time.monotonic(), "error"
+        try:
+            result = callback()
+            status = "complete"
+            return result
+        except AIError as error:
+            status = "cancelled" if error.status == 499 else "error"
+            raise
+        finally:
+            if context["sent"]:
+                # Accounting failure cannot turn a successful paid response
+                # into a client error/retry. No provider/source text is logged.
+                try:
+                    logged = dict(settings)
+                    if image:
+                        logged["model"] = settings["imageModel"]
+                    UsageLedger(self.data_dir).record(book_id=book_id, action=action, settings=logged, usage=context["usage"], duration_ms=(time.monotonic() - started) * 1000, result=status)
+                except (OSError, ValueError, TypeError, sqlite3.Error):
+                    pass
+            self._usage_context.request = None
+
+    def _configured(self, enabled=True, image=False, profile_id=None):
+        context = getattr(self._usage_context, "request", None)
+        if context is not None:
+            settings = copy.deepcopy(context["settings"])
+        else:
+            with self.lock:
+                settings = self._read()
+            if profile_id is not None:
+                profile = next((item for item in settings["profiles"] if item["id"] == profile_id), None)
+                if profile is None:
+                    raise AIError(404, "找不到这个 AI 服务配置。")
+                settings.update({**DEFAULTS, **profile, "activeProfileId": profile_id})
         if enabled and not settings["enabled"]:
             raise AIError(400, "AI 辅助未启用，请先在设置中配置服务。")
         if image and not settings["imageModel"]:
@@ -283,8 +401,13 @@ class AIService:
         with self.lock:
             settings = self._read()
         if data is not None:
-            if not isinstance(data, dict) or set(data) - {"endpoint", "apiKey", "clearKey", "timeoutSeconds"}:
+            if not isinstance(data, dict) or set(data) - {"endpoint", "apiKey", "clearKey", "timeoutSeconds", "profileId"}:
                 raise AIError(400, "模型读取参数不正确。")
+            if "profileId" in data:
+                profile = next((item for item in settings["profiles"] if item["id"] == data["profileId"]), None)
+                if profile is None:
+                    raise AIError(404, "找不到这个 AI 服务配置。")
+                settings.update({**DEFAULTS, **profile})
             if type(data.get("clearKey", False)) is not bool:
                 raise AIError(400, "模型读取参数不正确。")
             settings["endpoint"] = data.get("endpoint", settings["endpoint"])
@@ -346,12 +469,14 @@ class AIService:
             headers["Authorization"] = "Bearer " + settings["apiKey"]
         request = urllib.request.Request(endpoint, data=_compact(payload).encode("utf-8"), headers=headers, method="POST")
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+        self._transport_started()
         try:
             with opener.open(request, timeout=settings["timeoutSeconds"]) as response:
                 raw = response.read(limit + 1)
             if len(raw) > limit:
                 raise AIError(502, "AI 返回内容过大，请减少生成范围后重试。")
             result = json.loads(raw.decode("utf-8"))
+            self._capture_usage(result)
             if _context_rejected(result):
                 raise AIError(400, CONTEXT_ERROR_MESSAGE)
             return result
@@ -420,7 +545,10 @@ class AIService:
         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
             raise AIError(502, "AI 返回格式无效，请检查服务是否兼容 Chat Completions。") from None
 
-    def cover_image(self, prompt):
+    def cover_image(self, prompt, book_id=None, profile_id=None):
+        return self._logged(book_id, "cover", lambda: self._cover_image(prompt), image=True, profile_id=profile_id)
+
+    def _cover_image(self, prompt):
         _text(prompt, 10000, "封面图片提示词", True)
         if "data:image/" in prompt.lower():
             raise AIError(400, "封面图片请求只接受文字提示词。")
@@ -484,6 +612,9 @@ class AIService:
         return images, warning if incomplete else ""
 
     def test_connection(self):
+        return self._logged(None, "test", self._test_connection)
+
+    def _test_connection(self):
         settings = self._configured(enabled=False)
         self._request(settings, [{"role": "user", "content": "Reply with OK."}])
         return {"ok": True, "model": settings["model"]}
@@ -593,16 +724,19 @@ class AIService:
             "chat": True, "historyMessages": len(clean), "historyChars": history_chars,
             **({"imageCount": image_count, "imageBytes": image_bytes} if image_count else {})}, current_content
 
-    def preview(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None, model=None, attachments=None):
+    def preview(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None, model=None, attachments=None, profile_id=None):
         if model is not None:
             _model_name(model)
         context, summary = self._skill_context(book, action, chapter_ids, instruction, skill_ids, skill_mode, allow_empty_instruction=chat is True and bool(attachments))
         _, _, count, conversation, _ = self._conversation(context, action, instruction, chat, history, book_id=book["id"], attachments=attachments)
-        settings = self.get_settings()
+        settings = self.get_settings() if profile_id is None else self._configured(enabled=False, profile_id=profile_id)
         limit = settings["maxContextChars"] if settings["contextMode"] == "manual" else None
         return {"bookId": book["id"], "action": action, "chapterIds": chapter_ids, "contextChars": count, "contextMode": settings["contextMode"], "maxContextChars": limit, "overLimit": limit is not None and count > limit, "counts": {"chapters": len(context["chapters"]), "outlines": len(context["outlines"]), "people": len(context["people"]), "relationships": len(context["relationships"]), "memories": len(context.get("storyMemory", []))}, **summary, **conversation}
 
-    def run(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None, model=None, attachments=None, on_delta=None, cancelled=None):
+    def run(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None, model=None, attachments=None, on_delta=None, cancelled=None, profile_id=None):
+        return self._logged(book.get("id"), action, lambda: self._run(book, action, chapter_ids, instruction, skill_ids, skill_mode, chat=chat, history=history, model=model, attachments=attachments, on_delta=on_delta, cancelled=cancelled), profile_id=profile_id, model=model)
+
+    def _run(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None, model=None, attachments=None, on_delta=None, cancelled=None):
         self.request_cancelled = cancelled
         settings = self._configured()
         if model is not None:

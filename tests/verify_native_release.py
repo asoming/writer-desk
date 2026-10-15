@@ -76,6 +76,10 @@ class NativeReleaseTests(unittest.TestCase):
         self.assertEqual(json.loads((self.destination / f"WriterDesk-{VERSION}-linux-x64-tar-verification.json").read_text("utf-8")), self.tar_evidence)
         notes = (self.destination / "release-notes.md").read_text("utf-8")
         self.assertIn("AppArmor", notes)
+        self.assertIn("https://github.com/asoming/writer-desk/blob/main/docs/acceptance-0.8.0.md", notes)
+        self.assertIn("可信 HTTPS", notes)
+        self.assertIn("未知用量或费用显示不可用", notes)
+        self.assertIn("不自动替换 App", notes)
         self.assertIn("https://github.com/asoming/writer-desk/blob/main/docs/acceptance-v0.6.1.md", notes)
         archive = self.destination / f"WriterDesk-{VERSION}-source.zip"
         with zipfile.ZipFile(archive) as source:

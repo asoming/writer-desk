@@ -91,16 +91,41 @@ class PlanningTests(unittest.TestCase):
             with self.subTest(index=index), self.assertRaises(ValueError):
                 planning.validate(book)
 
-    def test_recycled_links_clear_without_destroying_records(self):
+    def test_recycled_links_remain_without_reactivating_records(self):
         book = planned()
         for key in ("foreshadows", "timeline"):
             book["storyTools"][key][0]["chapterIds"] += ["chapter-old"]
             book["storyTools"][key][0]["personIds"] += ["person-old"]
         planning.validate(book)
         for key in ("foreshadows", "timeline"):
-            self.assertEqual(book["storyTools"][key][0]["chapterIds"], ["chapter-one"])
-            self.assertEqual(book["storyTools"][key][0]["personIds"], ["person-one"])
+            self.assertEqual(book["storyTools"][key][0]["chapterIds"], ["chapter-one", "chapter-old"])
+            self.assertEqual(book["storyTools"][key][0]["personIds"], ["person-one", "person-old"])
         self.assertEqual(book["storyTools"]["foreshadows"][0]["body"], "第一封信没有邮戳。")
+
+    def test_recycle_restore_and_permanent_purge_preserve_or_remove_only_expected_links(self):
+        book = planned()
+        for key in ("foreshadows", "timeline"):
+            book["storyTools"][key][0]["chapterIds"] = ["chapter-one", "chapter-old"]
+            book["storyTools"][key][0]["personIds"] = ["person-one", "person-old"]
+        original_bodies = [chapter["body"] for chapter in book["chapters"]]
+        recycled = planning.validate(json.loads(json.dumps(book)))
+        self.assertEqual(recycled["storyTools"], book["storyTools"])
+        self.assertIsNotNone(recycled["chapters"][1]["deletedAt"])
+        recycled["chapters"][1]["deletedAt"] = None
+        recycled["notes"][1]["deletedAt"] = None
+        restored = planning.validate(json.loads(json.dumps(recycled)))
+        self.assertEqual(restored["storyTools"], book["storyTools"])
+        self.assertEqual([chapter["body"] for chapter in restored["chapters"]], original_bodies)
+        clean = planning.sanitize(restored, {"chapter-old"})
+        clean["chapters"] = [chapter for chapter in clean["chapters"] if chapter["id"] != "chapter-old"]
+        clean["notes"] = [person for person in clean["notes"] if person["id"] != "person-old"]
+        planning.normalize(clean)
+        planning.validate(clean)
+        for key in ("foreshadows", "timeline"):
+            self.assertEqual(clean["storyTools"][key][0]["chapterIds"], ["chapter-one"])
+            self.assertEqual(clean["storyTools"][key][0]["personIds"], ["person-one"])
+            self.assertEqual(restored["storyTools"][key][0]["chapterIds"], ["chapter-one", "chapter-old"])
+            self.assertEqual(clean["storyTools"][key][0]["body"], book["storyTools"][key][0]["body"])
 
     def test_purge_removes_links_in_snapshots_without_mutating_input(self):
         book = planned()

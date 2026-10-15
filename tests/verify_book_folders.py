@@ -81,7 +81,7 @@ class FolderTests(unittest.TestCase):
         self.assertNotIn("回收的卷", text)
         backup = json.loads((self.folder() / "作品.yejian.json").read_text("utf-8"))
         self.assertEqual(backup["format"], "yejian-backup")
-        self.assertEqual(backup["version"], 3)
+        self.assertEqual(backup["version"], 4)
         self.assertEqual(backup["book"], self.book)
         restored = server.restore_book(backup["book"])
         self.assertEqual([item["body"] for item in restored["chapters"]], [item["body"] for item in self.book["chapters"]])

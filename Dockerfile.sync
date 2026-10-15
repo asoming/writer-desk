@@ -1,0 +1,8 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY . /app
+RUN useradd --create-home --uid 10001 writer && mkdir -p /data && chown writer:writer /data
+USER writer
+VOLUME ["/data"]
+EXPOSE 8766
+CMD ["python", "collaboration.py", "--host", "0.0.0.0", "--port", "8766", "--data-dir", "/data"]

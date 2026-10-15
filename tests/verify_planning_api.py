@@ -113,14 +113,20 @@ class PlanningAPITests(unittest.TestCase):
         self.assertEqual(self.stats(book_id)["todayChars"], 6)
         self.request("/api/books/" + book_id + "/writing-stats", status=403, token=False)
 
-    def test_recycled_chapter_removes_planning_links_and_purge_sanitizes_history(self):
+    def test_recycled_chapter_preserves_links_through_restore_then_purge_sanitizes_history(self):
         result = self.demo(); book = result["book"]; book_id = book["id"]
         book["storyTools"] = self.plans(book); self.save(result)
         target = book["chapters"][0]; chapter_id = target["id"]
         target["deletedAt"] = "2026-10-15T01:02:03+00:00"; self.save(result)
         current = self.get(book_id)
         for key in ("foreshadows", "timeline"):
-            self.assertEqual(current["book"]["storyTools"][key][0]["chapterIds"], [])
+            self.assertEqual(current["book"]["storyTools"][key][0]["chapterIds"], [chapter_id])
+        target["deletedAt"] = None; self.save(result)
+        restored = self.get(book_id)
+        for key in ("foreshadows", "timeline"):
+            self.assertEqual(restored["book"]["storyTools"][key][0]["chapterIds"], [chapter_id])
+        self.assertEqual(restored["book"]["chapters"][0]["body"], target["body"])
+        target["deletedAt"] = "2026-10-15T01:02:03+00:00"; self.save(result)
         purged = self.request("/api/books/" + book_id + "/chapters/" + chapter_id + "/purge", "POST", {"revision": result["revision"]})
         self.assertNotIn(chapter_id, [item["id"] for item in purged["book"]["chapters"]])
         histories = self.request("/api/books/" + book_id + "/history")["versions"]

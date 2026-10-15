@@ -97,10 +97,10 @@ def read_snapshot(folder, token, book_id, validate):
                 raise ValueError("invalid snapshot")
             value = json.load(stream)
         meta = value.get("writerDeskSnapshot", {})
-        if (value.get("format") != "yejian-backup" or value.get("version") != 3
+        if (value.get("format") != "yejian-backup" or value.get("version") not in (3, 4)
                 or meta.get("bookId") != book_id or type(meta.get("revision")) is not int
                 or meta["revision"] < 1 or not token.startswith("r" + str(meta["revision"]) + "-")
-                or not isinstance(meta.get("createdAt"), str) or meta.get("reason") not in ("automatic", "manual", "before-restore")):
+                or not isinstance(meta.get("createdAt"), str) or meta.get("reason") not in ("automatic", "manual", "before-restore", "external")):
             raise ValueError("invalid snapshot")
         book = validate(value.get("book"))
         if book["id"] != book_id:
@@ -190,11 +190,11 @@ def rewrite_snapshots(db_path, book_id, validate, transform, dry_run=False):
                     # Checkpoint writes these exact format/ownership markers
                     # before renaming its temp. A crash can leave the old text
                     # here even though it never entered the snapshot listing.
-                    if (value.get("format") != "yejian-backup" or value.get("version") != 3
+                    if (value.get("format") != "yejian-backup" or value.get("version") not in (3, 4)
                             or not isinstance(meta, dict) or meta.get("bookId") != book_id
                             or type(meta.get("revision")) is not int or meta["revision"] < 1
                             or not isinstance(meta.get("createdAt"), str)
-                            or meta.get("reason") not in ("automatic", "manual", "before-restore")
+                            or meta.get("reason") not in ("automatic", "manual", "before-restore", "external")
                             or validate(value.get("book"))["id"] != book_id):
                         raise ValueError("invalid temporary snapshot")
                 else:
@@ -248,7 +248,7 @@ def checkpoint(conn, db_path, row, validate, force=False, reason="automatic"):
     book = validate(json.loads(row["payload"]))
     stamp = datetime.now(timezone.utc).isoformat()
     token = "r" + str(row["revision"]) + "-" + uuid.uuid4().hex + ".json"
-    value = {"format": "yejian-backup", "version": 3, "exportedAt": stamp, "book": book,
+    value = {"format": "yejian-backup", "version": 4, "exportedAt": stamp, "book": book,
              "writerDeskSnapshot": {"bookId": book["id"], "revision": row["revision"], "createdAt": stamp, "reason": reason}}
     payload = json.dumps(value, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
     with directory(db_path, book["id"], create=True) as folder:

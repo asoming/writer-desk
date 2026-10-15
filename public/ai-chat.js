@@ -67,7 +67,7 @@ function createAIChatView(panel,book,channel){
   const footer=el('div','ai-chat-footer'),material=el('details','ai-chat-material'),materialSummary=el('summary'),materialBody=el('div','ai-chat-material-body'),chapterChoices=el('div','ai-chat-chapters'),skillChoices=el('div','ai-chat-skills'),skillMode=writingSkillModeSelect('ai-chat-skill-mode'),materialCount=el('span','ai-chat-material-count');
   const chapterTools=el('div','ai-chat-material-tools'),selectAll=action(T('全选'),'text-button',()=>chooseChapters(true)),clearChapters=action(T('清空'),'text-button',()=>chooseChapters(false));chapterTools.append(selectAll,clearChapters);materialBody.append(chapterTools,chapterChoices,el('div','ai-chat-skill-label',T('写作 Skill')),skillChoices,skillMode,materialCount);material.append(materialSummary,materialBody);
   const memoryButton=window.WriterStoryMemory?action(T('长篇记忆'),'text-button',()=>{if(!pending&&current())window.WriterStoryMemory.open(book,{onChanged:schedulePreview});}):null;if(memoryButton)materialBody.append(memoryButton);
-  const composer=el('div','ai-chat-composer'),input=el('textarea'),send=action('↑','ai-chat-send',()=>run()),composerBar=el('div','ai-chat-composer-bar'),modelGroup=el('div','ai-chat-model-group'),modelChoice=el('select','ai-chat-model'),refreshModels=action('↻','ai-chat-model-refresh',()=>loadModels(true));modelChoice.id='ai-chat-model';modelChoice.setAttribute('aria-label',T('模型'));refreshModels.setAttribute('aria-label',T('刷新模型'));refreshModels.title=T('刷新模型');input.id='ai-chat-prompt';input.rows=3;input.maxLength=10000;input.value=saved.prompt;input.placeholder=T('输入提示词…');input.setAttribute('aria-label',T('提示词'));send.setAttribute('aria-label',T('发送'));send.title=T('发送');modelGroup.append(modelChoice,refreshModels);composerBar.append(modelGroup,send);composer.append(input,composerBar);
+  const composer=el('div','ai-chat-composer'),input=el('textarea'),send=action('↑','ai-chat-send',()=>run()),composerBar=el('div','ai-chat-composer-bar'),modelGroup=el('div','ai-chat-model-group'),profileChoice=el('select','ai-chat-model ai-chat-profile'),modelChoice=el('select','ai-chat-model'),refreshModels=action('↻','ai-chat-model-refresh',()=>loadModels(true));modelChoice.id='ai-chat-model';modelChoice.setAttribute('aria-label',T('模型'));refreshModels.setAttribute('aria-label',T('刷新模型'));refreshModels.title=T('刷新模型');input.id='ai-chat-prompt';input.rows=3;input.maxLength=10000;input.value=saved.prompt;input.placeholder=T('输入提示词…');input.setAttribute('aria-label',T('提示词'));send.setAttribute('aria-label',T('发送'));send.title=T('发送');profileChoice.id='ai-chat-profile';profileChoice.setAttribute('aria-label',T('服务配置'));modelGroup.append(profileChoice,modelChoice,refreshModels);composerBar.append(modelGroup,send);composer.append(input,composerBar);
   const composerTools=el('div','ai-chat-composer-tools'),reset=action(T('恢复默认提示词'),'text-button',()=>chooseTask(task.value,true)),status=el('p','ai-chat-status'),configure=action(T('打开 AI 设置'),'text-button',()=>showAppSettings('ai'));configure.hidden=true;composerTools.append(reset);footer.append(material,status,configure,composer,composerTools);root.append(header,context,transcript,footer);panel.replaceChildren(root);
 
   const promptSize=window.WriterTextareaAutosize?.attach(input,{container:root});
@@ -96,7 +96,7 @@ function createAIChatView(panel,book,channel){
   }
   function payload(turn=null){
     const history=saved.turns.filter(item=>item.status==='complete').flatMap(item=>[aiChatMessage('user',item.user,item.attachments),aiChatMessage('assistant',item.reply+(item.data?'\n\n'+JSON.stringify(item.data):''),item.images)]),images=turn?.attachments||draftImages();
-    return{action:turn?.action||task.value,chapterIds:book.kind==='short'?validChapters().map(chapter=>chapter.id):turn?turn.chapterIds:validChapters().filter(chapter=>saved.chapterIds.includes(chapter.id)).map(chapter=>chapter.id),instruction:turn?.user??input.value,...(images.length?{attachments:aiChatImagePayload(images)}:{}),skillIds:turn&&Array.isArray(turn.skillIds)?turn.skillIds:skills.filter(skill=>skill.imported&&(saved.skillIds||[]).includes(skill.id)).map(skill=>skill.id),skillMode:turn&&Object.hasOwn(writingSkillModes,turn.skillMode)?turn.skillMode:saved.skillMode,...(configuration?.model?{model:configuration.model}:{}),chat:true,history};
+    return{action:turn?.action||task.value,chapterIds:book.kind==='short'?validChapters().map(chapter=>chapter.id):turn?turn.chapterIds:validChapters().filter(chapter=>saved.chapterIds.includes(chapter.id)).map(chapter=>chapter.id),instruction:turn?.user??input.value,...(images.length?{attachments:aiChatImagePayload(images)}:{}),skillIds:turn&&Array.isArray(turn.skillIds)?turn.skillIds:skills.filter(skill=>skill.imported&&(saved.skillIds||[]).includes(skill.id)).map(skill=>skill.id),skillMode:turn&&Object.hasOwn(writingSkillModes,turn.skillMode)?turn.skillMode:saved.skillMode,...(configuration?.model?{model:configuration.model}:{}),...(configuration?.activeProfileId?{profileId:configuration.activeProfileId}:{}),chat:true,history};
   }
   function available(){return ready&&configuration?.enabled&&configuration.endpoint&&configuration.model;}
   function controls(){
@@ -104,10 +104,11 @@ function createAIChatView(panel,book,channel){
     task.disabled=reset.disabled=selectAll.disabled=clearChapters.disabled=!!pending;skillMode.disabled=!!pending||!ready;
     chapterChoices.querySelectorAll('input').forEach(box=>box.disabled=!!pending);skillChoices.querySelectorAll('input').forEach(box=>box.disabled=!!pending||box.dataset.available!=='true');
     configure.hidden=!!available();reset.hidden=task.value==='custom';
-    modelChoice.disabled=!!pending||modelSaving||!ready;refreshModels.disabled=!!pending||modelSaving||modelsLoading||!configuration?.endpoint;
+    profileChoice.disabled=modelChoice.disabled=!!pending||modelSaving||configurationLoading||!ready;refreshModels.disabled=!!pending||modelSaving||modelsLoading||!configuration?.endpoint;
     if(memoryButton)memoryButton.disabled=!!pending;
   }
   function renderModels(){
+    profileChoice.replaceChildren();for(const profile of configuration?.profiles||[]){const option=el('option',null,T(profile.name));option.value=profile.id;profileChoice.append(option);}profileChoice.value=configuration?.activeProfileId||'';profileChoice.hidden=(configuration?.profiles?.length||0)<2;
     modelChoice.replaceChildren();const selected=configuration?.model||'',ids=selected?[selected,...modelIds.filter(id=>id!==selected)]:modelIds;
     if(!selected){const placeholder=el('option',null,T('选择模型'));placeholder.value='';modelChoice.append(placeholder);}ids.forEach(id=>{const option=el('option',null,id);option.value=id;modelChoice.append(option);});const custom=el('option',null,T('自定义模型'));custom.value='';modelChoice.append(custom);modelChoice.value=selected;modelChoice.title=selected||T('模型');controls();
   }
@@ -117,12 +118,20 @@ function createAIChatView(panel,book,channel){
     catch(error){if(current()&&!disposed&&sequence===modelSeq){modelChoice.title=T(error.message);if(refresh)toast(T(error.message));}}
     finally{if(!disposed&&sequence===modelSeq){modelsLoading=false;controls();}}
   }
+  profileChoice.addEventListener('change',async()=>{
+    const selected=profileChoice.value;if(pending||modelSaving||configurationLoading||!ready||selected===configuration?.activeProfileId){profileChoice.value=configuration?.activeProfileId||'';return;}
+    if(!configuration.profiles?.some(profile=>profile.id===selected)){renderModels();return;}
+    modelSaving=true;++loadSeq;++modelSeq;++previewSeq;preview=null;previewKey='';modelsLoading=configurationLoading=false;controls();
+    try{const settings=await aiSaveProfileChoice(selected);if(disposed)return;configuration=settings;modelIds=[];aiModelCatalog=null;renderModels();if(current()){loadModels(true);schedulePreview();}}
+    catch(error){if(!disposed){renderModels();status.textContent=T(error.message);}}
+    finally{modelSaving=false;if(current()&&!disposed)controls();}
+  });
   modelChoice.addEventListener('change',async()=>{
     const selected=modelChoice.value;if(pending||modelSaving||!ready){modelChoice.value=configuration?.model||'';return;}
     if(!selected){modelChoice.value=configuration?.model||'';showAppSettings('ai');return;}
     if(selected===configuration.model)return;if(!modelIds.includes(selected)){renderModels();return;}
     modelSaving=true;++loadSeq;++modelSeq;modelsLoading=configurationLoading=false;controls();
-    try{const settings=await aiSaveModelChoice(selected);if(disposed)return;configuration=settings;renderModels();if(current())schedulePreview();}
+    try{const settings=await aiSaveModelChoice(selected,configuration?.activeProfileId);if(disposed)return;configuration=settings;renderModels();if(current())schedulePreview();}
     catch(error){if(!disposed){renderModels();status.textContent=T(error.message);}}
     finally{modelSaving=false;if(current()&&!disposed)controls();}
   });

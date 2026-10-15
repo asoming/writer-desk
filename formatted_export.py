@@ -16,6 +16,7 @@ import struct
 import zipfile
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
+from export_templates import LAYOUT_DEFAULTS, layout_checked
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 EPUB_MIME = "application/epub+zip"
@@ -30,15 +31,13 @@ def options_checked(options=None):
     options = {} if options is None else options
     if not isinstance(options, dict):
         raise ValueError("排版选项格式不正确")
-    if set(options) - {"cover", "toc", "paper", "font", "lang", "coverData", "format"}:
+    if set(options) - set(LAYOUT_DEFAULTS) - {"cover", "toc", "lang", "coverData", "format"}:
         raise ValueError("不支持这个排版选项")
     result = {"cover": options.get("cover", True), "toc": options.get("toc", True),
-              "paper": options.get("paper", "a4"), "font": options.get("font", 12),
-              "lang": options.get("lang", "zh"), "coverData": options.get("coverData")}
+              "lang": options.get("lang", "zh"), "coverData": options.get("coverData"),
+              **layout_checked({key: options[key] for key in LAYOUT_DEFAULTS if key in options})}
     if type(result["cover"]) is not bool or type(result["toc"]) is not bool:
         raise ValueError("封面和目录选项必须是布尔值")
-    if result["paper"] not in ("a4", "a5") or type(result["font"]) is not int or result["font"] not in (12, 14, 16):
-        raise ValueError("不支持这个纸张或字号")
     if result["lang"] not in ("zh", "en"):
         raise ValueError("不支持这个语言")
     return result
@@ -137,11 +136,15 @@ def export_docx(book, options):
     image = cover_image(book, options)
     if image and image["kind"] == "webp":
         raise ValueError("Word 封面需转换为 PNG 或 JPEG，请从应用导出")
-    font = options["font"] * 2
+    font = round(options["font"] * 2)
     a5 = options["paper"] == "a5"
-    width, height, margin = (8391, 11906, 850) if a5 else (11906, 16838, 1134)
+    width, height = round(options["pageWidth"] * 1440 / 25.4), round(options["pageHeight"] * 1440 / 25.4)
+    margins = {side: round(options["margin" + side.title()] * 1440 / 25.4) for side in ('top', 'right', 'bottom', 'left')}
+    available_width = width - margins['left'] - margins['right']
+    available_height = height - margins['top'] - margins['bottom']
+    margin = max(margins.values())
     def paragraph(text="", style=None, before=False, bookmark=None, center=False, size=None):
-        props = (f'<w:pStyle w:val="{style}"/>' if style else "") + ('<w:pageBreakBefore/>' if before else "") + ('<w:jc w:val="center"/>' if center else "")
+        props = (f'<w:pStyle w:val="{style}"/><w:ind w:firstLineChars="0" w:firstLine="0"/>' if style else "") + ('<w:pageBreakBefore/>' if before else "") + ('<w:jc w:val="center"/>' if center else "")
         mark = f'<w:bookmarkStart w:id="{bookmark[0]}" w:name="{bookmark[1]}"/>' if bookmark else ""
         end = f'<w:bookmarkEnd w:id="{bookmark[0]}"/>' if bookmark else ""
         run_props = f'<w:rPr><w:sz w:val="{size * 2}"/></w:rPr>' if size else ''
@@ -151,10 +154,10 @@ def export_docx(book, options):
     body = [paragraph(title_text, "Title", center=options["cover"], size=title_size)]
     if image:
         max_w, max_h = (3.3, 4.2) if a5 else (4.7, 6.3)
-        title_rows = math.ceil(sum(0.6 if ord(char) < 128 else 1 for char in title_text) * title_size / ((width - 2 * margin) / 20))
+        title_rows = math.ceil(sum(0.6 if ord(char) < 128 else 1 for char in title_text) * title_size / (available_width / 20))
         # Leave room for wrapped long titles instead of pushing the cover
         # artwork onto a second page in Word's pagination engine.
-        max_h = min(max_h, max(1, (height - 2 * margin) / 1440 - (title_rows * title_size * 1.5 + 50) / 72))
+        max_h = min(max_h, max(1, available_height / 1440 - (title_rows * title_size * 1.5 + 50) / 72))
         scale = min(max_w / image["width"], max_h / image["height"])
         cx, cy = round(image["width"] * scale * 914400), round(image["height"] * scale * 914400)
         body.append(f'<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{cx}" cy="{cy}"/><wp:docPr id="1" name="Book cover" descr="{x(book.get("title", ""))}"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="cover"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdCover"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>')
@@ -163,21 +166,22 @@ def export_docx(book, options):
         body.append(paragraph("Contents" if options["lang"] == "en" else "目录", "TOCTitle", before=options["cover"]))
         for section in headings:
             indent = ' w:left="360"' if section["level"] == 2 else ' w:left="0"'
-            body.append(f'<w:p><w:pPr><w:ind{indent}/><w:spacing w:after="100"/></w:pPr><w:hyperlink w:anchor="{section["id"]}"><w:r><w:t>{x(section["title"])}</w:t></w:r></w:hyperlink></w:p>')
+            body.append(f'<w:p><w:pPr><w:ind{indent} w:firstLineChars="0" w:firstLine="0"/><w:spacing w:after="100"/></w:pPr><w:hyperlink w:anchor="{section["id"]}"><w:r><w:t>{x(section["title"])}</w:t></w:r></w:hyperlink></w:p>')
     first = True
     previous_level = None
     for index, section in enumerate(sections):
         if section["level"]:
-            start_page = (first and (options["cover"] or options["toc"] and headings)) or (not first and (section["level"] == 1 or previous_level == 2))
+            start_page = (first and (options["cover"] or options["toc"] and headings)) or (not first and options["chapterPageBreak"] and (section["level"] == 1 or previous_level == 2))
             body.append(paragraph(section["title"], f'Heading{section["level"]}', before=start_page, bookmark=(index + 1, section["id"])))
         elif options["cover"] and section["body"]:
             body.append('<w:p><w:pPr><w:spacing w:after="0" w:before="0"/><w:pageBreakBefore/></w:pPr></w:p>')
         body.extend(paragraph(line) for line in paragraphs(section["body"]) if section["body"])
         first = False
         previous_level = section["level"]
-    body.append(f'<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="{width}" w:h="{height}"/><w:pgMar w:top="{margin}" w:right="{margin}" w:bottom="{margin}" w:left="{margin}" w:header="360" w:footer="360"/><w:cols w:space="720"/></w:sectPr>')
+    body.append(f'<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="{width}" w:h="{height}"/><w:pgMar w:top="{margins["top"]}" w:right="{margins["right"]}" w:bottom="{margins["bottom"]}" w:left="{margins["left"]}" w:header="360" w:footer="360"/><w:cols w:space="720"/></w:sectPr>')
     document = XML + f'<w:document xmlns:w="{W}" xmlns:r="{R}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>{"".join(body)}</w:body></w:document>'
-    styles = XML + f'<w:styles xmlns:w="{W}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:eastAsia="Noto Serif CJK SC"/><w:sz w:val="{font}"/><w:color w:val="000000"/><w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="360" w:lineRule="auto"/><w:widowControl/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="240" w:after="480"/><w:keepNext/></w:pPr><w:rPr><w:sz w:val="48"/><w:b/><w:color w:val="000000"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="TOCTitle"><w:name w:val="Contents Heading"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:after="360"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/></w:rPr></w:style>' + ''.join(f'<w:style w:type="paragraph" w:styleId="Heading{level}"><w:name w:val="heading {level}"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:outlineLvl w:val="{level-1}"/><w:spacing w:before="280" w:after="240"/></w:pPr><w:rPr><w:b/><w:sz w:val="{36 if level == 1 else 30}"/><w:color w:val="000000"/></w:rPr></w:style>' for level in (1, 2)) + '</w:styles>'
+    heading_bold = '<w:b/>' if options["chapterBold"] else '<w:b w:val="0"/>'
+    styles = XML + f'<w:styles xmlns:w="{W}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="{x(options["fontFamily"])}" w:hAnsi="{x(options["fontFamily"])}" w:eastAsia="{x(options["fontFamily"])}"/><w:sz w:val="{font}"/><w:color w:val="000000"/><w:lang w:val="en-US" w:eastAsia="zh-CN"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="{round(options["paragraphSpace"] * 20)}" w:line="{round(options["lineHeight"] * 240)}" w:lineRule="auto"/><w:ind w:firstLineChars="{round(options["firstLineIndent"] * 100)}"/><w:widowControl/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="240" w:after="480"/><w:keepNext/></w:pPr><w:rPr><w:sz w:val="48"/><w:b/><w:color w:val="000000"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="TOCTitle"><w:name w:val="Contents Heading"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:after="360"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/></w:rPr></w:style>' + ''.join(f'<w:style w:type="paragraph" w:styleId="Heading{level}"><w:name w:val="heading {level}"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:ind w:firstLine="0" w:firstLineChars="0"/><w:jc w:val="{options["chapterAlign"]}"/><w:outlineLvl w:val="{level-1}"/><w:spacing w:before="280" w:after="240"/></w:pPr><w:rPr>{heading_bold}<w:sz w:val="{round((options["chapterSize"] + (4 if level == 1 else 0)) * 2)}"/><w:color w:val="000000"/></w:rPr></w:style>' for level in (1, 2)) + '</w:styles>'
     relationships = [('rIdStyles', 'styles', 'styles.xml'), ('rIdFooter', 'footer', 'footer1.xml')]
     if image:
         relationships.append(('rIdCover', 'image', 'media/cover.' + image["kind"]))
@@ -231,7 +235,7 @@ def export_epub(book, options):
     identifier = "urn:sha256:" + hashlib.sha256(str(book.get("id", "")).encode("utf-8")).hexdigest()
     modified = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     opf = f'<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id" xml:lang="{language}"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book-id">{identifier}</dc:identifier><dc:title>{title}</dc:title><dc:language>{language}</dc:language><meta property="dcterms:modified">{modified}</meta></metadata><manifest>{manifest}</manifest><spine>' + ''.join(f'<itemref idref="{id_}"/>' for id_ in spine) + '</spine></package>'
-    css = f'body{{font-family:serif;line-height:1.8;margin:1em;font-size:{options["font"]}pt;color:#111;background:#fff}}h1,h2{{line-height:1.5;page-break-after:avoid}}h1{{font-size:1.7em}}h2{{font-size:1.3em}}p{{margin:.5em 0;white-space:pre-wrap;overflow-wrap:anywhere}}img.cover{{display:block;max-width:100%;max-height:85vh;margin:1em auto}}ol{{list-style:none;padding:0}}li{{margin:.5em 0}}li.level-2{{margin-left:1.4em}}.blank{{min-height:1em}}'
+    css = f'body{{font-family:"{options["fontFamily"]}",serif;line-height:{options["lineHeight"]};margin:1em;font-size:{options["font"]}pt;color:#111;background:#fff}}h1,h2{{line-height:1.5;page-break-after:avoid}}h1{{font-size:{options["chapterSize"] + 4}pt}}h2{{font-size:{options["chapterSize"]}pt}}h1,h2{{text-align:{options["chapterAlign"]};font-weight:{700 if options["chapterBold"] else 400}}}p{{margin:0 0 {options["paragraphSpace"]}pt;text-indent:{options["firstLineIndent"]}em;white-space:pre-wrap;overflow-wrap:anywhere}}img.cover{{display:block;max-width:100%;max-height:85vh;margin:1em auto}}ol{{list-style:none;padding:0}}li{{margin:.5em 0}}li.level-2{{margin-left:1.4em}}.blank{{min-height:1em}}'
     output = io.BytesIO()
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('mimetype', 'application/epub+zip', compress_type=zipfile.ZIP_STORED)
@@ -265,16 +269,18 @@ def export_html(book, options):
         level = section['level']
         heading = f'<h{level} id="{section["id"]}">{esc(section["title"])}</h{level}>' if level else ''
         body = ''.join('<p>' + esc(line) + '</p>' if line else '<p class="blank">&#160;</p>' for line in paragraphs(section['body'])) if section['body'] else ''
-        page = ' new-page' if previous_level is not None and (level == 1 or previous_level == 2) else ''
+        page = ' new-page' if previous_level is not None and options['chapterPageBreak'] and (level == 1 or previous_level == 2) else ''
         content.append(f'<section class="formatted-section{page}">{heading}{body}</section>')
         previous_level = level
     paper = options['paper'].upper()
+    page_size = f"{options['pageWidth']}mm {options['pageHeight']}mm"
+    page_margins = ' '.join(str(options['margin' + side]) + 'mm' for side in ('Top', 'Right', 'Bottom', 'Left'))
     title_size = 14 if len(book.get('title', '')) > 120 else 18 if len(book.get('title', '')) > 60 else 22
-    available_height = 170 if paper == 'A5' else 257
-    available_width = 104 if paper == 'A5' else 166
+    available_height = options['pageHeight'] - options['marginTop'] - options['marginBottom']
+    available_width = options['pageWidth'] - options['marginLeft'] - options['marginRight']
     title_rows = max(1, math.ceil(sum(0.6 if ord(char) < 128 else 1 for char in book.get('title', '')) * title_size / (available_width * 72 / 25.4)))
     image_height = str(max(20, min(140 if paper == 'A5' else 210, available_height - title_rows * title_size * 1.5 * 25.4 / 72 - 16))) + 'mm'
-    css = f'''@page{{size:{paper};margin:20mm}}#formatted-print-root{{color:#111;background:#fff;font-family:"Noto Serif CJK SC","Songti SC","STSong",Georgia,serif;font-size:{options['font']}pt;line-height:1.8}}#formatted-print-root h1,#formatted-print-root h2{{color:#000;line-height:1.5;break-after:avoid}}#formatted-print-root h1{{font-size:22pt;margin:0 0 1.2em}}#formatted-print-root h2{{font-size:18pt;margin:0 0 1.3em}}#formatted-print-root p{{margin:0 0 .55em;white-space:pre-wrap;overflow-wrap:anywhere;orphans:2;widows:2}}#formatted-print-root .blank{{min-height:1em}}#formatted-print-root .formatted-cover{{text-align:center;break-after:page}}#formatted-print-root .formatted-cover h1{{overflow-wrap:anywhere;max-width:100%;font-size:{title_size}pt;margin:0 0 8mm}}#formatted-print-root .formatted-cover img{{display:block;max-width:100%;max-height:{image_height};width:auto;height:auto;margin:0 auto;object-fit:contain}}#formatted-print-root .formatted-toc{{break-after:page}}#formatted-print-root .formatted-toc ol{{list-style:none;padding:0}}#formatted-print-root .formatted-toc li{{margin:.4em 0}}#formatted-print-root .formatted-toc li.level-2{{margin-left:1.4em}}#formatted-print-root a{{color:#111;text-decoration:none}}#formatted-print-root .new-page{{break-before:page}}'''
+    css = f'''@page{{size:{page_size};margin:{page_margins}}}#formatted-print-root{{color:#111;background:#fff;font-family:"{options['fontFamily']}","Noto Serif CJK SC","Songti SC",Georgia,serif;font-size:{options['font']}pt;line-height:{options['lineHeight']}}}#formatted-print-root h1,#formatted-print-root h2{{color:#000;line-height:1.5;break-after:avoid;text-align:{options['chapterAlign']};font-weight:{700 if options['chapterBold'] else 400}}}#formatted-print-root h1{{font-size:{options['chapterSize'] + 4}pt;margin:0 0 1.2em}}#formatted-print-root h2{{font-size:{options['chapterSize']}pt;margin:0 0 1.3em}}#formatted-print-root p{{margin:0 0 {options['paragraphSpace']}pt;text-indent:{options['firstLineIndent']}em;white-space:pre-wrap;overflow-wrap:anywhere;orphans:2;widows:2}}#formatted-print-root .blank{{min-height:1em}}#formatted-print-root .formatted-cover{{text-align:center;break-after:page}}#formatted-print-root .formatted-cover h1{{overflow-wrap:anywhere;max-width:100%;font-size:{title_size}pt;margin:0 0 8mm}}#formatted-print-root .formatted-cover img{{display:block;max-width:100%;max-height:{image_height};width:auto;height:auto;margin:0 auto;object-fit:contain}}#formatted-print-root .formatted-toc{{break-after:page}}#formatted-print-root .formatted-toc ol{{list-style:none;padding:0}}#formatted-print-root .formatted-toc li{{margin:.4em 0}}#formatted-print-root .formatted-toc li.level-2{{margin-left:1.4em}}#formatted-print-root a{{color:#111;text-decoration:none}}#formatted-print-root .new-page{{break-before:page}}'''
     return f'<!doctype html><html lang="{options["lang"]}"><head><meta charset="utf-8"><title>{title}</title><style id="formatted-book-styles">{css}</style></head><body><main class="formatted-book">{"".join(content)}</main></body></html>'.encode('utf-8')
 
 

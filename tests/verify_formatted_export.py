@@ -102,7 +102,7 @@ class FormattedExportTests(unittest.TestCase):
             self.assertNotIn('第一章'.encode(), content)
 
     def test_options_reject_invalid_requests_and_unsafe_cover_sources(self):
-        for options in ({'paper': 'letter'}, {'font': True}, {'font': 13}, {'cover': 'yes'}, {'lang': 'unknown'}, {'path': '/tmp/file'}, []):
+        for options in ({'paper': 'a3'}, {'font': True}, {'font': 37}, {'cover': 'yes'}, {'lang': 'unknown'}, {'path': '/tmp/file'}, []):
             with self.subTest(options=options), self.assertRaises(ValueError):
                 render_book_export(novel(), 'docx', options)
         for source in ('https://example.com/cover.png', 'data:image/svg+xml;base64,AAAA', 'data:image/png;base64,AAAA', 'data:image/png;base64,!!!'):

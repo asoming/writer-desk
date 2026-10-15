@@ -1,0 +1,11 @@
+.git
+node_modules
+build
+dist
+data
+sync-data
+*.sqlite3*
+__pycache__
+*.pyc
+*.log
+.venv-build

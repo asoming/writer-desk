@@ -14,7 +14,7 @@ function setup(directory,overrides={}){
 }
 test('PDF bridge accepts only a trusted sender and fixed layout options',async()=>{
   const h=setup(os.tmpdir());assert.equal((await h.run({trusted:false})).code,'untrusted-sender');
-  for(const options of [null,[],{title:'海边',paper:'a4',path:'/tmp/overwrite'},{title:'海边',paper:'a4',html:'<html>'},{title:'海边',paper:'a3'},{title:'x'.repeat(201),paper:'a4'}])assert.equal((await h.run({trusted:true},options)).code,'pdf-invalid-request');
+  for(const options of [null,[],{title:'海边',paper:'a4',path:'/tmp/overwrite'},{title:'海边',paper:'a4',html:'<html>'},{title:'海边',paper:'a3'},{title:'x'.repeat(201),paper:'a4'},{title:'x',paper:'custom'},{title:'x',paper:'custom',pageWidth:99,pageHeight:200},{title:'x',paper:'custom',pageWidth:200,pageHeight:451},{title:'x',paper:'custom',pageWidth:NaN,pageHeight:200},{title:'x',paper:'custom',pageWidth:200,pageHeight:Infinity}])assert.equal((await h.run({trusted:true},options)).code,'pdf-invalid-request');
   assert.deepEqual(h.calls,[]);
 });
 test('PDF bridge prints prepared current document and writes only a picker-selected destination',async()=>{
@@ -31,4 +31,9 @@ test('PDF cancel, missing preparation and invalid output leave no exports',async
 });
 test('PDF concurrent and app-closing operations do not race the native picker',async()=>{
   const h=setup(os.tmpdir());let release;h.dialog.showSaveDialog=()=>new Promise(resolve=>{release=resolve;});const first=h.run();await new Promise(resolve=>setImmediate(resolve));assert.equal((await h.run()).code,'pdf-busy');release({canceled:true});assert.equal((await first).canceled,true);h.context.closing=true;assert.equal((await h.run()).code,'pdf-busy');
+});
+
+test('PDF bridge supports Letter and bounded custom paper with CSS page margins preserved',async()=>{
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'writer-pdf-layout-'));
+  try{const letter=setup(directory);assert.equal((await letter.run({trusted:true},{title:'Letter',paper:'letter'})).saved,true);assert.equal(letter.calls[1][1].pageSize,'Letter');const custom=setup(directory);assert.equal((await custom.run({trusted:true},{title:'Custom',paper:'custom',pageWidth:180,pageHeight:250})).saved,true);assert.deepEqual(JSON.parse(JSON.stringify(custom.calls[1][1].pageSize)),{width:180/25.4,height:250/25.4});assert.equal(custom.calls[1][1].preferCSSPageSize,true);}finally{fs.rmSync(directory,{recursive:true,force:true});}
 });

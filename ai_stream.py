@@ -17,10 +17,10 @@ def serve(handler, path, data, srv):
     match = re.fullmatch(r"/api/books/([^/]+)/ai/stream", path)
     if not match:
         return False
-    allowed = {"action", "chapterIds", "instruction", "skillIds", "skillMode", "chat", "history", "model", "attachments"}
+    allowed = {"action", "chapterIds", "instruction", "skillIds", "skillMode", "chat", "history", "model", "attachments", "profileId"}
     if not isinstance(data, dict) or set(data) - allowed or data.get("chat") is not True:
         raise AIError(400, "流式对话参数不正确。")
-    if any(key in data and data[key] is None for key in ("skillIds", "skillMode", "model")):
+    if any(key in data and data[key] is None for key in ("skillIds", "skillMode", "model", "profileId")):
         raise AIError(400, "AI 写作参数不正确。")
     with srv.DB_LOCK, srv.connect() as conn:
         row = conn.execute("SELECT * FROM books WHERE id=?", (match[1],)).fetchone()
@@ -35,9 +35,10 @@ def serve(handler, path, data, srv):
     arguments = (book, data.get("action"), srv.short_chapter_ids(book, data.get("chapterIds")), data.get("instruction", ""), data.get("skillIds"), data.get("skillMode"))
     keywords = {key: data.get(key) for key in ("history", "model", "attachments")}
     keywords["chat"] = True
+    keywords["profile_id"] = data.get("profileId")
     # Validate all author-controlled data before starting a response/provider.
     preview = service.preview(*arguments, **keywords)
-    service._configured()
+    service._configured(profile_id=data.get("profileId"))
     if preview["overLimit"]:
         raise AIError(400, "所选资料超过上下文字符上限，请减少章节或调整设置；没有发送任何资料。")
     cancelled, events = threading.Event(), queue.Queue(maxsize=32)

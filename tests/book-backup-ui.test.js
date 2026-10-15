@@ -55,12 +55,12 @@ test('exports belong to every long/short shelf card, with no sidebar export or g
   const protection=fs.readFileSync(path.join(root,'public/protection.js'),'utf8');assert.ok(!protection.includes("()=>showHistory()"));
 });
 
-test('another book export saves current prose first, then downloads only the fixed target in TXT, Markdown and v3 backup',async()=>{
+test('another book export saves current prose first, then downloads only the fixed target in TXT, Markdown and v4 backup',async()=>{
   for(const kind of ['long','short']){const h=harness({dirty:true,kind}),before=copy(h.active),target=copy(h.records.get('target-'+kind).book);await h.open(target.id);
     assert.deepEqual(h.calls.slice(0,2).map(call=>[call.endpoint,call.method]),[['/api/books/active','PUT'],['/api/books/'+target.id,'GET']]);
     await h.click('TXT 正文');await h.click('Markdown 正文');await h.click('下载完整备份');
     assert.equal(h.downloads.length,3);assert.ok(h.downloads[0].name.startsWith(target.title));assert.ok(h.downloads[0].body.includes(target.chapters[0].body));assert.ok(!h.downloads[0].body.includes(before.chapters[0].body));assert.ok(!h.downloads[0].body.includes('应在完整备份中'));
-    assert.ok(h.downloads[1].body.startsWith('# '+target.title));assert.deepEqual(JSON.parse(h.downloads[2].body).book,target);assert.equal(JSON.parse(h.downloads[2].body).version,3);
+    assert.ok(h.downloads[1].body.startsWith('# '+target.title));assert.deepEqual(JSON.parse(h.downloads[2].body).book,target);assert.equal(JSON.parse(h.downloads[2].body).version,4);
     assert.equal(h.state.book,h.active);assert.deepEqual(h.active,before);assert.equal(h.state.revision,8);assert.equal(h.state.view,'shelf');assert.deepEqual(h.setCalls,[]);
   }
 });

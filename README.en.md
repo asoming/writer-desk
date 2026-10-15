@@ -70,6 +70,22 @@ Captured from the actual 0.7.0 interface using an isolated copy of the full samp
 
 </details>
 
+## 0.8.0 release candidate
+
+The next source version adds chapter organization, two-pane editing, cross-book search, a materials library, external backups, multiple AI profiles and usage accounting, reusable export templates, online updates, mobile writing and self-hosted collaboration. Download links still point to the verified 0.7.0 release until the new installers pass their checks. See the [0.8.0 verification draft](docs/acceptance-0.8.0.md).
+
+| Action | Entry point |
+| --- | --- |
+| Reorder, move, split or merge chapters; compare two drafts; manage materials | **Writing tools** in the manuscript toolbar |
+| Search across books | Search icon in the top bar |
+| Choose an external backup location | **External backups** in Settings |
+| Manage AI services and costs | **Settings → AI assistance**; switch profiles beside the chat composer and open **AI usage** |
+| Reuse a custom document layout | Each book’s **Export & backup → Formatted export** |
+| Check, download and verify a new release | **Online updates** in Settings; save before installing |
+| Write on a phone or collaborate | **Sync & collaboration**, or follow the [self-hosting guide](docs/self-host-sync.md) |
+
+Offline backup disks keep durable pending cleanup records. Mobile installation and offline startup require trusted HTTPS; plain LAN HTTP supports online writing. Collaboration uses periodic synchronization and three-way merges, preserving conflicting drafts. macOS opens a verified DMG with installation guidance. Enhanced proofreading remains a limited local rule set; AI costs require actual provider usage and author-supplied prices.
+
 ## New in 0.7.0
 
 | Action | Where to find it |
@@ -224,6 +240,8 @@ The app uses Electron, a vanilla JavaScript interface and a Python saving servic
 - [Chinese quick start](docs/quickstart-zh.md): first use after installation.
 - [0.6.1 packaging verification](docs/acceptance-v0.6.1.md): actual TAR installation, stable launcher and native CI.
 - [0.6.0 verification record](docs/acceptance-v0.6.0.md): completed checks and remaining limits.
+- [0.8.0 release candidate verification](docs/acceptance-0.8.0.md): editing, materials, backups, AI services, synchronization and update boundaries.
+- [Self-hosted sync and mobile writing](docs/self-host-sync.md): LAN, HTTPS, mobile offline access and permissions.
 - [0.7.0 verification record](docs/acceptance-v0.7.0.md): manuscript import, offline proofreading, annotations and bookmark tests.
 - [Changelog](CHANGELOG.md): version changes and compatibility.
 - [Chinese user guide](docs/user-guide-zh.md): books, outlines, characters, recovery and AI.

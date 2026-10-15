@@ -19,10 +19,19 @@
     const authored=book.reviewTools?.dictionary||[],names=(book.notes||[]).filter(note=>note.type==='人物'&&!note.deletedAt).flatMap(note=>[note.title,...(Array.isArray(note.aliases)?note.aliases:[])]);
     return [...new Set([...authored,...names].filter(word=>typeof word==='string'&&word.trim().length>=1&&Array.from(word).length<=100).map(word=>word.trim()))];
   }
-  function scanChapters(chapters,{dictionary=[],protectedNames=[],maxFindings=MAX_FINDINGS}={}){
+  const STYLE_RULES=Object.freeze([
+    {id:'redundant-expression',expression:/(?:目前现在|首先第一|亲眼目睹|完全彻底|非常十分|十分非常|又再次|再一次重新|最首要|唯一的一个)/gu,label:'可能冗余的表达',detail:'检查相邻词语是否重复表达同一意思；修辞性强调可以保留。'},
+    {id:'approximate-redundancy',expression:/(?:大约|大概|约莫|估计)[^\n。！？；，,!?;]{1,18}(?:左右|上下)/gu,label:'约数表达可能重复',detail:'约数词和“左右／上下”同时使用，确认是否需要保留两处。'},
+    {id:'reason-redundancy',expression:/之所以[^\n。！？；!?;]{1,60}(?:原因是因为|是由于因为|是因为由于)/gu,label:'因果表达可能重复',detail:'检查因果关联词是否叠用，按原意自行调整。'},
+    {id:'missing-subject',expression:/(?:由于|通过)[^\n。！？；!?;]{1,60}[，,](?:使得|使|让)[^\n。！？；!?;]{1,30}/gu,label:'句子主语可能不明确',detail:'检查介词结构与“使／让”连用时，句子是否有明确主语。'},
+    {id:'double-negative',expression:/(?:避免|防止|杜绝)[^\n。！？；!?;]{0,30}(?:不再|不再不|不会|不能)[^\n。！？；!?;]{1,20}/gu,label:'否定关系需确认',detail:'检查“避免／防止”与否定词叠用后，是否表达了相反意思。'}
+  ]);
+  function scanChapters(chapters,{dictionary=[],protectedNames=[],people=[],maxFindings=MAX_FINDINGS}={}){
     const limit=Math.max(1,Math.min(MAX_FINDINGS,Number(maxFindings)||MAX_FINDINGS)),findings=[];
     const words=[...new Set([...dictionary,...protectedNames].filter(word=>typeof word==='string'&&word.length>=1&&Array.from(word).length<=100))].sort((a,b)=>b.length-a.length);
     const protection=words.length?new RegExp('(?=('+words.map(escape).join('|')+'))','gu'):null,maxWordUnits=words.reduce((size,word)=>Math.max(size,word.length),0),chapterOrder=new Map(chapters.map((chapter,index)=>[chapter.id,index]));
+    const named=new Map();for(const person of people)for(const name of uniqueNames(person.names)){if(!named.has(name))named.set(name,new Set());named.get(name).add(person.id);}
+    const namesPattern=people.length>1&&named.size?new RegExp([...named.keys()].sort((a,b)=>b.length-a.length).map(escape).join('|'),'gu'):null;
     let truncated=false;
     for(const chapter of chapters){
       if(chapter.deletedAt||typeof chapter.body!=='string')continue;
@@ -35,14 +44,31 @@
         for(const match of nearby.matchAll(protection))if(offset+match.index<=start&&offset+match.index+match[1].length>=end)return true;
         return false;
       }
-      function add(rule,start,end,label,replacement=null){
+      function add(rule,start,end,label,replacement=null,detail=''){
         if(protectedAt(start,end))return;
         if(findings.length>=limit){truncated=true;return;}
-        findings.push({id:chapter.id+':'+rule+':'+start+':'+end,chapterId:chapter.id,rule,start,end,text:body.slice(start,end),label,replacement,fixable:typeof replacement==='string',before:body.slice(Math.max(0,start-35),start),after:body.slice(end,end+35)});
+        findings.push({id:chapter.id+':'+rule+':'+start+':'+end,chapterId:chapter.id,rule,start,end,text:body.slice(start,end),label,replacement,detail,fixable:typeof replacement==='string',before:body.slice(Math.max(0,start-35),start),after:body.slice(end,end+35)});
       }
       for(const [wrong,right] of SPELLING){
         for(const match of body.matchAll(new RegExp(escape(wrong),'gu'))){add('spelling',match.index,match.index+wrong.length,'常见错词',right);if(truncated)break;}
         if(truncated)break;
+      }
+      if(truncated)break;
+      for(const rule of STYLE_RULES){
+        for(const match of body.matchAll(rule.expression)){add(rule.id,match.index,match.index+match[0].length,rule.label,null,rule.detail);if(truncated)break;}
+        if(truncated)break;
+      }
+      if(truncated)break;
+      // A referent warning requires two distinct *authored* people in the
+      // same sentence. Dictionary entries are never treated as people, and
+      // aliases of one person do not manufacture a second candidate.
+      if(namesPattern){
+        for(const sentence of body.matchAll(/[^\n。！？!?]{1,300}(?:[。！？!?]|$)/gu)){
+          const text=sentence[0],pronouns=[...text.matchAll(/[，,：:]\s*([他她其])(?=[^们])/gu)];
+          if(!pronouns.length)continue;const appearances=[...text.matchAll(namesPattern)];
+          for(const pronoun of pronouns){const candidates=new Set();for(const appearance of appearances){if(appearance.index>=pronoun.index)break;for(const id of named.get(appearance[0]))candidates.add(id);}if(candidates.size<2)continue;const start=sentence.index+pronoun.index+pronoun[0].lastIndexOf(pronoun[1]);add('ambiguous-reference',start,start+1,'人称指代可能不清',null,'同一句出现多位人物，确认代词具体指向谁。');if(truncated)break;}
+          if(truncated)break;
+        }
       }
       if(truncated)break;
       // Restrict repetition to function phrases. 哈哈、咚咚、重叠修辞和省略号
@@ -84,7 +110,7 @@
   function preview(book,{chapterId=null,revision=null,maxFindings}={}){
     const active=(book.chapters||[]).filter(chapter=>!chapter.deletedAt),scope=chapterId?active.filter(chapter=>chapter.id===chapterId):active;
     if(chapterId&&!scope.length)throw new Error('正文已变化，请重新校对。');
-    const words=dictionaryWords(book),result=scanChapters(scope,{dictionary:words,maxFindings});
+    const words=dictionaryWords(book),people=(book.notes||[]).filter(note=>note.type==='人物'&&!note.deletedAt).map(note=>({id:note.id,names:[note.title,...(note.aliases||[])]})),result=scanChapters(scope,{dictionary:words,people,maxFindings});
     return{bookId:book.id,revision,scope:chapterId,sources:scope.map(chapter=>({id:chapter.id,body:chapter.body})),protection:JSON.stringify(words),...result};
   }
   function assertCurrent(book,plan,revision=plan.revision){
@@ -110,6 +136,7 @@
     for(const chapter of book.chapters)if(bodies.has(chapter.id))chapter.body=bodies.get(chapter.id);
     return total;
   }
-  const model={SPELLING,MAX_FINDINGS,MAX_DICTIONARY,dictionaryWords,scanChapters,preview,assertCurrent,applySelected};
+  function uniqueNames(names){return[...new Set((names||[]).filter(name=>typeof name==='string'&&name.trim()&&Array.from(name).length<=100).map(name=>name.trim()))];}
+  const model={SPELLING,STYLE_RULES,MAX_FINDINGS,MAX_DICTIONARY,dictionaryWords,scanChapters,preview,assertCurrent,applySelected};
   if(typeof module==='object'&&module.exports)module.exports=model;else global.LocalProofreadingModel=model;
 })(typeof window==='undefined'?globalThis:window);

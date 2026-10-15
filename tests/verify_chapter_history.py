@@ -251,6 +251,27 @@ class ChapterHistoryTests(unittest.TestCase):
             image_purge.assert_not_called()
         self.assertNotIn(self.secret.encode(), server.DB_PATH.read_bytes())
 
+    def test_short_full_purge_never_reuses_the_removed_manuscript_id(self):
+        short = server.new_book("整篇删除", "short")
+        old = short["chapters"][0]
+        old["body"] = "短篇唯一正文-" + server.uid()
+        with server.connect() as conn:
+            server.insert_book(conn, short)
+        server.checkpoint_book(short["id"], force=True)
+        old["deletedAt"] = server.now()
+        with server.connect() as conn:
+            conn.execute("UPDATE books SET payload=?,revision=2 WHERE id=?", (json.dumps(short, ensure_ascii=False), short["id"]))
+        path = "/api/books/" + short["id"] + "/chapters/" + old["id"] + "/purge"
+        result = chapter_history.write(server, path, {"revision": 2})
+        owner = result["book"]["chapters"][0]
+        self.assertNotEqual(owner["id"], old["id"])
+        self.assertEqual(owner["body"], "")
+        self.assertFalse(chapter_history.contains(result["book"], {old["id"]}))
+        self.assertEqual(server.validate_book(result["book"]), result["book"])
+        self.assertNotIn(old["body"].encode(), server.DB_PATH.read_bytes())
+        again = chapter_history.sanitize(result["book"], {old["id"]})
+        self.assertEqual(again, result["book"])
+
     def test_short_legacy_sql_and_snapshot_keep_other_joined_parts(self):
         short = server.new_book("迁移后的短篇", "short")
         a, b = server.chapter("旧一", "待彻删🌙"), server.chapter("旧二", "还需保留📚")

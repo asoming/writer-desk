@@ -36,7 +36,7 @@ def validate(book, source=None):
     """Validate extensions against the already validated chapters and people.
 
     The source may be an untrusted imported/PUT payload; unknown fields are not
-    copied. Existing references to recycled items are removed, not reactivated.
+    copied. References to recycled items remain available for later restoration.
     """
     source = book if source is None else source
     raw = source.get("storyTools", defaults())
@@ -78,16 +78,16 @@ def validate(book, source=None):
 
 
 def normalize(book):
-    """Upgrade old read views and discard links to recycled chapter/person IDs."""
+    """Upgrade read views, retaining existing recycled IDs until permanent purge."""
     tools = book.setdefault("storyTools", defaults())
     if not isinstance(tools, dict):
         return book  # Validation reports corrupted/untrusted fields separately.
     tools.setdefault("dailyGoal", DEFAULT_DAILY_GOAL)
     tools.setdefault("foreshadows", [])
     tools.setdefault("timeline", [])
-    chapters = {item["id"] for item in book.get("chapters", []) if not item.get("deletedAt")}
+    chapters = {item["id"] for item in book.get("chapters", [])}
     chapters.update(item["id"] for item in book.get("shortSections", []))
-    people = {item["id"] for item in book.get("notes", []) if item.get("type") == "人物" and not item.get("deletedAt")}
+    people = {item["id"] for item in book.get("notes", []) if item.get("type") == "人物"}
     for key in ("foreshadows", "timeline"):
         if not isinstance(tools.get(key), list):
             continue

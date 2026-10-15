@@ -6,6 +6,8 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const updater = require('./updater.cjs');
+const networkUpdater = require('./network-updater.cjs');
+const updateInstaller = require('./update-installer.cjs');
 
 const userData = process.env.WRITER_DESK_USER_DATA
   ? path.resolve(process.env.WRITER_DESK_USER_DATA)
@@ -26,6 +28,49 @@ let language = settings.language === 'en' ? 'en' : 'zh';
 const text = (zh, en) => language === 'en' ? en : zh;
 const title = () => text('作家工作台', "Writer's Desk");
 const updateOptions = () => ({ ...updater.paths({ root: process.env.WRITER_DESK_INSTALL_ROOT, applications: process.env.WRITER_DESK_APPLICATIONS_DIR }), currentVersion: app.getVersion(), previousExecutable: process.execPath });
+let network = null;
+function networkService() {
+  if (network) return network;
+  let managed = false;
+  if (process.platform === 'linux') {
+    try {
+      const root = fs.realpathSync(updateOptions().root), executable = fs.realpathSync(process.execPath);
+      const relative = path.relative(path.join(root, 'versions'), executable).split(path.sep);
+      managed = relative.length === 2 && /^\d+\.\d+\.\d+$/.test(relative[0]) && ['writer-desk', 'WriterDesk'].includes(relative[1]);
+    } catch { /* A system package or development checkout uses the DEB installer. */ }
+  }
+  network = networkUpdater.createNetworkUpdater({ cacheDir: path.join(userData, 'updates'), currentVersion: app.getVersion(),
+    platform: process.platform, arch: process.arch, installKind: managed ? 'managed' : process.platform === 'linux' ? 'deb' : process.platform === 'win32' ? 'nsis' : 'dmg',
+    updateOptions, getInstalledVersion: () => updater.info(updateOptions()).installedVersion, updater });
+  network.subscribe(value => {
+    if (window && !window.isDestroyed()) window.webContents.send('writer:network-update-state', { ...value,
+      ...(value.errorCode ? { error: networkUpdater.errorMessage({ code: value.errorCode }, language) } : {}) });
+  });
+  return network;
+}
+async function installNetworkUpdate() {
+  if (updateBusy || closing || allowQuit) throw Object.assign(new Error(), { code: 'network-busy' });
+  if (!await waitForSave()) throw Object.assign(new Error(), { code: 'network-save-failed' });
+  updateBusy = true;
+  let result;
+  try { result = await networkService().prepareInstall(); }
+  finally { updateBusy = false; }
+  if (result.mode === 'managed') return restartAfterUpdate();
+  if (result.mode === 'nsis') {
+    // The verified installer is launched only in the main process, after the
+    // renderer has committed its latest draft. No renderer path is accepted.
+    await updateInstaller.launch({ file: result.file, sha256: result.sha256, pid: process.pid }); allowQuit = true;
+    if (window && !window.isDestroyed()) window.destroy();
+    await stopService(); app.quit();
+    return { installerOpened: true };
+  }
+  const error = await shell.openPath(result.file);
+  if (error) throw Object.assign(new Error(), { code: 'network-installer-failed' });
+  if (result.mode === 'dmg') await dialog.showMessageBox(window, { type: 'info', title: title(),
+    message: text('安装文件已校验并打开', 'Verified installer opened'),
+    detail: text('退出作家工作台后，将新版本拖入 Applications 替换旧版，再重新打开。系统可能要求确认打开未公证的应用。', 'Quit Writer’s Desk, drag the new app into Applications to replace the previous version, then reopen it. macOS may require confirmation for this unnotarized app.') });
+  return { installerOpened: true };
+}
 function updateFailure(error) { return { error: updater.errorMessage(error, language), code: typeof error?.code === 'string' && error.code.startsWith('update-') ? error.code : 'update-failed' }; }
 async function installUpdate() {
   if (process.platform !== 'linux') throw Object.assign(new Error(), { code: 'update-unsupported' });
@@ -198,6 +243,24 @@ for (const [channel, action] of [['writer:install-update', installUpdate], ['wri
     try { return await action(); } catch (error) { return updateFailure(error); }
   });
 }
+for (const [operation, action] of Object.entries({ info: () => networkService().info(), check: () => networkService().check(),
+  download: () => networkService().download(), cancel: () => networkService().cancel(), install: installNetworkUpdate })) {
+  ipcMain.handle('writer:network-' + operation, async (event, ...args) => {
+    if (!trusted(event) || args.length) return { error: text('更新请求不正确。', 'Invalid update request.'), code: 'network-invalid-request' };
+    try { return await action(); }
+    catch (error) { return { error: networkUpdater.errorMessage(error, language), code: error.code || 'network-failed' }; }
+  });
+}
+ipcMain.handle('writer:network-settings', async (event, value, ...extra) => {
+  if (!trusted(event) || extra.length) return { error: text('更新请求不正确。', 'Invalid update request.'), code: 'network-invalid-request' };
+  try { return await networkService().setSettings(value); }
+  catch (error) { return { error: networkUpdater.errorMessage(error, language), code: error.code || 'network-failed' }; }
+});
+ipcMain.handle('writer:choose-backup-directory', async (event, ...args) => {
+  if (!trusted(event) || args.length) return { error: text('文件夹请求不正确。', 'Invalid folder request.'), code: 'invalid-request' };
+  const selected = await dialog.showOpenDialog(window, { title: text('选择外部备份文件夹', 'Choose an external backup folder'), properties: ['openDirectory', 'createDirectory'] });
+  return { path: selected.canceled ? null : selected.filePaths[0] || null };
+});
 ipcMain.handle('writer:app-action', async (event, action) => {
   if (!trusted(event)) return { error: text('当前窗口无权执行应用操作。', 'This window is not authorized to perform app actions.'), code: 'untrusted-sender' };
   if (typeof action !== 'string' || !appActions.has(action)) return { error: text('不支持此应用操作。', 'This app action is not supported.'), code: 'invalid-app-action' };
@@ -211,7 +274,7 @@ ipcMain.handle('writer:open-book-folder', async (event, bookId) => {
 });
 ipcMain.handle('writer:print-book-pdf', async (event, options) => {
   if (!trusted(event)) return { error: text('当前窗口无权导出 PDF。', 'This window is not authorized to export PDF.'), code: 'untrusted-sender' };
-  if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some(key => !['title', 'paper'].includes(key)) || typeof options.title !== 'string' || [...options.title].length > 200 || !['a4', 'a5'].includes(options.paper)) return { error: text('PDF 排版选项不正确。', 'Invalid PDF layout options.'), code: 'pdf-invalid-request' };
+  if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some(key => !['title', 'paper', 'pageWidth', 'pageHeight'].includes(key)) || typeof options.title !== 'string' || [...options.title].length > 200 || !['a4', 'a5', 'letter', 'custom'].includes(options.paper) || (options.paper === 'custom' && (!Number.isFinite(options.pageWidth) || options.pageWidth < 100 || options.pageWidth > 320 || !Number.isFinite(options.pageHeight) || options.pageHeight < 140 || options.pageHeight > 450))) return { error: text('PDF 排版选项不正确。', 'Invalid PDF layout options.'), code: 'pdf-invalid-request' };
   if (pdfBusy || closing || allowQuit || updateBusy) return { error: text('请等待当前操作完成。', 'Wait for the current operation to finish.'), code: 'pdf-busy' };
   pdfBusy = true;
   let temporary;
@@ -224,7 +287,7 @@ ipcMain.handle('writer:print-book-pdf', async (event, options) => {
     const selected = await dialog.showSaveDialog(window, { title: text('导出 PDF', 'Export PDF'), defaultPath: path.join(app.getPath('downloads'), name + '.pdf'), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
     if (selected.canceled || !selected.filePath) return { canceled: true };
     if (!window || window.isDestroyed() || closing || allowQuit) throw new Error('App is closing');
-    const buffer = await window.webContents.printToPDF({ pageSize: options.paper.toUpperCase(), preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false, generateTaggedPDF: true });
+    const buffer = await window.webContents.printToPDF({ pageSize: options.paper === 'custom' ? { width: options.pageWidth / 25.4, height: options.pageHeight / 25.4 } : options.paper === 'letter' ? 'Letter' : options.paper.toUpperCase(), preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false, generateTaggedPDF: true });
     if (!Buffer.isBuffer(buffer) || buffer.length < 5 || buffer.subarray(0, 5).toString() !== '%PDF-' || buffer.length > 200 * 1024 * 1024) throw new Error('Invalid PDF output');
     temporary = selected.filePath + '.' + randomBytes(8).toString('hex') + '.tmp';
     await fs.promises.writeFile(temporary, buffer, { flag: 'wx', mode: 0o600 });

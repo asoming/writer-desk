@@ -29,3 +29,5 @@
 .story-memory-editor{display:grid;gap:12px}
 .story-memory-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .story-memory-old p{white-space:pre-wrap;color:var(--muted)}
+
+.ai-chat-profile{max-width:40%}.ai-chat-model-group:has(.ai-chat-profile:not([hidden])) #ai-chat-model{max-width:calc(60% - 26px)}

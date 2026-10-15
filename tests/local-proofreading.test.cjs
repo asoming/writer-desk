@@ -34,3 +34,21 @@ test('100k-character sample stays intact; isolated seeded copy exercises safe re
 test('ASCII double quotes pair safely, escaped quotes and apostrophes stay literal, deep nesting is bounded',()=>{const paired=model.scanChapters([{id:'a',body:'He said \"hello\". Don’t change apostrophes. \"escaped \\\" quotation\".'}]);assert.equal(paired.findings.length,0);const broken=model.scanChapters([{id:'a',body:'He said \"hello.'}]);assert.equal(broken.findings.length,1);assert.equal(broken.findings[0].text,'\"');const nested=model.scanChapters([{id:'a',body:'（'.repeat(100000)}]);assert.equal(nested.findings.length,1);assert.equal(nested.findings[0].rule,'nesting');assert.equal(nested.findings[0].fixable,false);});
 
 test('overlapping dictionary entries and regular-expression characters protect full literal terms',()=>{const book=make('甲乙迫不急待。[再接再励]。');book.reviewTools.dictionary=['甲乙','乙迫不急待','[再接再励]'];const result=model.preview(book,{chapterId:'one'});assert.equal(result.findings.length,0);});
+
+test('advanced offline suggestions are deterministic and never rewrite grammar or literary emphasis',()=>{
+  const book=make('🌊目前现在他亲眼目睹了这一切。大约三十人左右。之所以失败，原因是因为太急。由于他离开，使得屋里安静了。避免这件事不会再次发生。'),before=structuredClone(book),plan=model.preview(book,{chapterId:'one'});
+  for(const rule of ['redundant-expression','approximate-redundancy','reason-redundancy','missing-subject','double-negative'])assert.ok(plan.findings.some(item=>item.rule===rule),rule);
+  assert.ok(plan.findings.every(item=>!item.fixable&&typeof item.detail==='string'&&item.detail));assert.equal(plan.findings.find(item=>item.text==='目前现在').start,2);
+  assert.equal(model.applySelected(book,plan,plan.findings.map(item=>item.id)),0);assert.deepEqual(book,before);assert.deepEqual(model.preview(book,{chapterId:'one'}),plan);
+});
+
+test('ambiguous references require two distinct authored people; aliases and dictionary terms do not invent candidates',()=>{
+  const book=make('沈砚对江宁说，他会留下。沈砚看见阿砚，他笑了。甲乙来到码头，他放下包。');
+  book.notes=[{id:'shen',type:'人物',title:'沈砚',aliases:['阿砚'],deletedAt:null},{id:'jiang',type:'人物',title:'江宁',aliases:[],deletedAt:null}];book.reviewTools.dictionary=['甲乙'];
+  const plan=model.preview(book,{chapterId:'one'}),references=plan.findings.filter(item=>item.rule==='ambiguous-reference');assert.equal(references.length,1);assert.equal(references[0].text,'他');assert.equal(references[0].fixable,false);assert.equal(references[0].start,7);
+  book.notes[1].deletedAt='2026';assert.equal(model.preview(book,{chapterId:'one'}).findings.some(item=>item.rule==='ambiguous-reference'),false);
+});
+
+test('dictionary and character aliases still protect complete advanced-rule phrases',()=>{
+  const book=make('目前现在。亲眼目睹。大约三人左右。沈砚对江宁说，他会留下。');book.notes=[{id:'a',type:'人物',title:'沈砚',aliases:['目前现在'],deletedAt:null},{id:'b',type:'人物',title:'江宁',aliases:[],deletedAt:null}];book.reviewTools.dictionary=['亲眼目睹','大约三人左右','他'];assert.deepEqual(model.preview(book,{chapterId:'one'}).findings,[]);
+});

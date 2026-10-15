@@ -29,7 +29,7 @@ window.LocalProofreading=(()=>{
         heading.append(check,el('strong',null,T(finding.label)),el('span','subtle',finding.fixable?finding.text+' → '+finding.replacement:T('仅提示')));
         const context=action('','proofreading-context',()=>locate(finding));context.append(document.createTextNode(finding.before),el('mark',null,finding.text),document.createTextNode(finding.after));
         const actions=el('div','proofreading-result-actions');actions.append(action(T('忽略'),'text-button',()=>{ignored.add(finding.id);selected.delete(finding.id);renderResults();}),action(T('加入词典'),'text-button',()=>addWord(finding.text)));
-        row.append(heading,context,actions);list.append(row);
+        row.append(heading,context);if(finding.detail)row.append(el('p','subtle proofreading-suggestion',T(finding.detail)));row.append(actions);list.append(row);
       }
       updateSelection();
     }
@@ -62,7 +62,7 @@ window.LocalProofreading=(()=>{
     }
     function dictionaryPanel(){
       const details=el('details','proofreading-dictionary');details.append(el('summary',null,T('规则与词典')));
-      details.append(el('p','subtle',T('离线检查少量常见错词、重复词和标点配对。人物姓名与词典内的词受保护；提示不会自动修改。')));
+      details.append(el('p','subtle',T('离线检查错词、重复词、标点、冗余表达和指代。语法与文风仅供参考，不会自动修改；人物姓名与词典词语受保护。')));
       const form=el('form','proofreading-dictionary-form'),input=el('input','text-field'),add=el('button','secondary-button',T('添加'));input.setAttribute('aria-label',T('自定义词语'));input.placeholder=T('自定义词语');input.maxLength=200;add.type='submit';form.append(input,add);
       form.addEventListener('submit',async event=>{event.preventDefault();if(await addWord(input.value))input.value='';});details.append(form,el('div','proofreading-dictionary-words'));return details;
     }

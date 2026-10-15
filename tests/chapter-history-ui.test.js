@@ -120,7 +120,7 @@ test('recycled books disable restore, unknown dates are honest, and pending clea
   const h=harness();h.context.override=endpoint=>endpoint==='/api/history/chapters'?{chapters:[{...h.record(),deletedAt:null,bookDeleted:true,canRestore:false}]}:undefined;
   await h.module.open();assert.equal(button(h.body(),'恢复').disabled,true);assert.ok(find(h.body(),item=>item.textContent.includes('时间未知')));assert.equal(h.module.formatTime('bad-date'),'时间未知');
   h.context.override=(endpoint,method)=>method==='POST'?{...copy(h.stored.get('a')),revision:8,removedChapterIds:['deleted'],cleanupPending:true}:undefined;
-  h.module.confirmPurge(h.record(),{onDone:()=>{}});await button(h.body(),'彻底删除').listeners.click();assert.equal(h.messages.at(-1),'章节已删除，本机备份清理尚未完成，请稍后重试。');
+  h.module.confirmPurge(h.record(),{onDone:()=>{}});await button(h.body(),'彻底删除').listeners.click();assert.equal(h.messages.at(-1),'章节已删除，备份或同步清理尚未完成，请稍后重试。');
 });
 
 test('pending cleanup is retried only by an explicit POST and the list stays read-only',async()=>{
@@ -131,7 +131,7 @@ test('pending cleanup is retried only by an explicit POST and the list stays rea
     return undefined;
   };
   await h.module.open();assert.equal(h.calls.filter(call=>call.method==='POST').length,0);
-  assert.ok(find(h.body(),item=>item.textContent==='部分本机副本尚未清理完成，作家工作台会继续重试。'));
+  assert.ok(find(h.body(),item=>item.textContent==='部分备份或同步副本尚未清理完成，作家工作台会继续重试。'));
   await button(h.body(),'重试').listeners.click();assert.equal(h.calls.filter(call=>call.method==='POST').length,1);
   assert.equal(h.calls.at(-1).endpoint,'/api/history/chapters');assert.equal(h.calls.at(-1).method,'GET');
   assert.equal(find(h.body(),item=>item.className==='chapter-history-pending'),undefined);

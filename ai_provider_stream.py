@@ -104,8 +104,11 @@ def request_stream(service, settings, messages, on_delta, cancelled, *, with_ima
     if settings.get("apiKey"):
         headers["Authorization"] = "Bearer " + settings["apiKey"]
     payload = {"model": settings["model"], "messages": messages, "stream": True}
+    if settings.get("requestStreamUsage"):
+        payload["stream_options"] = {"include_usage": True}
     request = urllib.request.Request(settings["endpoint"], data=_compact(payload).encode("utf-8"), headers=headers, method="POST")
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+    service._transport_started()
     try:
         with opener.open(request, timeout=settings["timeoutSeconds"]) as response:
             check()
@@ -115,6 +118,7 @@ def request_stream(service, settings, messages, on_delta, cancelled, *, with_ima
                 if len(raw) > limit:
                     raise AIError(502, "AI 返回内容过大，请减少生成范围后重试。")
                 result = json.loads(raw.decode("utf-8"))
+                service._capture_usage(result)
                 if _context_rejected(result):
                     raise AIError(400, CONTEXT_ERROR_MESSAGE)
                 decoded = service._decode_response(result, with_images=with_images)
@@ -137,6 +141,7 @@ def request_stream(service, settings, messages, on_delta, cancelled, *, with_ima
                     finished = True
                     return
                 data = json.loads(value)
+                service._capture_usage(data)
                 if _context_rejected(data):
                     raise AIError(400, CONTEXT_ERROR_MESSAGE)
                 if not isinstance(data, dict) or data.get("error"):

@@ -182,7 +182,7 @@ class CoverTests(unittest.TestCase):
             body = {'title': '', 'kind': 'long', 'prompt': '请根据海港失踪案设计方案。', 'skillIds': [], 'skillMode': 'auto', 'preview': True}
             code, preview = request('/api/ai/book-cover', 'POST', body)
             self.assertEqual(code, 200)
-            self.assertEqual(preview['counts'], dict(chapters=0, outlines=0, people=0, relationships=0))
+            self.assertEqual(preview['counts'], dict(chapters=0, outlines=0, people=0, relationships=0, memories=0))
             self.assertEqual(preview['action'], 'book_cover')
             self.assertIsNone(preview['maxContextChars'])
             self.assertNotIn('bookId', preview)

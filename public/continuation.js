@@ -20,8 +20,9 @@ async function buildContinuationSettings(){
   const builds=[['settings-protection',typeof appendProtectionSettings==='function'?appendProtectionSettings:null],['settings-ai',typeof appendAISettings==='function'?appendAISettings:null],['settings-skills',typeof appendWritingSkillSettings==='function'?appendWritingSkillSettings:null]];
   await Promise.allSettled(builds.map(async([id,build])=>{
     const host=$(id);if(!host||!build)return;host.replaceChildren();
-    try{await build(host);}catch(error){host.append(el('p','subtle',error.message||T('无法读取设置。')));}
+    try{await build(host);if(id==='settings-protection'&&typeof appendExternalBackupSettings==='function')await appendExternalBackupSettings(host);}catch(error){host.append(el('p','subtle',error.message||T('无法读取设置。')));}
   }));
+  if(typeof appendNetworkUpdateSettings==='function'){const host=$('settings-page-updates');if(!host.querySelector('.network-update-settings'))await appendNetworkUpdateSettings(host);}
   updateContinuationSettings();
 }
 

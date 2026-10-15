@@ -1,0 +1,16 @@
+services:
+  writer-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.sync
+    ports:
+      - "127.0.0.1:8766:8766"
+    volumes:
+      - writer-sync-data:/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  writer-sync-data:

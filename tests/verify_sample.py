@@ -16,11 +16,12 @@ sys.path.insert(0, str(ROOT))
 from server import validate_book
 import review_tools
 import story_memory
+import asset_library
 
 backup = json.loads((ROOT / "examples/tide-archive.yejian.json").read_text("utf-8"))
 book = backup["book"]
 # Backups from before cover templates remain valid without that optional field.
-assert validate_book(book) == {"coverTemplate": "", "reviewTools": review_tools.defaults(), "storyMemory": story_memory.validate_memory(None), **book}
+assert validate_book(book) == {"coverTemplate": "", "reviewTools": review_tools.defaults(), "storyMemory": story_memory.validate_memory(None), "assetLibrary": asset_library.defaults(), **book}
 chapters, volumes = book["chapters"], book["volumes"]
 people = [p for p in book["notes"] if p["type"] == "人物"]
 assert len(chapters) == 36 and len(volumes) == 6 and len(people) == 32

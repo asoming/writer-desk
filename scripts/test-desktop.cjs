@@ -71,7 +71,7 @@ async function testMainContract() {
   ipcMain.handle = (name, callback) => { ipcMain[name] = callback; };
   const userData = path.join(temp, 'main');
   app.getPath = name => name === 'downloads' ? temp : userData;
-  app.setPath = () => {}; app.setName = () => {}; app.getVersion = () => 'test';
+  app.setPath = () => {}; app.setName = () => {}; app.getVersion = () => require(path.join(root, 'package.json')).version;
   app.requestSingleInstanceLock = () => true; app.whenReady = () => Promise.resolve();
   app.quit = () => {
     const event = { preventDefault() { this.prevented = true; } }; app.emit('before-quit', event);
@@ -129,7 +129,7 @@ async function testMainContract() {
     queueMicrotask(() => child.stdout.emit('data', Buffer.from('WRITER_READY {"url":"http://127.0.0.1:38123"}\n')));
     return child;
   };
-  const context = { require: name => name === 'electron' ? electron : name === 'node:child_process' ? { spawn: spawnFake } : name === 'node:http' ? httpFake : name === './updater.cjs' ? require(path.join(root, 'desktop/updater.cjs')) : require(name), __dirname: path.join(root, 'desktop'), process: { ...process, env: { ...process.env, WRITER_DESK_USER_DATA: userData, WRITER_DESK_INSTALL_ROOT: path.join(temp, 'managed-installation'), WRITER_DESK_APPLICATIONS_DIR: path.join(temp, 'applications') } }, console, setTimeout, clearTimeout, URL, Buffer };
+  const context = { require: name => name === 'electron' ? electron : name === 'node:child_process' ? { spawn: spawnFake } : name === 'node:http' ? httpFake : name.startsWith('./') ? require(path.join(root, 'desktop', name)) : require(name), __dirname: path.join(root, 'desktop'), process: { ...process, env: { ...process.env, WRITER_DESK_USER_DATA: userData, WRITER_DESK_INSTALL_ROOT: path.join(temp, 'managed-installation'), WRITER_DESK_APPLICATIONS_DIR: path.join(temp, 'applications') } }, console, setTimeout, clearTimeout, URL, Buffer };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'desktop/main.cjs'), 'utf8'), context);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(win.options.webPreferences.sandbox, true);
@@ -145,6 +145,19 @@ async function testMainContract() {
   const authenticatedToken = result.requestHeaders['X-Writer-Desktop'];
   headersHandler({ url: 'https://example.org/', requestHeaders: {} }, value => { result = value; }); assert.equal(result.requestHeaders['X-Writer-Desktop'], undefined);
   const event = () => ({ sender: win.webContents, senderFrame: win.webContents.mainFrame });
+  // Network operations accept no renderer-controlled URLs, paths or versions.
+  // Invalid inputs must be rejected before a request or save-close handshake.
+  for (const name of ['info', 'check', 'download', 'cancel', 'install']) {
+    const callback = ipcMain['writer:network-' + name]; assert.equal(typeof callback, 'function');
+    assert.ok((await callback({ sender: {}, senderFrame: {} })).error);
+    assert.ok((await callback(event(), '/renderer/path-or-url')).error);
+  }
+  assert.ok((await ipcMain['writer:network-settings'](event(), { endpoint: 'https://evil.test' })).error);
+  const networkInfo = await ipcMain['writer:network-info'](event());
+  assert.equal(networkInfo.currentVersion, app.getVersion()); assert.equal(networkInfo.settings.autoDownload, false);
+  assert.ok(!JSON.stringify(networkInfo).includes(userData));
+  assert.equal((await ipcMain['writer:network-cancel'](event())).cancelled, false);
+
   let e = event(); ipcMain.emit('writer:storage', e, { op: 'set', key: 'yejian.draft.fixture', value: 'saved draft' }); assert.equal(e.returnValue.error, undefined);
   e = event(); ipcMain.emit('writer:storage', e, { op: 'get', key: 'yejian.draft.fixture' }); assert.equal(e.returnValue.value, 'saved draft');
   e = event(); ipcMain.emit('writer:storage', e, { op: 'length' }); assert.equal(e.returnValue.value, 1);
@@ -233,7 +246,7 @@ async function testMainContract() {
   const appSettings = sender => ipcMain['writer:app-settings'](sender || event());
   const action = (name, sender) => ipcMain['writer:app-action'](sender || event(), name);
   const initialSettings = appSettings();
-  assert.equal(initialSettings.version, 'test'); assert.equal(initialSettings.dataPath, path.join(userData, 'data'));
+  assert.equal(initialSettings.version, require(path.join(root, 'package.json')).version); assert.equal(initialSettings.dataPath, path.join(userData, 'data'));
   assert.equal(initialSettings.zoomFactor, 1); assert.equal(initialSettings.fullscreen, false); assert.equal(initialSettings.maximized, false);
   const initialOpened = openedFolders.length;
   for (const sender of [{ sender: {}, senderFrame: {} }, { sender: win.webContents, senderFrame: { url: win.url } }]) {
@@ -338,6 +351,19 @@ async function testPreloadContract() {
   assert.deepEqual(invoked, { channel: 'writer:install-update', args: [] });
   await bridge.restartAfterUpdate('/arbitrary/renderer/path');
   assert.deepEqual(invoked, { channel: 'writer:restart-after-update', args: [] });
+  for (const [method, channel] of [['networkInfo','info'], ['networkCheck','check'], ['networkDownload','download'], ['networkCancel','cancel'], ['networkInstall','install']]) {
+    await bridge[method]('/arbitrary/renderer/path');
+    assert.deepEqual(invoked, { channel: 'writer:network-' + channel, args: [] });
+  }
+  await bridge.networkSettings({ autoCheck: false, autoDownload: false, includePrerelease: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(invoked)), { channel: 'writer:network-settings', args: [{ autoCheck: false, autoDownload: false, includePrerelease: true }] });
+  const updateEvents = [], beforeUpdates = ipcRenderer.listenerCount('writer:network-update-state');
+  const stopUpdates = bridge.onNetworkUpdate(value => updateEvents.push(value));
+  for (const value of [null, [], {}, { phase: 1 }]) ipcRenderer.emit('writer:network-update-state', {}, value);
+  assert.equal(updateEvents.length, 0);
+  ipcRenderer.emit('writer:network-update-state', {}, { phase: 'downloading', received: 2, total: 10 });
+  assert.equal(updateEvents.length, 1); stopUpdates(); assert.equal(ipcRenderer.listenerCount('writer:network-update-state'), beforeUpdates);
+
   ipcRenderer.invoke = async () => ({});
   assert.equal(Object.keys(await bridge.performAppAction('close')).length, 0);
   await assert.rejects(bridge.getAppSettings(), error => error.code === 'invalid-response');
