@@ -16,6 +16,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 from urllib.parse import urlsplit, unquote
 import uuid
 
@@ -482,6 +483,13 @@ class HubStore:
 class HubHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def server_bind(self):
+        # HTTPServer otherwise performs reverse DNS during every bind. Local
+        # and LAN service startup must also work with no DNS or mDNS available.
+        TCPServer.server_bind(self)
+        self.server_name = "localhost" if self.server_address[0] == "127.0.0.1" else self.server_address[0]
+        self.server_port = self.server_address[1]
 
     def __init__(self, address, store, allowed_origins=()):
         self.store, self.allowed_origins = store, set(allowed_origins)
