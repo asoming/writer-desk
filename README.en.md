@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/?lang=en">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.6.0">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.6.1">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.6.0"><img src="https://img.shields.io/badge/release-v0.6.0%20preview-6366f1" alt="Release v0.6.0 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.6.1"><img src="https://img.shields.io/badge/release-v0.6.1%20preview-6366f1" alt="Release v0.6.1 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -25,9 +25,9 @@ Writer's Desk is a desktop writing app for novels and short stories. Each book h
 
 Writing, saving and backups work offline. AI assistance is optional. The interface supports Chinese and English, light and dark themes, and a warm eye-comfort mode.
 
-[Download](https://github.com/asoming/writer-desk/releases/tag/v0.6.0) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
+[Download](https://github.com/asoming/writer-desk/releases/tag/v0.6.1) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
 
-> Current source: **0.6.1**, adding a complete Linux offline-install gate. The 0.6.0 DEB, EXE and DMG passed native startup checks; do not use the 0.6.0 TAR package for upgrades while the correction builds. Windows publisher signing and Apple notarization are not configured.
+> Current preview: **0.6.1**. Native installer checks passed on Linux, Windows and both Mac architectures. The Linux TAR also passed its packaged installation script and stable launcher checks. [Downloads and checksums](https://github.com/asoming/writer-desk/releases/tag/v0.6.1). Windows publisher signing and Apple notarization are not configured.
 
 ## Features
 
@@ -68,22 +68,22 @@ Activity covers the last 90 days using the computer's local date. It counts posi
 
 ## Download and install
 
-Download an installer from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.6.0). The 0.6.0 packages passed native build and actual installer verification on all four targets. Desktop packages include the runtime; end users do not need Python or Node.js.
+Download an installer from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.6.1). The 0.6.1 packages passed native build and actual installer verification on all four targets. Desktop packages include the runtime; end users do not need Python or Node.js.
 
-| Platform | Requirements | 0.6.0 installer |
+| Platform | Requirements | 0.6.1 installer |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.6.0-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.6.0/WriterDesk-0.6.0-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.6.0-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.6.0/WriterDesk-0.6.0-windows-x64.exe) |
-| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.6.0-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.6.0/WriterDesk-0.6.0-mac-arm64.dmg) |
-| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.6.0-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.6.0/WriterDesk-0.6.0-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.6.1-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.6.1-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-windows-x64.exe) |
+| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.6.1-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-mac-arm64.dmg) |
+| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.6.1-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-mac-x64.dmg) |
 
-- **Linux:** run `sudo apt install ./WriterDesk-0.6.0-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
+- **Linux:** run `sudo apt install ./WriterDesk-0.6.1-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
 - **Windows:** run the EXE and follow the installer. It creates desktop and Start menu shortcuts.
 - **macOS:** open the DMG, drag the app to Applications, then launch it from Applications.
 
 Save your work and quit the older app before upgrading. Install the new package for your platform; personal books stay in a separate user data directory.
 
-The 0.6.0 Linux TAR package is temporarily unavailable for upgrades due to an integrity-manifest issue. The corrected TAR remains supported for the existing per-user installation and offline updater. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
+The Linux [WriterDesk-0.6.1-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.6.1/WriterDesk-0.6.1-linux-x64.tar.gz) supports the existing per-user installation and offline updater. Version 0.6.1 fixes an incomplete manifest in the 0.6.0 TAR; use the corrected package. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
 
 The release includes SHA256 checksum files and native verification reports. See the [distribution checklist](docs/distribution-checklist.md) for signing and verification details. Mac supports two-finger scrolling, map panning and pinch-to-zoom, and a save-aware swipe back to the bookshelf. Physical trackpad feel still needs hands-on verification.
 
@@ -195,6 +195,7 @@ The app uses Electron, a vanilla JavaScript interface and a Python saving servic
 ## Documentation and feedback
 
 - [Chinese quick start](docs/quickstart-zh.md): first use after installation.
+- [0.6.1 packaging verification](docs/acceptance-v0.6.1.md): actual TAR installation, stable launcher and native CI.
 - [0.6.0 verification record](docs/acceptance-v0.6.0.md): completed checks and remaining limits.
 - [Changelog](CHANGELOG.md): version changes and compatibility.
 - [Chinese user guide](docs/user-guide-zh.md): books, outlines, characters, recovery and AI.
