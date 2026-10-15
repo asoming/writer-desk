@@ -66,7 +66,7 @@
     for(const control of [query,replacement,sensitive]){control.addEventListener('input',changed);control.addEventListener('compositionend',()=>{clearTimeout(timer);timer=setTimeout(render,0);});}
     async function locate(id,sample){
       if(!visible()||!plan)return;const chapter=state.book.chapters.find(c=>c.id===id),source=plan.sources.find(s=>s.id===id);if(!chapter||chapter.body!==source.body){render();toast(T('正文已变化，请重新预览。'));return;}
-      await jumpToChapter(id);if(state.book?.id!==bookId||state.chapterId!==id||$('dialog').open)return;
+      if(await jumpToChapter(id)===false)return;if(state.book?.id!==bookId||state.chapterId!==id||$('dialog').open)return;
       const editor=$('editor');editor.focus({preventScroll:true});editor.setSelectionRange(sample.start,sample.end);
       // A hidden prefix uses the editor's real wrapping and font to locate long
       // chapters without resetting the live text area or its undo history.

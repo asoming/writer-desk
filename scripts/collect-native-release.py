@@ -98,13 +98,15 @@ def main():
 
 macOS 下载与处理器对应的包，将 App 拖到 Applications。作品仍保存在原有用户数据目录；卸载安装程序不会主动删除作品库。Linux 的旧用户安装快捷方式可能遮住系统 `.deb` 入口，迁移说明见仓库 `desktop/BUILD.md`。
 
-0.6.1 修正 Linux TAR 最终文件清单的生成时机，纳入 DEB 目标后加的 AppArmor profile。发行前另行运行 TAR 包内安装脚本和托管安装检查，报告绑定本次压缩包 SHA256；0.6.0 原资产保持不变。TAR 检查验证提取、安装和固定入口，桌面保存重开由对应原生安装包与冻结服务检查覆盖。
+本版新增 Word .docx / TXT / Markdown 稿件导入，先预览分卷分章、确认后建立独立作品；本地校对提供有限错词规则与每书词典，作者选择修正；段落批注与书签支持保存、跳转、重新关联和历史迁移。十万字示例三格式逐章正文核对完整。
+
+Linux TAR 延续完整清单及包内安装脚本验收，报告绑定本次压缩包 SHA256。TAR 检查验证提取、安装和固定入口，桌面保存重开由对应原生安装包与冻结服务检查覆盖。
 
 沿用 0.6.0 的全书查找与预览替换、版本逐段对比恢复、AI 长篇记忆、伏笔追踪、故事时间线、每日目标/日历/字数趋势、Word/EPUB/PDF 排版导出与可停止的 AI 流式回复，以及正文输入时滚动位置回顶修复。
 
 内置 101,506 字示例《潮汐档案馆》，包含 6 卷 36 章、32 位人物、12 条伏笔与 18 个时间事件。旧示例及个人作品不会被覆盖，可从书架载入新版示例副本。
 
-修正版验收见 [docs/acceptance-v0.6.1.md](https://github.com/asoming/writer-desk/blob/main/docs/acceptance-v0.6.1.md)，功能说明与原有边界见 docs/acceptance-v0.6.0.md。Word 已验证结构和全文完整性；本次环境中的 LibreOffice 渲染受运行库版本限制，尚未验证 Word 阅读器实际分页。PDF 已用 Electron 实际生成并检查分页。AI 使用隔离模拟服务验收，没有调用真实收费服务。
+本轮验收见 [docs/acceptance-v0.7.0.md](https://github.com/asoming/writer-desk/blob/main/docs/acceptance-v0.7.0.md)，功能说明与原有边界见 docs/acceptance-v0.6.0.md。Word 已验证结构和全文完整性；本次环境中的 LibreOffice 渲染受运行库版本限制，尚未验证 Word 阅读器实际分页。PDF 已用 Electron 实际生成并检查分页。AI 使用隔离模拟服务验收，没有调用真实收费服务。
 
 Mac 适配双指滚动与惯性、人物图双指平移和以手势位置为中心的捏合缩放。非编辑区域支持横向返回书架，`Command + [` 也可返回；返回前经过保存检查。使用原生窗口按钮及常用 Command 快捷键。实体触控板的手感仍需真人在 Mac 上验证。
 

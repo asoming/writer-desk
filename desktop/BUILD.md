@@ -2,6 +2,10 @@
 
 中文名称 **作家工作台**，英文名称 **Writer's Desk**。桌面版将 Electron 与本机 Python 保存服务放在同一个发行包中，使用时不用安装 Python、Node.js 或浏览器插件。
 
+## Source and release status
+
+当前源码版本为 0.7.0，新增书架稿件导入和写作工具栏「校对与批注」，包括离线规则校对、段落批注与书签。当前已发布安装包仍为 [0.6.1](https://github.com/asoming/writer-desk/releases/tag/v0.6.1)；下方安装示例沿用已发布包，不表示 0.7.0 已完成原生发行。新功能操作与截图见[使用指南](../docs/user-guide-zh.md)，本轮冻结服务、原生包和安装状态见[0.7.0 验收](../docs/acceptance-v0.7.0.md)。
+
 ## Run a Linux release
 
 Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。系统安装使用 `sudo apt install ./WriterDesk-0.6.1-linux-amd64.deb`；`apt` 会安装依赖，在 `/opt/Writer's Desk` 放置程序、注册应用菜单，作品仍使用下文的原有数据目录。也可解压 `WriterDesk-0.6.1-linux-x64.tar.gz` 后直接运行目录里的 `writer-desk`，或执行 `bash install-linux.sh` 注册当前用户的固定安装入口。安装脚本使用包内 Electron 的 Node 运行时，不需要系统 Python 或 Node。
@@ -29,6 +33,8 @@ Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11
 - 第一次启动开发版时，发现源代码目录 `data/` 或相邻旧 `yejian/data/` 会用 SQLite backup 安全复制数据库（包括 WAL 中的已提交内容），源文件保持原样。目标库已存在时绝不覆盖。发行包不包含你的个人作品库；用户可通过“导入备份”迁移。
 - 草稿和界面偏好另存于用户目录 `client-storage.json`，不受每次启动端口变化影响。每次修改采用临时文件重命名写入；不依赖安装目录可写。
 
+0.7.0 的完整 JSON 新增每书 `reviewTools`，保存自定义词典、批注与书签；缺省字段向后兼容。稿件导入始终新建书，不覆盖已有作品，升级不会用新版示例覆盖作者修改。新版《潮汐档案馆》在原有 101,506 字正文上增加 6 个书签和 3 条批注（1 条已解决），已有副本需显式载入新版副本才能查看新增记录。
+
 ## Build from source
 
 需要 Node.js 22.12+、Python 3.9+、当前操作系统的构建环境。固定依赖见 `package-lock.json` 和 `scripts/requirements-build.txt`。
@@ -55,7 +61,7 @@ Windows 包支持 Windows 10+ x64，提供可选择目录的当前用户 NSIS �
 
 手动工作流 `.github/workflows/native-packages.yml` 使用 Ubuntu 22.04 x64、Windows Server 2022 x64、macOS 15 arm64 和 macOS 15 Intel 的原生 runner。触发输入须与 `package.json` 版本完全相同。四个任务先跑存储回归，构建后再跑冻结服务的文件夹、备份、图片、章节历史和删除流程；随后从真正的 `.deb`、`.exe`、`.dmg` 提取/安装 App，检查本机保存、重启持久化、101,506 字示例和 Electron 窗口载入。验证都使用临时作品库；Windows NSIS 验证限定在一次性的 GitHub Actions runner。真实触控板手感、Gatekeeper 下载体验和真实 Windows 桌面仍需人工验收。
 
-只有四个原生任务全部成功才收集 SHA256、校验报告、源码 zip 和安装包到 GitHub 草稿 release；工作流不会自动公开发布。可用 `gh workflow run native-packages.yml --ref main -f version=0.6.1` 触发，验收草稿后单独发布。已公开 release 或不同源码提交的同版本草稿不会被覆盖。
+只有四个原生任务全部成功才收集 SHA256、校验报告、源码 zip 和安装包到 GitHub 草稿 release；工作流不会自动公开发布。0.7.0 源码可用 `gh workflow run native-packages.yml --ref main -f version=0.7.0` 触发；该命令创建候选检查，不代表已有可下载发行版。验收草稿后单独发布。已公开 release 或不同源码提交的同版本草稿不会被覆盖。
 
 Linux 的 `after-pack.cjs` 先将普通文件权限统一为 `0644`、可执行文件统一为 `0755` 并生成初始清单；DEB 目标完成后，对最终目录重生成并严格校验清单，纳入后加的 AppArmor 文件。TAR 完成后，构建器使用生产升级器校验真实压缩包，并运行包内安装脚本到临时根，检查固定入口与作品目录隔离；该报告也是发行收集的必需条件。压缩包根目录必须是 `WriterDesk/`，只含普通文件与目录。升级读取器支持 USTAR 和常规 PAX 路径、大小、时间元数据。发行压缩包完成后生成对应 `.sha256`，不要再改包内文件。
 
@@ -67,6 +73,12 @@ npm run test:desktop
 安装升级测试使用隔离临时目录，验证固定入口、删除原解压目录后仍可运行、PAX、散列与架构检查、错误归档拒绝、激活失败回退，以及前端桥接到主进程的保存重启契约，不修改真实安装或作品库。
 
 开发时 `npm start` 启动独立桌面窗口，使用系统 Python 或 `WRITER_DESK_PYTHON` 指定的解释器。`start.sh` / `start.bat` 保留无 Electron 的本地浏览器启动方式。
+
+## 0.7.0 feature verification
+
+本轮源码回归覆盖 22 个 Python 测试套件及全部当前 Node 测试。冻结后端通过稿件导入的 4 项真实 HTTP 检查和隔离便携书库验证，36 章示例副本已进行浏览器交互检查；Electron 与四平台原生包、发行校验和用户安装仍以[验收记录](../docs/acceptance-v0.7.0.md)的实际结果为准。
+
+原生检查应覆盖新静态资源、DOCX / TXT / Markdown 导入后保存重开、每书词典和批注 / 书签 JSON 往返，以及章节彻删后的引用清理。导入解析及离线校对无需 AI 密钥或网络服务；发行包不携带用于检查的临时稿件或个人书库。
 
 ## Runtime boundaries
 

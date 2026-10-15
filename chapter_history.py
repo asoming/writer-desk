@@ -119,7 +119,9 @@ def sanitize(book, chapter_ids):
         # A combined short manuscript changed when any original section was removed.
         if result.get("kind") == "short":
             memory["entries"] = []
-    return planning.sanitize(result, chapter_ids, replacements)
+    result = planning.sanitize(result, chapter_ids, replacements)
+    import review_tools
+    return review_tools.sanitize(result, chapter_ids, replacements, before=book)
 
 
 def valid_date(value):

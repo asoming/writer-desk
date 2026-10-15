@@ -7,6 +7,19 @@ const currentNote=()=>state.book?.notes.find(n=>n.id===state.noteId&&!n.deletedA
 const count=text=>Array.from(text).filter(c=>!/\s/u.test(c)).length;
 const clone=value=>JSON.parse(JSON.stringify(value));
 const uid=()=>crypto.randomUUID();
+let reviewAnchorBook=null,reviewAnchorBodies=new Map();
+function resetReviewAnchors(){
+  reviewAnchorBook=state.book;reviewAnchorBodies=new Map((state.book?.chapters||[]).map(chapter=>[chapter.id,chapter.body]));
+  if(state.book)window.ManuscriptMarks?.normalize(state.book);
+  window.ManuscriptMarks?.sync();
+}
+function syncReviewAnchors(){
+  if(!state.book||state.composing)return;
+  if(reviewAnchorBook!==state.book){resetReviewAnchors();return;}
+  for(const chapter of state.book.chapters){const before=reviewAnchorBodies.get(chapter.id);if(before!==undefined&&before!==chapter.body)window.ManuscriptMarks?.reanchorChapter(chapter.id,before,chapter.body,state.book);reviewAnchorBodies.set(chapter.id,chapter.body);}
+  const present=new Set(state.book.chapters.map(chapter=>chapter.id));for(const id of reviewAnchorBodies.keys())if(!present.has(id))reviewAnchorBodies.delete(id);
+  window.ManuscriptMarks?.sync();
+}
 function normalizeShortManuscript(book){
   if(book.kind!=='short')return{manuscript:null,changed:false};
   const active=book.chapters.filter(chapter=>!chapter.deletedAt);
@@ -17,9 +30,11 @@ function normalizeShortManuscript(book){
     const manuscript={id,title:'正文',body:'',volumeId:null,deletedAt:null};book.chapters.push(manuscript);
     active.push(manuscript);changed=true;
   }
-  const manuscript=active[0],previous=Array.isArray(book.shortSections)?book.shortSections:[],previousOwner=active.find(chapter=>chapter.id===previous[0]?.id)||manuscript,sections=[],ids=new Set(active.map(chapter=>chapter.id)),recycled=new Set(book.chapters.filter(chapter=>chapter.deletedAt).map(chapter=>chapter.id));let offset=0;
+  const manuscript=active[0],previous=Array.isArray(book.shortSections)?book.shortSections:[],previousOwner=active.find(chapter=>chapter.id===previous[0]?.id)||manuscript,sections=[],ids=new Set(active.map(chapter=>chapter.id)),recycled=new Set(book.chapters.filter(chapter=>chapter.deletedAt).map(chapter=>chapter.id)),reviewOffsets={};let offset=0;
   active.forEach((chapter,index)=>{
     if(index)offset+=2;
+    reviewOffsets[chapter.id]=offset;
+    if(chapter===previousOwner)previous.forEach(section=>{reviewOffsets[section.id]??=offset+Math.min(section.start,chapter.body.length);});
     if(chapter===previousOwner&&previous.length)previous.forEach(section=>sections.push({...section,start:offset+Math.min(section.start,chapter.body.length),end:offset+Math.min(section.end,chapter.body.length)}));
     else if(active.length>1)sections.push({id:chapter.id,title:chapter.title,start:offset,end:offset+chapter.body.length});
     offset+=chapter.body.length;
@@ -33,6 +48,7 @@ function normalizeShortManuscript(book){
     const old=owner.chapterIds||[],mapped=[...new Set(old.map(id=>ids.has(id)&&!recycled.has(id)?manuscript.id:id))];
     if(old.length!==mapped.length||old.some((id,index)=>id!==mapped[index])){owner.chapterIds=mapped;changed=true;}
   }
+  window.ManuscriptMarks?.remapShortLinks(book,ids,manuscript.id,recycled,reviewOffsets);
   return{manuscript,changed};
 }
 function resolveShortManuscriptId(id,book=state.book){
@@ -72,11 +88,12 @@ async function api(path,method='GET',data){
 }
 function saveStatus(text,error=false){$('save-status').textContent=text;$('save-status').classList.toggle('error',error);}
 function showError(error){$('error-message').textContent=error.message;$('error-banner').hidden=false;$('retry-save').hidden=!!error.conflict;$('rescue-copy').hidden=!error.conflict;}
-function markDirty(reason='edit'){state.saveReason=reason==='restore'||(state.dirty&&state.saveReason==='restore')?'restore':'edit';state.dirty=true;state.seq++;saveStatus(state.conflict?T('需要另存副本'):T('待保存'),state.conflict);saveDraft();clearTimeout(state.timer);if(!state.composing&&!state.conflict)state.timer=setTimeout(()=>saveNow(),650);renderStats();}
+function markDirty(reason='edit'){syncReviewAnchors();state.saveReason=reason==='restore'||(state.dirty&&state.saveReason==='restore')?'restore':'edit';state.dirty=true;state.seq++;saveStatus(state.conflict?T('需要另存副本'):T('待保存'),state.conflict);saveDraft();clearTimeout(state.timer);if(!state.composing&&!state.conflict)state.timer=setTimeout(()=>saveNow(),650);renderStats();}
 async function saveNow(){
   clearTimeout(state.timer);if(!state.book)return true;if(state.composing)return false;
   if(state.saving){await state.saving;if(state.dirty&&!state.error)return saveNow();return !state.error;}
   if(!state.dirty)return true;if(state.conflict)return false;
+  syncReviewAnchors();
   const seq=state.seq,payload=clone(state.book),saveReason=state.saveReason==='restore'?'restore':'edit';saveStatus(T('正在保存…'));
   state.saving=(async()=>{try{
     const r=await api('/api/books/'+payload.id,'PUT',{book:payload,revision:state.revision,saveReason});state.revision=r.revision;
@@ -127,7 +144,7 @@ function selectChapter(id){
 function setBook(r){
   state.protectionWarning=null;
   clearTimeout(state.timer);state.book=r.book;normalizeWorkspaceBook(state.book);normalizeShortManuscript(state.book);state.kind=state.book.kind;state.revision=r.revision;state.seq=0;state.dirty=false;state.saveReason='edit';state.error=null;state.conflict=false;state.noteId=null;state.trail=null;state.collection=null;state.analysis=null;state.analysisSeq=-1;state.folderWarning=null;state.graphZoom=null;state.graphVolume='';state.graphGroup='';state.graphScope='all';state.atlasView='core';state.atlasMode='graph';state.atlasFocusId=null;state.personEditing=false;state.graphRelationType='';state.atlasLayoutKey=null;state.outlineCategory='all';state.outlineVolumeFilter='';state.outlineKindFilter='';state.showAutomatic=false;state.collapsedVolumes=new Set(activeVolumes().map(v=>v.id));$('chapter-search').value='';$('outline-search').value='';$('person-search').value='';$('relation-search').value='';$('relation-type-filter').value='manual';
-  state.outlineId=activeOutline()[0]?.id||null;state.personId=people()[0]?.id||null;state.volumeId=activeVolumes()[0]?.id||null;
+  resetReviewAnchors();state.outlineId=activeOutline()[0]?.id||null;state.personId=people()[0]?.id||null;state.volumeId=activeVolumes()[0]?.id||null;
   $('error-banner').hidden=true;$('book-name').textContent=state.book.title;
   preference('yejian.last-book',state.book.id);preference('yejian.last-book.'+state.kind,state.book.id);preference('yejian.kind',state.kind);
   if(r.protectionWarning){state.protectionWarning=r.protectionWarning;toast(T(r.protectionWarning));}
@@ -344,11 +361,12 @@ function bindAppSettingsEvents(){
   else document.addEventListener('fullscreenchange',()=>updateAppSettings({fullscreen:!!document.fullscreenElement}));
 }
 function bindEvents(){
+  if(typeof initializeReviewTools==='function')initializeReviewTools();
   if(typeof bindAppearanceEvents==='function')bindAppearanceEvents();
   $('book-search').addEventListener('click',()=>window.WriterBookSearch.open());$('story-tools').addEventListener('click',()=>window.WriterStoryTools.open());$('outline-story-tools').addEventListener('click',()=>window.WriterStoryTools.open());
   $('editor').addEventListener('input',()=>{if(!currentChapter())return;currentChapter().body=$('editor').value;markDirty();resizeEditor();});
   document.addEventListener('compositionstart',()=>{state.composing=true;clearTimeout(state.timer);});
-  document.addEventListener('compositionend',()=>{state.composing=false;if(state.dirty&&!state.conflict){clearTimeout(state.timer);state.timer=setTimeout(saveNow,650);}});
+  document.addEventListener('compositionend',()=>{state.composing=false;syncReviewAnchors();if(state.dirty){saveDraft();}if(state.dirty&&!state.conflict){clearTimeout(state.timer);state.timer=setTimeout(saveNow,650);}});
   $('chapter-title').addEventListener('input',()=>{if(!currentChapter())return;currentChapter().title=$('chapter-title').value;markDirty();renderChapters();renderBacklinks();});
   $('add-chapter').addEventListener('click',()=>addChapter());$('move-up').addEventListener('click',()=>moveChapter(-1));$('move-down').addEventListener('click',()=>moveChapter(1));$('trash-chapter').addEventListener('click',()=>confirmTrash('chapter'));
   $('open-trash').addEventListener('click',showTrash);$('import-backup').addEventListener('click',()=>$('import-file').click());
@@ -386,9 +404,9 @@ const activeOutline=()=>state.book?.outline.filter(o=>!o.deletedAt)||[];
 const people=()=>state.book?.notes.filter(n=>n.type==='人物'&&!n.deletedAt)||[];
 const currentOutline=()=>activeOutline().find(o=>o.id===state.outlineId);
 const currentPerson=()=>people().find(n=>n.id===state.personId);
-function svgIcon(name){const paths={search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14M15 15l6 6',history:'M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2',sun:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5',moon:'M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14',sparkles:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM19 3v4M17 5h4',book:'M3 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-3H3zM21 4h-6a3 3 0 0 0-3 3v14a4 4 0 0 1 4-3h5z',shield:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6',keyboard:'M3 6h18v13H3zM7 10h.01M11 10h.01M15 10h.01M18 10h.01M7 13h.01M11 13h.01M15 13h.01M7 16h10',download:'M12 3v12M7 10l5 5 5-5M4 16v5h16v-5',info:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 11v6M12 7h.01',settings:'M9 3h6l1 4 4 1v6l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0',minimize:'M5 12h14',maximize:'M5 5h14v14H5z',restore:'M8 8h11v11H8zM5 16V5h11',close:'M6 6l12 12M18 6 6 18',folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
+function svgIcon(name){const paths={review:'M5 3h10l4 4v6M15 3v5h4M5 3v18h7M8 8h3M8 12h7M15 18l2 2 4-5',search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14M15 15l6 6',history:'M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2',sun:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5',moon:'M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14',sparkles:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM19 3v4M17 5h4',book:'M3 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-3H3zM21 4h-6a3 3 0 0 0-3 3v14a4 4 0 0 1 4-3h5z',shield:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6',keyboard:'M3 6h18v13H3zM7 10h.01M11 10h.01M15 10h.01M18 10h.01M7 13h.01M11 13h.01M15 13h.01M7 16h10',download:'M12 3v12M7 10l5 5 5-5M4 16v5h16v-5',info:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 11v6M12 7h.01',settings:'M9 3h6l1 4 4 1v6l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0',minimize:'M5 12h14',maximize:'M5 5h14v14H5z',restore:'M8 8h11v11H8zM5 16V5h11',close:'M6 6l12 12M18 6 6 18',folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
 async function refreshBooks(){const result=await api('/api/books');state.books=result.books.map(book=>({...book,kind:book.kind||'long'}));state.trashBookCount=Number.isSafeInteger(result.trashCount)?result.trashCount:0;renderTrashCount();}
-function clearBook(){clearTimeout(state.timer);state.book=null;state.chapterId=null;state.outlineId=null;state.personId=null;state.noteId=null;state.dirty=false;state.conflict=false;state.error=null;state.trail=null;$('error-banner').hidden=true;$('editor').disabled=true;$('chapter-title').disabled=true;$('book-name').textContent='';$('book-name').hidden=true;$('chapter-list').replaceChildren();renderTrashCount();saveStatus(T('本机保存'));document.title=T('作家工作台 · {0}书架',kindName());}
+function clearBook(){clearTimeout(state.timer);state.book=null;resetReviewAnchors();state.chapterId=null;state.outlineId=null;state.personId=null;state.noteId=null;state.dirty=false;state.conflict=false;state.error=null;state.trail=null;$('error-banner').hidden=true;$('editor').disabled=true;$('chapter-title').disabled=true;$('book-name').textContent='';$('book-name').hidden=true;$('chapter-list').replaceChildren();renderTrashCount();saveStatus(T('本机保存'));document.title=T('作家工作台 · {0}书架',kindName());}
 async function loadKind(kind){
   state.kind=kind;preference('yejian.kind',kind);if(state.book?.kind===kind)return;
   const last=preference('yejian.last-book.'+kind),book=state.books.find(b=>b.kind===kind&&b.id===last);
@@ -427,12 +445,28 @@ function chooseChapters(owner,after){
   else{addChoiceSearch(list,T('查找卷或章节'));showDialog(T('关联正文 · ')+(owner.title||owner.label||T('未命名')),el('p','dialog-description',T('选择这条大纲、人物或关系对应的章节。章节改名和排序后，关联仍然有效。')),list,buttons);}
 }
 async function jumpToChapter(id,quote=''){
-  const short=state.kind==='short',resolved=resolveShortManuscriptId(id),chapter=state.book.chapters.find(c=>c.id===resolved);
-  if(!chapter||chapter.deletedAt){toast(short?T('这段正文已移入回收站，请先恢复。'):T('这个章节已移入回收站，请先恢复章节。'));return;}
-  const section=short&&resolved!==id?state.book.shortSections?.find(section=>section.id===id):null,trail={view:state.view,outlineId:state.outlineId,personId:state.personId};let jumped=false;
-  await transition(async()=>{if(!await requireSaved())return;state.view='write';state.trail=trail;closeDialog();renderShell();selectChapter(resolved);jumped=true;const heading=short?$('manuscript'):document.querySelector('.chapter-heading');heading.classList.remove('jump-highlight');requestAnimationFrame(()=>heading.classList.add('jump-highlight'));toast(short?T('已打开正文。'):T('已打开正文：')+(chapter.title||T('未命名章节')));});
-  if(jumped){const citation=short&&typeof quote==='string'&&quote.length>0,position=citation?chapter.body.indexOf(quote):-1,start=citation?Math.max(0,position):Math.min(section?.start||0,chapter.body.length),end=citation&&position>=0?start+quote.length:start,located=!!section||citation;$('editor').focus({preventScroll:!located});$('editor').setSelectionRange(start,end);$('writing-area').scrollTop=located?Math.max(0,$('editor').offsetTop+start/Math.max(1,chapter.body.length)*$('editor').scrollHeight-$('writing-area').clientHeight/3):0;}
+  const book=state.book;if(!book)return false;
+  const short=book.kind==='short',resolved=resolveShortManuscriptId(id,book),chapter=book.chapters.find(c=>c.id===resolved);
+  if(!chapter||chapter.deletedAt){toast(short?T('这段正文已移入回收站，请先恢复。'):T('这个章节已移入回收站，请先恢复章节。'));return false;}
+  const section=short&&resolved!==id?book.shortSections?.find(section=>section.id===id):null,trail={view:state.view,outlineId:state.outlineId,personId:state.personId};let jumped=false;
+  await transition(async()=>{if(!await requireSaved()||state.book!==book||!book.chapters.includes(chapter)||chapter.deletedAt)return;state.view='write';state.trail=trail;closeDialog();renderShell();selectChapter(resolved);jumped=true;const heading=short?$('manuscript'):document.querySelector('.chapter-heading');heading.classList.remove('jump-highlight');requestAnimationFrame(()=>heading.classList.add('jump-highlight'));toast(short?T('已打开正文。'):T('已打开正文：')+(chapter.title||T('未命名章节')));});
+  if(!jumped||state.book!==book||state.chapterId!==resolved)return false;
+  const editor=$('editor'),body=chapter.body,area=$('writing-area');
+  if(editor.disabled||editor.value!==body)return false;
+  // Linux input methods complete focus reset asynchronously. Keep an empty
+  // caret while that reset settles, then highlight the destination; selecting
+  // immediately can make the native reset delete the highlighted manuscript.
+  editor.setSelectionRange(0,0);editor.focus({preventScroll:true});editor.setSelectionRange(0,0);
+  let interrupted=false;const interrupt=()=>{interrupted=true;},events=['keydown','pointerdown','beforeinput','compositionstart','blur'];
+  for(const name of events)editor.addEventListener(name,interrupt);
+  try{await new Promise(resolve=>setTimeout(resolve,100));}
+  finally{for(const name of events)editor.removeEventListener?.(name,interrupt);}
+  if(interrupted||state.book!==book||state.chapterId!==resolved||state.view!=='write'||state.composing||state.transitioning||!book.chapters.includes(chapter)||chapter.deletedAt||chapter.body!==body||editor.value!==body||editor.disabled||document.activeElement!==editor||editor.selectionStart!==0||editor.selectionEnd!==0)return false;
+  const citation=short&&typeof quote==='string'&&quote.length>0,position=citation?body.indexOf(quote):-1,start=citation?Math.max(0,position):Math.min(section?.start||0,body.length),end=citation&&position>=0?start+quote.length:start,located=!!section||citation;
+  editor.setSelectionRange(start,end);area.scrollTop=located?Math.max(0,editor.offsetTop+start/Math.max(1,body.length)*editor.scrollHeight-area.clientHeight/3):0;
+  return true;
 }
+
 function renderBacklinks(){renderLinkedBacklinks();}
 
 async function jumpToOwner(owner){await transition(async()=>{if(!await requireSaved())return;state.trail=null;if(owner.type==='outline'){state.view='outline';state.outlineId=owner.item.id;revealOutlinePath(owner.item.id);state.outlineCategory='all';state.outlineVolumeFilter='';state.outlineKindFilter='';$('outline-search').value='';}else{state.view='people';state.personId=owner.type==='person'?owner.item.id:owner.item.fromId;resetAtlasForPerson();}renderShell();if(owner.type==='outline')selectOutlineNode(owner.item.id);if(owner.type==='relation')showRelation(owner.item);});}

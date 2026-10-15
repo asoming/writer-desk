@@ -20,7 +20,7 @@ const authored='人物 {2} <script>不可翻译的书名</script>';
 assert.equal(en.api.T('新建{0}',authored),'New '+authored,'authored arguments are never translated or recursively interpolated');
 assert.equal(en.api.T('当前作品：'), '当前作品：','plain unknown strings are not guessed');
 assert.equal(en.api.T('全书总纲'),'Book outline');assert.equal(zh.api.T('全书总纲'),'全书总纲');
-for(const name of ['ai.js','ai-chat.js','protection.js','continuation.js','story-memory.js','ai-stream.js','book-search.js','version-diff.js','formatted-export.js']){
+for(const name of ['ai.js','ai-chat.js','protection.js','continuation.js','story-memory.js','ai-stream.js','book-search.js','version-diff.js','formatted-export.js','manuscript-import.js','local-proofreading.js','review-entry.js','manuscript-marks.js']){
  const feature=fs.readFileSync(path.join(__dirname,'../public',name),'utf8');
  for(const match of feature.matchAll(/T\('([^'\\]*)'/g))assert.ok(Object.hasOwn(en.api.englishMessages,match[1]),'New interface message has an English translation: '+match[1]);
 }

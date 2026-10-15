@@ -1,4 +1,6 @@
-# 0.6.1 跨平台发行
+# 跨平台发行状态
+
+当前已发布测试版为 [0.6.1](https://github.com/asoming/writer-desk/releases/tag/v0.6.1)。0.7.0 源码新增稿件导入、离线校对、段落批注和书签，定向、源码及冻结后端检查已通过，Electron 和四平台原生发行验收仍在进行；下表继续列出已发布 0.6.1 文件。具体进度见 [0.7.0 验收记录](acceptance-v0.7.0.md)。
 
 安装包由同一份源码，在对应操作系统与处理器架构上构建。每个安装包附带 SHA256 校验文件；源码和产物保存在 GitHub 仓库，不包含个人作品库、AI 密钥或本机导入的写作 Skill。
 
@@ -14,6 +16,14 @@ Linux 仍提供 `WriterDesk-0.6.1-linux-x64.tar.gz`，供既有用户使用本�
 Windows 安装向导可选择安装位置，安装后创建桌面与开始菜单入口；卸载保留作品数据。Mac 打开 DMG 后，将 App 拖到 Applications，再从 Applications 启动，升级时先保存退出旧版。Mac 的最低系统要求依据 [Electron 44 支持范围](https://www.electronjs.org/blog/electron-44-0)。
 
 本轮是未配置发布者证书的测试发行。Windows 安装包未作 Authenticode 签名；Mac 使用本机临时签名，未作 Developer ID 签名和 Apple 公证。测试机能够启动，不代表下载后已通过 Gatekeeper 或 SmartScreen。公开分发前需接入相应证书，并在下载的新副本上验证系统检查。[Apple 的 App 打开与安全说明](https://support.apple.com/en-gb/102445)解释了签名与公证的作用。
+
+## 0.7.0 功能与资料
+
+书架「导入稿件」本地预览 DOCX / TXT / Markdown，确认后新建独立书籍；写作工具栏「校对与批注」提供有限规则的离线校对、词典保护、段落批注与命名书签。新资料随完整 JSON、历史和自动备份保存；回收保留，彻底删除清理对应原文和定位上下文。操作说明见[使用指南](user-guide-zh.md)。
+
+[稿件导入截图](import-v0.7.0.png) · [本地校对截图](proofreading-v0.7.0.png) · [批注与书签截图](annotations-v0.7.0.png)
+
+新版示例增加 6 个书签与 3 条批注（1 条已解决），101,506 字正文及 6 卷 36 章保持不变。升级不覆盖作者修改，已有示例可显式载入新版副本。
 
 ## Mac 触控板
 

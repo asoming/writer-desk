@@ -23,6 +23,40 @@ def write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", "utf-8")
 
 
+def sample_review_tools(book):
+    """Attach editorial examples to real paragraphs without changing prose."""
+    stamp = "2026-10-15T00:00:00Z"
+    tools = {"version": 1, "dictionary": [], "annotations": [], "bookmarks": []}
+
+    def mark(chapter, quote, kind, body="", label="", resolved=False):
+        offset = chapter["body"].index(quote)
+        encoded = chapter["body"].encode("utf-16-le")
+        start = len(chapter["body"][:offset].encode("utf-16-le")) // 2
+        end = start + len(quote.encode("utf-16-le")) // 2
+        prefix = encoded[max(0, start-64)*2:start*2].decode("utf-16-le", "ignore")
+        suffix = encoded[end*2:(end+64)*2].decode("utf-16-le", "ignore")
+        return {"id": identifier(kind, chapter["id"]), "chapterId": chapter["id"],
+                "start": start, "end": end, "quote": quote, "prefix": prefix, "suffix": suffix,
+                "body": body, "label": label, "resolved": resolved, "status": "linked",
+                "createdAt": stamp, "updatedAt": stamp}
+
+    for volume in book["volumes"]:
+        chapter = next(item for item in book["chapters"] if item["volumeId"] == volume["id"] and not item.get("deletedAt"))
+        paragraph = next(part for part in chapter["body"].split("\n\n") if part.strip())
+        tools["bookmarks"].append(mark(chapter, paragraph, "bookmark", label=volume["title"] + " · 开篇"))
+
+    reminders = [
+        (1, "木盒已经倒空过两遍。", "核对船票外观、发现位置与后续引用是否一致；保留原文细节，不补充尚未证实的来源。", False),
+        (3, "信封里有七行编号。", "后续涉及七个编号时，复核编号、名卡与临时渡运之间的对应；不要把待核写成已证实。", False),
+        (13, "女孩点头，在图上画出掉砖处", "已检查这段的证据口径：亲眼所见与转述分别记录，后续引用时继续保持区分。", True),
+    ]
+    for number, beginning, reminder, resolved in reminders:
+        chapter = next(item for item in book["chapters"] if item["id"] == identifier("chapter", number))
+        paragraph = next(part for part in chapter["body"].split("\n\n") if part.startswith(beginning))
+        tools["annotations"].append(mark(chapter, paragraph, "annotation", body=reminder, resolved=resolved))
+    return tools
+
+
 def assemble():
     bible = read_json(SOURCE / "story-bible.json")
     metadata = []
@@ -187,9 +221,11 @@ def assemble():
     book["atlasViews"] = [{"id": identifier("view", key), "title": title, "description": description,
                            "personIds": [identifier("person", name) for name in names]}
                           for key, title, description, names in themes]
+    book["reviewTools"] = sample_review_tools(book)
 
     sys.path.insert(0, str(ROOT))
     from server import validate_book
+    book = validate_book(book)
     assert validate_book(book) == book
     count = sum(sum(not char.isspace() for char in c["body"]) for c in chapters)
     if count != 101506:

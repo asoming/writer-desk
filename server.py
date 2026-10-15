@@ -3,6 +3,7 @@
 import argparse
 import base64
 import binascii
+import copy
 from contextlib import closing, contextmanager
 import errno
 import hashlib
@@ -26,6 +27,8 @@ from urllib.parse import quote, unquote, urlparse
 import protection
 import chapter_history
 import planning
+import review_tools
+import manuscript_import
 import story_memory
 import ai_stream
 from formatted_export import render_book_export
@@ -90,7 +93,8 @@ def new_book(title="未命名作品", kind="long"):
     book = {"id": book_id, "title": title, "kind": kind, "cover": "", "coverTemplate": "",
             "volumes": [first_volume(book_id)] if kind == "long" else [], "chapters": [],
             "notes": [], "outline": [], "relations": [],
-            "storyTools": planning.defaults(), "storyMemory": story_memory.validate_memory(None)}
+            "storyTools": planning.defaults(), "storyMemory": story_memory.validate_memory(None),
+            "reviewTools": review_tools.defaults()}
     return normalize_short_book(book)
 
 
@@ -123,15 +127,17 @@ def normalize_short_book(book):
     manuscript = active[0]
     original_sections = book.get("shortSections", [])
     section_owner = next((item for item in active if original_sections and item["id"] == original_sections[0]["id"]), manuscript)
-    sections, pieces, offset = [], [], 0
+    sections, pieces, offset, review_offsets = [], [], 0, {}
     for index, item in enumerate(active):
         if index:
             pieces.append("\n\n")
             offset += 2
         body = item["body"]
+        review_offsets[item["id"]] = offset
         length = utf16_length(body)
         if item is section_owner and original_sections:
             for section in original_sections:
+                review_offsets.setdefault(section["id"], offset + min(section["start"], length))
                 sections.append({**section, "start": offset + min(section["start"], length),
                                  "end": offset + min(section["end"], length)})
         elif len(active) > 1:
@@ -157,6 +163,7 @@ def normalize_short_book(book):
         item["chapterIds"] = list(dict.fromkeys(manuscript["id"] if value in aliases and value not in recycled else value
                                                 for value in item.get("chapterIds", [])))
     planning.remap_short_links(book, aliases, manuscript["id"], recycled)
+    review_tools.remap_short_links(book, aliases, manuscript["id"], recycled, review_offsets)
     return book
 
 
@@ -183,6 +190,7 @@ def upgrade_book(book):
     book.setdefault("cover", "")
     book.setdefault("coverTemplate", "")
     book.setdefault("storyMemory", story_memory.validate_memory(None))
+    review_tools.normalize(book)
     legacy_volumes = "volumes" not in book
     book.setdefault("volumes", [first_volume(book["id"])] if book["kind"] == "long" else [])
     book.setdefault("outline", [])
@@ -290,6 +298,7 @@ def initialize():
                     conn.execute("CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
                     conn.execute("CREATE TABLE IF NOT EXISTS app_migrations(name TEXT PRIMARY KEY,applied_at TEXT NOT NULL)")
                     conn.execute("CREATE TABLE IF NOT EXISTS pending_book_purges(book_id TEXT PRIMARY KEY)")
+                    conn.execute("CREATE TABLE IF NOT EXISTS manuscript_import_requests(request_id TEXT PRIMARY KEY,request_hash TEXT NOT NULL,book_id TEXT NOT NULL,created_at TEXT NOT NULL)")
                     protection.initialize(conn)
                     chapter_history.initialize(conn)
                     planning.initialize(conn)
@@ -572,7 +581,11 @@ def validate_book(data):
             parent_id = parents[parent_id]
     planning.validate(result, data)
     result["storyMemory"] = story_memory.validate_memory(data.get("storyMemory"), result)
+    # Migrate aliases and UTF-16 offsets together with old short manuscripts
+    # before validating anchors against their final continuous body.
+    result["reviewTools"] = copy.deepcopy(data.get("reviewTools", review_tools.defaults()))
     normalize_short_book(result)
+    review_tools.validate(result)
     if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > MAX_BOOK:
         raise ValueError("单部作品超过 25 MB，请拆分为多部作品")
     return result
@@ -729,6 +742,58 @@ def restore_book(data):
     for relation in book["relations"]:
         relation["volumeIds"] = [volume_map[v] for v in relation["volumeIds"]]
     return validate_book(book)
+
+
+def prepare_manuscript_request(data, commit=False):
+    """Parse a chosen file locally; paths and external resources are never read."""
+    allowed = {"filename", "content", "kind", "title", "options", "edits", "sourceHash", "requestId"}
+    if not isinstance(data, dict) or set(data) - allowed:
+        raise ValueError("稿件导入参数不正确。")
+    encoded = data.get("content")
+    limit = manuscript_import.MAX_FILE_BYTES
+    if not isinstance(encoded, str) or not encoded or len(encoded) > ((limit + 2) // 3) * 4:
+        raise ValueError("稿件文件为空或过大。")
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("稿件文件编码不正确，请重新选择。") from exc
+    if not content or len(content) > limit:
+        raise ValueError("稿件文件为空或过大。")
+    preview = manuscript_import.prepare_import(content, data.get("filename"), data.get("kind", "long"),
+                                                data.get("title"), data.get("options"), data.get("edits"))
+    fingerprint = data.get("sourceHash")
+    if (commit or fingerprint is not None) and fingerprint != preview["sourceHash"]:
+        raise ValueError("稿件已变化，请重新预览。")
+    if commit and (not isinstance(data.get("requestId"), str) or not re.fullmatch(r"[A-Za-z0-9-]{16,80}", data["requestId"])):
+        raise ValueError("导入确认已失效，请重新预览。")
+    return preview
+
+
+def commit_manuscript(data, preview):
+    # Bind retries to the complete validated plan, including renamed chapters.
+    # The row stores identifiers and a digest, never the uploaded manuscript.
+    digest = hashlib.sha256(json.dumps(preview, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    with DB_LOCK, connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        previous = conn.execute("SELECT * FROM manuscript_import_requests WHERE request_id=?", (data["requestId"],)).fetchone()
+        if previous:
+            if previous["request_hash"] != digest:
+                raise protection.ProtectionError("导入确认内容已变化，请重新预览。", 409)
+            row = conn.execute("SELECT * FROM books WHERE id=?", (previous["book_id"],)).fetchone()
+            if row is None:
+                raise protection.ProtectionError("这次导入的作品已删除，请重新预览。", 410)
+            require_active_book(row)
+            return book_result(row), False
+        book = validate_book(manuscript_import.make_book(preview))
+        insert_book(conn, book)
+        stamp = now()
+        conn.execute("INSERT INTO manuscript_import_requests VALUES(?,?,?,?)", (data["requestId"], digest, book["id"], stamp))
+    result = {"book": book, "revision": 1, "updatedAt": stamp}
+    try:
+        checkpoint_book(book["id"])
+    except Exception:
+        result["protectionWarning"] = protection.WARNING
+    return result, True
 
 
 def preserve_history(conn, row, stamp):
@@ -1261,7 +1326,7 @@ class Handler(BaseHTTPRequestHandler):
                 files["/chapter-history.js"] = "chapter-history.js"
                 files["/chapter-history.css"] = "chapter-history.css"
                 files["/content-cleanup.js"] = "content-cleanup.js"
-                for resource in ("story-tools.js", "story-tools.css", "story-memory.js", "ai-stream.js", "formatted-export.js", "formatted-export.css", "book-search.js", "version-diff.js", "revision-tools.css"):
+                for resource in ("story-tools.js", "story-tools.css", "story-memory.js", "ai-stream.js", "formatted-export.js", "formatted-export.css", "book-search.js", "version-diff.js", "revision-tools.css", "manuscript-import.js", "manuscript-import.css", "local-proofreading-model.js", "local-proofreading.js", "local-proofreading.css", "manuscript-marks.js", "manuscript-marks.css", "review-entry.js"):
                     files["/" + resource] = resource
                 filename = files.get(path)
                 if not filename:
@@ -1282,6 +1347,15 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            if path in ("/api/manuscript-import/preview", "/api/manuscript-import/commit"):
+                committing = path.endswith("/commit")
+                preview = prepare_manuscript_request(data, committing)
+                if committing:
+                    result, created = commit_manuscript(data, preview)
+                    self.send_json(result, 201 if created else 200)
+                else:
+                    self.send_json(preview)
+                return
             chapter_result = chapter_history.write(chapter_history_context(), path, data)
             if chapter_result is not None:
                 self.send_json(chapter_result)

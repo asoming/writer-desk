@@ -29,6 +29,8 @@ Writing, saving and backups work offline. AI assistance is optional. The interfa
 
 > Current preview: **0.6.1**. Native installer checks passed on Linux, Windows and both Mac architectures. The Linux TAR also passed its packaged installation script and stable launcher checks. [Downloads and checksums](https://github.com/asoming/writer-desk/releases/tag/v0.6.1). Windows publisher signing and Apple notarization are not configured.
 
+Version 0.7.0 source adds manuscript import, offline proofreading, paragraph annotations and bookmarks. Targeted tests and isolated-library checks have passed; native installer and release verification is still in progress. Downloads remain on 0.6.1, which does not include these additions. See the [0.7.0 verification progress](docs/acceptance-v0.7.0.md).
+
 ## Features
 
 | Area | What you can do |
@@ -37,6 +39,8 @@ Writing, saving and backups work offline. AI assistance is optional. The interfa
 | Outlines | Organize book, volume, chapter, scene and setting notes; use topic categories and search; read a continuous outline; create a volume and chapter directory from the outline. |
 | Character maps | Maintain profiles, aliases, development across volumes and relationships; arrange themed maps and groups; filter relationships; jump between notes and chapters. |
 | Writing | Novel chapters or one continuous short-story manuscript; autosave, whole-book find and replace, chapter renaming, focus mode and resizable panels. |
+| Manuscript import (0.7.0 source) | Preview local DOCX, TXT and Markdown files, adjust titles, splitting strategy and encoding, then create a separate book; short stories remain continuous. |
+| Proofreading and annotations (0.7.0 source) | Offline rules and per-book dictionaries; paragraph annotations and named bookmarks, with precise jumps, resolution status and manual relinking. |
 | Story tools | Track foreshadow status and unresolved threads; order story events using custom time labels; set a daily goal and review the calendar and 7 / 30-day trends. |
 | Data protection | Per-book exports, backups and version history; compare prose revisions and restore selected paragraphs; recover recycled books or permanently remove app-managed copies after confirmation. |
 | Formatted exports | Word, EPUB and PDF, with covers, contents, volume and chapter styles, paper size and font options. |
@@ -52,6 +56,29 @@ Links between outlines, characters and prose target **chapters** and remain inta
 Actual 0.6.0 interface using an isolated copy of the full sample novel.
 
 [Foreshadows](docs/foreshadows-v0.6.0.png) · [Timeline](docs/timeline-v0.6.0.png) · [Version comparison](docs/versions-v0.6.0.png) · [Writing statistics](docs/statistics-v0.6.0.png) · [Outline sidebar](docs/work-plan-v0.4.14.jpg) · [Image chat](docs/chat-images-v0.4.12.jpg) · [Dark theme](docs/appearance-night-v0.4.11.jpg)
+
+<details>
+<summary>Actual 0.7.0 source UI: import, proofreading and annotations</summary>
+
+![Manuscript import preview with volumes, chapters and prose](docs/import-v0.7.0.png)
+
+![Offline proofreading with source text and selectable fixes](docs/proofreading-v0.7.0.png)
+
+![Paragraph annotations and bookmarks linked to prose](docs/annotations-v0.7.0.png)
+
+Captured using an isolated copy of the full sample novel. Version 0.7.0 installer release checks are still in progress.
+
+</details>
+
+## New in 0.7.0 source and candidate builds
+
+| Action | Where to find it |
+| --- | --- |
+| Manuscript import | **Import manuscript** on the bookshelf. Choose DOCX, TXT or Markdown up to 12 MiB, preview volumes and chapters, adjust titles, then create a new book. Existing books are preserved and retries of the same confirmation do not create duplicates. |
+| Local proofreading | Writing toolbar **Proofreading & annotations → Local proofreading**. Check the current chapter or whole book. Select fixes from twenty common Chinese misspelling rules; repetition and punctuation findings are suggestions only. Per-book dictionaries protect character names and aliases automatically. No network or AI request is made. |
+| Annotations and bookmarks | Add or manage records from the same toolbar icon. In the manuscript editor, `Ctrl / Command + Shift + M / B` adds an annotation or bookmark for the selection, or the current nonempty paragraph. Jump, resolve or relink records; deleted or ambiguous passages become detached. |
+
+DOCX imports text, table text and heading structure. Legacy `.doc`, images, Word comments and formatting are not imported. Full JSON includes dictionaries, annotations and bookmarks. Recycled chapters retain their records; permanent deletion removes linked quotes and context from app-managed history and snapshots. See the [Chinese user guide](docs/user-guide-zh.md#导入已有稿件).
 
 ## New in 0.6.0
 
@@ -108,7 +135,7 @@ Book titles are edited through **Cover & title** on the bookshelf. Chapter names
 
 The manuscript is in Chinese. The count includes all non-whitespace characters, including punctuation and Latin letters; it is not an English word count. Read the [full manuscript](examples/潮汐档案馆.txt) or inspect the [complete book data](examples/tide-archive.yejian.json). Smaller novel and short-story examples are also included.
 
-This version adds twelve foreshadows and eighteen events without changing the original prose or setting. You can edit or remove the sample; restarting does not overwrite author changes. If an existing copy lacks the new planning records, **Load novel sample** creates a separate updated copy.
+The sample includes twelve foreshadows and eighteen events. Version 0.7.0 adds six bookmarks and three annotations, one resolved, to demonstrate navigation and record management. The original prose and setting remain unchanged. You can edit or remove the sample; restarting does not overwrite author changes. If an existing copy lacks the new planning records, **Load novel sample** creates a separate updated copy.
 
 ## Local data and backups
 
@@ -121,7 +148,7 @@ The desktop app stores books in SQLite under the system user data directory, sep
 | macOS | `~/Library/Application Support/writer-desk/data/writer.sqlite3` |
 | Browser mode from source | `data/writer.sqlite3` in the project directory |
 
-- **Per-book exports:** TXT and Markdown contain the active manuscript. Full JSON includes the cover, volumes, chapters, outlines, characters, relationships, foreshadows, timeline, daily goal, saved long-form memories and recycled content. Import creates a new book rather than replacing an existing one.
+- **Per-book exports:** TXT and Markdown contain the active manuscript. Full JSON includes the cover, volumes, chapters, outlines, characters, relationships, foreshadows, timeline, daily goal, saved long-form memories and recycled content. Version 0.7.0 also includes each book’s dictionary, annotations and bookmarks. Import creates a new book rather than replacing an existing one.
 - **Book folders:** **Open folder** creates `正文.txt` and `作品.yejian.json` for that book and updates them after successful saves. Externally modified files are protected; their changes are not imported automatically.
 - **History:** automatic snapshots are enabled by default, created after successful saves at five-minute intervals, with up to twenty per book. These settings can be changed. Preview a snapshot before restoring; the app retains the current version.
 - **Deletion:** recycled books are retained for thirty days and cleaned up when due. Deleted chapter history records the deletion time and offers restore or permanent deletion. Permanent deletion clears the relevant app-managed copies; exports you made yourself and system backups remain outside its scope.
@@ -197,6 +224,7 @@ The app uses Electron, a vanilla JavaScript interface and a Python saving servic
 - [Chinese quick start](docs/quickstart-zh.md): first use after installation.
 - [0.6.1 packaging verification](docs/acceptance-v0.6.1.md): actual TAR installation, stable launcher and native CI.
 - [0.6.0 verification record](docs/acceptance-v0.6.0.md): completed checks and remaining limits.
+- [0.7.0 verification progress](docs/acceptance-v0.7.0.md): manuscript import, offline proofreading, annotations and bookmark tests.
 - [Changelog](CHANGELOG.md): version changes and compatibility.
 - [Chinese user guide](docs/user-guide-zh.md): books, outlines, characters, recovery and AI.
 - [Desktop build guide](desktop/BUILD.md): development, native builds, upgrades and migration.

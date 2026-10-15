@@ -202,7 +202,7 @@ def service_smoke(backend, data):
             except urllib.error.HTTPError as error:
                 assert error.code == 403
             assert b"<!doctype html>" in request("/").lower()
-            for asset in ("/editor-layout.js", "/book-search.js", "/version-diff.js", "/revision-tools.css", "/story-memory.js", "/ai-stream.js", "/story-tools.js", "/story-tools.css", "/formatted-export.js", "/formatted-export.css"):
+            for asset in ("/editor-layout.js", "/book-search.js", "/version-diff.js", "/revision-tools.css", "/story-memory.js", "/ai-stream.js", "/story-tools.js", "/story-tools.css", "/formatted-export.js", "/formatted-export.css", "/manuscript-import.js", "/manuscript-import.css", "/local-proofreading-model.js", "/local-proofreading.js", "/local-proofreading.css", "/manuscript-marks.js", "/manuscript-marks.css", "/review-entry.js"):
                 assert request(asset), asset
             books = request("/api/books")["books"]
             demo_summary = next(book for book in books if book["title"] == "潮汐档案馆")
