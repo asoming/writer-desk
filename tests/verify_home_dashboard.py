@@ -1,6 +1,7 @@
 """Home aggregates and real HTTP workflows use disposable libraries only."""
 import argparse
 import copy
+from contextlib import closing
 from datetime import date, timedelta
 import hashlib
 import json
@@ -222,7 +223,7 @@ class HomeHTTPTests(unittest.TestCase):
         deleted = self.request('/api/home')
         self.assertEqual(deleted['totals']['todayChars'], 0)
         self.assertNotIn(book_id, [book['id'] for book in deleted['recentBooks']])
-        with sqlite3.connect(str(self.data / 'writer.sqlite3')) as conn:
+        with closing(sqlite3.connect(str(self.data / 'writer.sqlite3'))) as conn:
             self.assertEqual(conn.execute('SELECT COUNT(*) FROM writing_activity WHERE book_id=?', (book_id,)).fetchone()[0], 0)
 
 
