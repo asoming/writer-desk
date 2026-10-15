@@ -1,6 +1,7 @@
 """AI requests go only to a disposable loopback stub with a fake credential."""
 import copy
 import json
+import os
 from http.server import BaseHTTPRequestHandler
 from http_fixtures import LoopbackHTTPServer
 from pathlib import Path
@@ -166,7 +167,8 @@ class AITests(unittest.TestCase):
         public = self.configure(apiKey=FAKE_KEY)
         self.assertNotIn(FAKE_KEY, json.dumps(public))
         self.assertTrue(public['hasKey'])
-        self.assertEqual(stat.S_IMODE(self.service.path.stat().st_mode), 0o600)
+        if os.name != 'nt':
+            self.assertEqual(stat.S_IMODE(self.service.path.stat().st_mode), 0o600)
         self.configure(apiKey='')
         self.service.run(self.book, 'draft', self.ids)
         self.assertEqual(Stub.received[-1]['authorization'], 'Bearer ' + FAKE_KEY)
@@ -436,8 +438,11 @@ class AITests(unittest.TestCase):
         destination = Path(self.directory.name) / 'other.json'
         destination.write_text('{}')
         self.service.path.symlink_to(destination)
-        with self.assertRaises(AIError):
-            self.service.get_settings()
+        # Runs against the native adapter on Windows, where raw os has no
+        # O_NOFOLLOW. Both reads and settings changes must reject the link.
+        for operation in (self.service.get_settings, lambda: self.service.save_settings({'model': 'changed'})):
+            with self.subTest(operation=operation), self.assertRaises(AIError):
+                operation()
         self.assertEqual(destination.read_text(), '{}')
 
 
