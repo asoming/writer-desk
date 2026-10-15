@@ -155,7 +155,7 @@ def _tree(root):
 
 def _metadata(skill_id, content):
     name, description = FALLBACK_NAMES[skill_id], ""
-    match = re.match(r"\A---\s*\n(.*?)\n---(?:\n|$)", content, re.S)
+    match = re.match(r"\A---\s*\n(.*?)\n---(?:\n|$)", content.replace("\r\n", "\n"), re.S)
     if match:
         lines = match.group(1).splitlines()
         for index, line in enumerate(lines):

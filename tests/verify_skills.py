@@ -15,7 +15,7 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from skills import SkillsService, SkillError, SKILL_IDS, MODES, _tree, MAX_FILE
+from skills import SkillsService, SkillError, SKILL_IDS, MODES, _tree, _metadata, _digest, MAX_FILE
 from ai_service import AIService, AIError, _compact
 from verify_ai import Stub, SAMPLE
 
@@ -43,6 +43,51 @@ def fixture(home):
         write(home / ("skills/novelskill/references/小说-" + title + ".md"), title + " 模式参考")
     for name in ["fiction", "revision", "forum-prose", "reality", "formats"]:
         write(home / ("skills/human-writing/references/" + name + ".md"), name + " 规则")
+
+
+class SkillMetadataTests(unittest.TestCase):
+    def test_lf_and_crlf_frontmatter_have_the_same_meaningful_metadata(self):
+        for style in ("|", ">", "|-", ">-"):
+            with self.subTest(description_style=style):
+                lf = ('---\nname: "群像写作"\ndescription: ' + style + '\n'
+                      '  规划人物目标与关系\n  核对章节对白和伏笔\n'
+                      'metadata:\n  ignored: 不属于描述\n---\n'
+                      '# 正文\ndescription: 正文不是元数据\n')
+                expected = {"id": "novelskill", "name": "群像写作",
+                            "description": "规划人物目标与关系 核对章节对白和伏笔"}
+                self.assertEqual(_metadata("novelskill", lf), expected)
+                self.assertEqual(_metadata("novelskill", lf.replace("\n", "\r\n")), expected)
+
+    def test_import_preserves_source_body_and_line_ending_sensitive_digest(self):
+        lf = ('---\nname: "群像写作"\ndescription: |\n'
+              '  保留人物的不同声音\n  检查故事的因果关系\n'
+              '---\n# 写作规则\n正文原文🌊\n')
+        for ending in ("\n", "\r\n"):
+            with self.subTest(line_ending=repr(ending)), tempfile.TemporaryDirectory(prefix="writer-skill-newlines-") as directory:
+                home = Path(directory) / "codex"
+                fixture(home)
+                source = home / "skills/novelskill/SKILL.md"
+                content = lf.replace("\n", ending)
+                raw = content.encode("utf-8")
+                source.write_bytes(raw)
+                before = _tree(source.parent)
+                digest = _digest(before)
+                service = SkillsService(Path(directory) / "data", codex_home=home)
+                metadata = next(item for item in service.list()["skills"] if item["id"] == "novelskill")
+                self.assertEqual(metadata["description"], "保留人物的不同声音 检查故事的因果关系")
+                service.import_skills(["novelskill"])
+                self.assertEqual(service.detail("novelskill")["content"], content)
+                self.assertEqual(source.read_bytes(), raw)
+                self.assertEqual(_tree(source.parent), before)
+                self.assertEqual(_tree(service.library / "novelskill"), before)
+                self.assertEqual(_digest(_tree(service.library / "novelskill")), digest)
+                alternate = lf if ending == "\r\n" else lf.replace("\n", "\r\n")
+                source.write_bytes(alternate.encode("utf-8"))
+                status = next(item for item in service.list()["skills"] if item["id"] == "novelskill")
+                self.assertTrue(status["sourceChanged"])
+                self.assertEqual(status["description"], metadata["description"])
+                self.assertEqual(service.detail("novelskill")["content"], content)
+                self.assertNotEqual(_digest(_tree(source.parent)), digest)
 
 
 class SkillTests(unittest.TestCase):
