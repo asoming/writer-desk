@@ -7,6 +7,7 @@ const https = require('node:https');
 const {createHash, randomBytes} = require('node:crypto');
 const {TextDecoder} = require('node:util');
 const API = 'https://api.github.com/repos/asoming/writer-desk/releases?per_page=100';
+const UPDATE_FEED = 'https://asoming.github.io/writer-desk/updates.json';
 const RELEASE_ROOT = 'https://github.com/asoming/writer-desk/releases/download/';
 const ASSET_HOSTS = new Set(['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com', 'github-releases.githubusercontent.com']);
 const MAX_ASSET = 512 * 1024 ** 2, MAX_METADATA = 2 * 1024 ** 2, MAX_CHECKSUM = 1024;
@@ -25,9 +26,14 @@ function artifactName(version,platform,arch,kind){
 }
 const sidecarName = name => name.endsWith('.tar.gz')?name.slice(0,-7)+'.sha256':name+'.sha256';
 function checkedURL(value,metadata=false){
+  if(typeof value!=='string')fail('network-unsafe-url');
   let parsed;try{parsed=new URL(value);}catch{fail('network-unsafe-url');}
-  if(value.length>16384||parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.hash||parsed.port&&parsed.port!=='443'||!(metadata?parsed.hostname==='api.github.com':ASSET_HOSTS.has(parsed.hostname)))fail('network-unsafe-url');
+  const trusted=metadata==='pages'?parsed.href===UPDATE_FEED:metadata?parsed.hostname==='api.github.com':ASSET_HOSTS.has(parsed.hostname);
+  if(value.length>16384||parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.hash||parsed.port&&parsed.port!=='443'||!trusted)fail('network-unsafe-url');
   return parsed;
+}
+function metadataFallbackAllowed(error){
+  return ['network-connection','network-timeout','network-rate-limit'].includes(error?.code)||error?.code==='network-http'&&(error.statusCode===403||error.statusCode===429||error.statusCode>=500&&error.statusCode<=599);
 }
 function selectRelease(releases,{currentVersion,platform,arch,installKind,includePrerelease=false}){
   if(!Array.isArray(releases)||releases.length>100)fail('network-invalid-release');
@@ -78,6 +84,7 @@ function errorMessage(error,language='zh'){
     'network-connection':['连接 GitHub 失败，请稍后重试。','Could not connect to GitHub. Try again later.'],
     'network-timeout':['更新检查或下载超时，请稍后重试。','The update request timed out. Try again later.'],
     'network-http':['GitHub 暂时无法提供更新，请稍后重试。','GitHub could not provide the update. Try again later.'],
+    'network-rate-limit':['更新接口暂时限流，请稍后重试。','The update service is temporarily rate limited. Try again later.'],
     'network-unsafe-url':['更新地址验证失败，已停止下载。','Update URL verification failed. Download stopped.'],
     'network-invalid-release':['发行信息格式无效，已停止更新。','Invalid release metadata. Update stopped.'],
     'network-too-large':['更新文件超过大小限制，已停止下载。','The update exceeds the size limit. Download stopped.'],
@@ -121,7 +128,11 @@ function createNetworkUpdater(options){
   async function openResponse(url,signal,metadata,redirects=0){
     checkedURL(url,metadata);if(signal.aborted)fail('network-cancelled');
     const response=await new Promise((resolve,reject)=>{
-      let settled=false;const request=transport.get(url,{headers:{'User-Agent':'WriterDesk-Updater/'+currentVersion,'Accept':metadata?'application/vnd.github+json':'application/octet-stream','Accept-Encoding':'identity'},agent:false},response=>{settled=true;resolve(response);});
+      let settled=false;const request=transport.get(url,{headers:{'User-Agent':'WriterDesk-Updater/'+currentVersion,'Accept':metadata==='pages'?'application/json':metadata?'application/vnd.github+json':'application/octet-stream','Accept-Encoding':'identity'},agent:false},response=>{
+        // Cancellation can destroy an error/redirect body while it is draining,
+        // or before the awaiting byte consumer attaches its iterator.
+        response.on('error',()=>{});settled=true;resolve(response);
+      });
       const abort=()=>request.destroy(Object.assign(new Error('cancelled'),{code:'network-cancelled'}));signal.addEventListener('abort',abort,{once:true});
       request.setTimeout?.(30000,()=>request.destroy(Object.assign(new Error('timeout'),{code:'network-timeout'})));
       request.on('error',error=>{signal.removeEventListener('abort',abort);if(!settled)reject(error.code?.startsWith('network-')?error:Object.assign(new Error('connection'),{code:'network-connection'}));});
@@ -130,7 +141,10 @@ function createNetworkUpdater(options){
     if([301,302,303,307,308].includes(response.statusCode)){
       const redirect=response.headers.location;response.resume();if(redirects>=5||typeof redirect!=='string')fail('network-unsafe-url');let next;try{next=new URL(redirect,url).href;}catch{fail('network-unsafe-url');}checkedURL(next,metadata);return openResponse(next,signal,metadata,redirects+1);
     }
-    if(response.statusCode!==200){response.resume();fail('network-http');}return response;
+    if(response.statusCode!==200){
+      const rateLimited=response.statusCode===429||response.statusCode===403&&String(response.headers['x-ratelimit-remaining'])==='0';
+      response.resume();throw Object.assign(new Error('update HTTP request failed'),{code:rateLimited?'network-rate-limit':'network-http',statusCode:response.statusCode});
+    }return response;
   }
   async function bytes(url,limit,signal,metadata=false){
     const response=await openResponse(url,signal,metadata),chunks=[];let count=0;
@@ -143,13 +157,25 @@ function createNetworkUpdater(options){
     catch(error){const code=active.signal.aborted?(active.signal.reason==='timeout'?'network-timeout':'network-cancelled'):error.code?.startsWith('network-')?error.code:'network-failed';notify({phase:code==='network-cancelled'?'cancelled':'error',errorCode:code,received:0});throw Object.assign(new Error(code),{code});}
     finally{clearTimeout(timeout);if(controller===active)controller=null;busy=false;}
   }
+  async function releaseFrom(url,source,signal){
+    let releases;
+    try{releases=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await bytes(url,MAX_METADATA,signal,source)));}
+    catch(error){if(error.code?.startsWith('network-'))throw error;fail('network-invalid-release');}
+    return selectRelease(releases,{currentVersion:minimumVersion(),platform,arch,installKind,includePrerelease:settings.includePrerelease});
+  }
   return Object.freeze({
     async info(){await load();return publicState();},
     subscribe(callback){if(typeof callback!=='function')throw new TypeError('A callback is required.');listeners.add(callback);return()=>listeners.delete(callback);},
     async setSettings(value){await load();settingsChecked(value);settings=settingsChecked({...settings,...value});safeDirectory(fs,cache);atomicJSON(fs,path.join(cache,'settings.json'),settings);notify({});return publicState();},
     async check(){return operation('checking',async signal=>{
-      let releases;try{releases=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await bytes(API,MAX_METADATA,signal,true)));}catch(error){if(error.code?.startsWith('network-'))throw error;fail('network-invalid-release');}
-      const selected=selectRelease(releases,{currentVersion:minimumVersion(),platform,arch,installKind,includePrerelease:settings.includePrerelease});
+      let selected;
+      try{selected=await releaseFrom(API,true,signal);}
+      catch(error){
+        if(signal.aborted||!metadataFallbackAllowed(error))throw error;
+        // Public Pages metadata avoids the shared anonymous REST quota. It has
+        // the same strict release validation and cannot choose download URLs.
+        selected=await releaseFrom(UPDATE_FEED,'pages',signal);
+      }
       if(receipt&&(!selected||compareVersions(receipt.version,selected.version)>=0)){candidate={...candidate,version:receipt.version,filename:receipt.filename,size:receipt.size,tag:'v'+receipt.version,checksumName:sidecarName(receipt.filename)};notify({phase:'downloaded',lastCheckedAt:new Date().toISOString(),upToDate:false});}
       else{candidate=selected;notify({phase:selected?'available':'idle',lastCheckedAt:new Date().toISOString(),upToDate:!selected});}
       return publicState();

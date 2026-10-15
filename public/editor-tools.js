@@ -68,13 +68,60 @@
     for(const key of ['annotations','bookmarks'])for(const mark of book.reviewTools?.[key]||[]){if(!offsets.has(mark.chapterId))continue;const source=mark.chapterId,delta=offsets.get(source);mark.chapterId=target.id;if(mark.status==='orphaned'||sourceBodies.get(source).slice(mark.start,mark.end)!==mark.quote){mark.status='orphaned';mark.prefix='';mark.suffix='';continue;}Object.assign(mark,anchor(mark,target,mark.start+delta,mark.end+delta));}
     return{chapterId:target.id,ids:chosen.map(chapter=>chapter.id)};
   }
-  const model={boundary,plan,apply,reorder,moveChapters,splitChapter,mergeChapters};
+  // Diff code points, with a fixed work budget. Common edges and unique text
+  // anchors keep ordinary edits precise without a quadratic matrix for novels.
+  function compareParts(previous,current){
+    const parts=[],budget={left:750000};
+    const push=(kind,text)=>{if(!text)return;const last=parts.at(-1);if(last?.kind===kind)last.text+=text;else parts.push({kind,text});};
+    function myers(a,b){
+      const trace=[],front=new Map([[1,0]]);
+      for(let depth=0;depth<=Math.min(128,a.length+b.length);depth++){
+        trace.push(new Map(front));
+        for(let diagonal=-depth;diagonal<=depth;diagonal+=2){
+          if(--budget.left<0)return null;
+          let x=diagonal===-depth||diagonal!==depth&&(front.get(diagonal-1)??-1)<(front.get(diagonal+1)??-1)?front.get(diagonal+1)||0:(front.get(diagonal-1)||0)+1,y=x-diagonal;
+          while(x<a.length&&y<b.length&&a[x]===b[y]){if(--budget.left<0)return null;x++;y++;}front.set(diagonal,x);
+          if(x>=a.length&&y>=b.length){
+            const result=[];x=a.length;y=b.length;
+            for(let d=trace.length-1;d>=0;d--){const v=trace[d],k=x-y,prior=k===-d||k!==d&&(v.get(k-1)??-1)<(v.get(k+1)??-1)?k+1:k-1,px=v.get(prior)||0,py=px-prior;
+              while(x>px&&y>py){result.push({kind:'equal',text:a[--x]});y--;}
+              if(!d)break;if(x===px)result.push({kind:'added',text:b[--y]});else result.push({kind:'removed',text:a[--x]});
+            }
+            return result.reverse();
+          }
+        }
+      }
+      return null;
+    }
+    function anchors(a,b){
+      if(a.length>100000||b.length>100000)return[];
+      const width=32,positions=new Map(),candidates=[];
+      for(let i=0;i+width<=b.length;i++){if(!boundary(b,i)||!boundary(b,i+width))continue;const text=b.slice(i,i+width);positions.set(text,positions.has(text)?-1:i);}
+      for(let i=0;i+width<=a.length;i+=width){if(!boundary(a,i)||!boundary(a,i+width))continue;const at=positions.get(a.slice(i,i+width));if(at!==undefined&&at>=0)candidates.push({left:i,right:at,width,prior:-1});}
+      const tails=[];
+      candidates.forEach((candidate,index)=>{let lo=0,hi=tails.length;while(lo<hi){const mid=(lo+hi)>>1;if(candidates[tails[mid]].right+width<=candidate.right)lo=mid+1;else hi=mid;}candidate.prior=lo?tails[lo-1]:-1;tails[lo]=index;});
+      const result=[];for(let at=tails.at(-1);at!==undefined&&at>=0;at=candidates[at].prior)result.push(candidates[at]);return result.reverse();
+    }
+    function range(a,b,depth=0){
+      let start=0,endA=a.length,endB=b.length;while(start<endA&&start<endB&&a[start]===b[start])start++;if(!boundary(a,start)||!boundary(b,start))start--;
+      while(endA>start&&endB>start&&a[endA-1]===b[endB-1]){endA--;endB--;}if(!boundary(a,endA)||!boundary(b,endB)){endA++;endB++;}
+      push('equal',a.slice(0,start));const left=a.slice(start,endA),right=b.slice(start,endB);
+      if(!left)push('added',right);else if(!right)push('removed',left);else{
+        const exact=left.length+right.length<=200000?myers(Array.from(left),Array.from(right)):null;
+        if(exact)for(const part of exact)push(part.kind,part.text);
+        else{const shared=depth<2?anchors(left,right):[];if(shared.length){let old=0,now=0;for(const anchor of shared){range(left.slice(old,anchor.left),right.slice(now,anchor.right),depth+1);push('equal',left.slice(anchor.left,anchor.left+anchor.width));old=anchor.left+anchor.width;now=anchor.right+anchor.width;}range(left.slice(old),right.slice(now),depth+1);}else{push('removed',left);push('added',right);}}
+      }
+      push('equal',a.slice(endA));
+    }
+    range(previous,current);return parts;
+  }
+  const model={boundary,plan,apply,reorder,moveChapters,splitChapter,mergeChapters,compareParts};
   if(typeof module==='object'&&module.exports){module.exports=model;return;}
   global.WriterEditorToolsModel=model;
   global.WriterEditorTools=createController(global,model);
 
   function createController(window,model){
-    let hooks={},busy=false,pane=null,splitOwner=null,splitChapterId=null,splitComposing=false,rootObserver=null;
+    let hooks={},busy=false,pane=null,splitOwner=null,splitChapterId=null,baseline=null,lastCompared=null,rootObserver=null,comparisonTimer=null;
     const t=(text,...args)=>hooks.T?hooks.T(text,...args):text.replace(/\{(\d+)\}/g,(_,i)=>args[i]??'');
     const node=(tag,className,text)=>{const item=document.createElement(tag);if(className)item.className=className;if(text!==undefined)item.textContent=text;return item;};
     const button=(text,className,handler)=>{const item=node('button',className,t(text));item.type='button';item.addEventListener('click',handler);return item;};
@@ -90,7 +137,7 @@
     function syncPrimary(){const editor=hooks.getEditor?.(),chapter=book()?.chapters.find(item=>item.id===hooks.getChapterId?.());if(editor&&chapter&&editor.value!==chapter.body){const start=editor.selectionStart,end=editor.selectionEnd,area=hooks.getWritingArea?.(),top=area?.scrollTop;editor.value=chapter.body;editor.setSelectionRange(Math.min(start,editor.value.length),Math.min(end,editor.value.length));hooks.resizeEditor?.();if(area)area.scrollTop=top;}}
     function menu(){
       if(blocked())return;const root=node('div','editor-tools-menu');
-      const actions=[['全局搜索',showSearch],...(book()?.kind==='long'?[['卷章整理',showOrganizer],['拆分当前章',splitCurrent],['双稿分屏',showSplit]]:[])];
+      const actions=[['全局搜索',showSearch],...(book()?.kind==='long'?[['卷章整理',showOrganizer],['拆分当前章',splitCurrent]]:[]),['对照修改',showSplit]];
       for(const [label,handler]of actions)root.append(button(label,'choice-button',handler));for(const extra of hooks.extraActions||[])root.append(button(extra.label,'choice-button',extra.run));hooks.showDialog(t('写作工具'),root);
     }
     async function splitCurrent(){
@@ -139,36 +186,64 @@
       const key=result.type==='outline'?'outline':result.type==='relation'?'relations':'notes',item=book()[key]?.find(value=>value.id===result.id&&!value.deletedAt);if(item&&hooks.jumpToOwner)await hooks.jumpToOwner({type:result.type==='outline'?'outline':result.type==='relation'?'relation':'person',item});
     }
     async function showSplit(){
-      if(blocked()||!book()||book().kind!=='long')return;const owner=book();if(!await hooks.requireSaved()||book()!==owner)return;const choices=active(owner.chapters).filter(chapter=>chapter.id!==hooks.getChapterId());if(!choices.length){hooks.toast?.(t('至少需要两个章节才能分屏。'));return;}
-      if(!pane)buildPane();splitOwner=owner;splitChapterId=choices[0].id;pane.hidden=false;hooks.getWritingArea().classList.add('editor-dual-primary');pane.parentElement.classList.add('editor-dual-open');renderSplit();hooks.closeDialog();hooks.resizeEditor?.();
+      if(blocked()||!book())return;const owner=book(),id=hooks.getChapterId();
+      if(!await hooks.requireSaved()||book()!==owner||hooks.getChapterId()!==id)return;
+      const chapter=active(owner.chapters).find(item=>item.id===id);if(!chapter)return;
+      if(pane&&!pane.hidden&&splitOwner===owner&&splitChapterId===id){hooks.closeDialog();return;}
+      if(!pane)buildPane();if(!pane)return;
+      splitOwner=owner;splitChapterId=id;baseline=chapter.body;lastCompared=null;pane.hidden=false;
+      const area=hooks.getWritingArea(),top=area.scrollTop;area.classList.add('editor-dual-primary');pane.parentElement.classList.add('editor-dual-open');
+      renderSplit();hooks.closeDialog();hooks.resizeEditor?.();area.scrollTop=top;
     }
     function buildPane(){
-      const area=hooks.getWritingArea(),parent=area?.parentElement;if(!parent)return;pane=node('section','editor-dual-pane');pane.hidden=true;pane.setAttribute('aria-label',t('第二份正文'));const divider=node('div','editor-dual-divider'),header=node('div','editor-dual-header'),choice=node('select','text-field'),title=node('input','editor-dual-title'),scroll=node('div','editor-dual-scroll'),editor=node('textarea','editor-dual-body');
-      divider.tabIndex=0;divider.setAttribute('role','separator');divider.setAttribute('aria-orientation','vertical');divider.setAttribute('aria-label',t('调整分屏宽度'));choice.setAttribute('aria-label',t('分屏章节'));title.setAttribute('aria-label',t('分屏章节标题'));title.maxLength=200;editor.setAttribute('aria-label',t('分屏正文'));editor.spellcheck=false;header.append(choice,button('关闭分屏','icon-button',closeSplit));scroll.append(title,editor);pane.append(divider,header,scroll);parent.append(pane);pane._controls={choice,title,scroll,editor,divider};
-      choice.addEventListener('change',async()=>{const id=choice.value,owner=splitOwner;choice.value=splitChapterId;if(splitComposing||blocked()||!await hooks.requireSaved()||splitOwner!==owner||book()!==owner)return;splitChapterId=id;renderSplit();});
-      const change=field=>{if(book()!==splitOwner||!splitOwner)return;const chapter=active(splitOwner.chapters).find(item=>item.id===splitChapterId);if(!chapter)return;chapter[field]=(field==='title'?title:editor).value;hooks.markDirty();hooks.renderStats?.();if(field==='title'){hooks.renderChapters?.();for(const option of choice.options)if(option.value===chapter.id)option.textContent=chapter.title||t('未命名章节');}};
-      title.addEventListener('input',()=>change('title'));editor.addEventListener('input',()=>{change('body');growSplit();});
-      for(const control of [title,editor]){control.addEventListener('compositionstart',()=>{splitComposing=true;hooks.setComposing?.(true);});control.addEventListener('compositionend',()=>{change(control===title?'title':'body');splitComposing=false;hooks.setComposing?.(false);hooks.syncReviewAnchors?.();hooks.markDirty();});}
-      let drag=null;const width=()=>Number.parseFloat(parent.style.getPropertyValue('--editor-secondary-width'))||42;const setWidth=value=>{const amount=Math.min(70,Math.max(25,value));parent.style.setProperty('--editor-secondary-width',amount+'%');hooks.preference?.('yejian.editor-secondary-width',String(amount));hooks.resizeEditor?.();growSplit();divider.setAttribute('aria-valuenow',String(Math.round(amount)));};setWidth(Number(hooks.preference?.('yejian.editor-secondary-width'))||42);
-      divider.addEventListener('pointerdown',event=>{if(event.button!==0)return;drag={x:event.clientX,width:width(),parentWidth:parent.getBoundingClientRect().width};divider.setPointerCapture?.(event.pointerId);event.preventDefault();});divider.addEventListener('pointermove',event=>{if(drag)setWidth(drag.width+(drag.x-event.clientX)/drag.parentWidth*100);});for(const name of ['pointerup','pointercancel'])divider.addEventListener(name,()=>drag=null);divider.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();setWidth(width()+(event.key==='ArrowLeft'?2:-2));}});
+      const area=hooks.getWritingArea(),parent=area?.parentElement;if(!parent)return;
+      pane=node('section','editor-dual-pane');pane.hidden=true;pane.setAttribute('aria-label',t('原文'));
+      const divider=node('div','editor-dual-divider'),header=node('div','editor-dual-header'),label=node('span','editor-compare-label',t('原文')),close=button('关闭对照修改','icon-button',()=>closeSplit()),title=node('h2','editor-dual-title'),scroll=node('div','editor-dual-scroll'),original=node('div','editor-compare-original');
+      close.textContent='×';close.setAttribute('aria-label',t('关闭对照修改'));close.title=t('关闭对照修改');
+      divider.tabIndex=0;divider.setAttribute('role','separator');divider.setAttribute('aria-orientation','vertical');divider.setAttribute('aria-label',t('调整对照宽度'));
+      original.setAttribute('role','document');original.setAttribute('aria-readonly','true');original.tabIndex=0;original.setAttribute('aria-label',t('原文'));
+      header.append(label,close);scroll.append(title,original);pane.append(header,scroll,divider);parent.insertBefore(pane,area);pane._controls={title,scroll,original,divider};
+      let drag=null;const width=()=>Number.parseFloat(parent.style.getPropertyValue('--editor-original-width'))||45;
+      const setWidth=value=>{const top=area.scrollTop,amount=Math.min(70,Math.max(25,value));parent.style.setProperty('--editor-original-width',amount+'%');hooks.preference?.('yejian.editor-original-width',String(amount));hooks.resizeEditor?.();growSplit();area.scrollTop=top;divider.setAttribute('aria-valuenow',String(Math.round(amount)));};
+      setWidth(Number(hooks.preference?.('yejian.editor-original-width'))||45);
+      divider.addEventListener('pointerdown',event=>{if(event.button!==0)return;drag={x:event.clientX,width:width(),parentWidth:parent.getBoundingClientRect().width};divider.setPointerCapture?.(event.pointerId);event.preventDefault();});
+      divider.addEventListener('pointermove',event=>{if(drag)setWidth(drag.width+(event.clientX-drag.x)/drag.parentWidth*100);});for(const name of ['pointerup','pointercancel'])divider.addEventListener(name,()=>drag=null);
+      divider.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();setWidth(width()+(event.key==='ArrowRight'?2:-2));}});
       window.addEventListener('resize',growSplit);if(typeof ResizeObserver==='function'){const observer=new ResizeObserver(growSplit);observer.observe(scroll);observer.observe(hooks.getEditor());}
     }
-    function growSplit(){if(!pane||pane.hidden)return;pane.parentElement.classList.toggle('editor-dual-stacked',pane.parentElement.getBoundingClientRect().width<640);const {editor,scroll}=pane._controls,css=window.getComputedStyle(hooks.getEditor());for(const name of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing'])if(editor.style[name]!==css[name])editor.style[name]=css[name];window.WriterEditorLayout?.resize(editor,scroll,Math.max(200,scroll.clientHeight-100));}
+    function growSplit(){
+      if(!pane||pane.hidden)return;pane.parentElement.classList.toggle('editor-dual-stacked',pane.parentElement.getBoundingClientRect().width<640);
+      const {original}=pane._controls,css=window.getComputedStyle(hooks.getEditor());for(const name of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','wordSpacing','tabSize'])if(original.style[name]!==css[name])original.style[name]=css[name];
+    }
     function renderSplit(){
-      if(!pane||pane.hidden||book()!==splitOwner)return;const {choice,title,editor,scroll}=pane._controls,chapters=active(splitOwner.chapters).filter(chapter=>chapter.id!==hooks.getChapterId());if(!chapters.length){closeSplit();return;}
-      if(!chapters.some(chapter=>chapter.id===splitChapterId))splitChapterId=chapters[0].id;const chapter=chapters.find(item=>item.id===splitChapterId),same=editor.dataset.chapterId===chapter.id,start=editor.selectionStart,end=editor.selectionEnd,top=scroll.scrollTop;
-      if([...choice.options].map(option=>option.value+'\n'+option.textContent).join('\0')!==chapters.map(item=>item.id+'\n'+(item.title||t('未命名章节'))).join('\0')){choice.replaceChildren();for(const item of chapters){const option=node('option',null,item.title||t('未命名章节'));option.value=item.id;choice.append(option);}}
-      choice.value=chapter.id;title.disabled=false;editor.disabled=false;if(document.activeElement!==title)title.value=chapter.title;if(editor.value!==chapter.body&&!splitComposing)editor.value=chapter.body;editor.dataset.chapterId=chapter.id;if(same)editor.setSelectionRange(Math.min(start,editor.value.length),Math.min(end,editor.value.length));growSplit();scroll.scrollTop=same?top:0;
+      if(!pane||pane.hidden||book()!==splitOwner||hooks.getChapterId()!==splitChapterId)return;
+      const chapter=active(splitOwner.chapters).find(item=>item.id===splitChapterId);if(!chapter)return;
+      const {title,original,scroll}=pane._controls,editor=hooks.getEditor(),text=editor.value,top=scroll.scrollTop;
+      title.textContent=splitOwner.kind==='short'?splitOwner.title:document.getElementById('chapter-title')?.value||chapter.title||splitOwner.title;original.dataset.chapterId=chapter.id;
+      if(lastCompared!==text){const fragment=document.createDocumentFragment();for(const part of model.compareParts(baseline,text)){
+        if(part.kind==='added'){const marker=node('span','editor-compare-insertion','+');marker.title=t('新增：{0}',part.text);marker.setAttribute('aria-label',marker.title);fragment.append(marker);}
+        else fragment.append(node('span',part.kind==='removed'?'editor-compare-source editor-compare-removed':'editor-compare-source',part.text));
+      }original.replaceChildren(fragment);lastCompared=text;}
+      growSplit();scroll.scrollTop=top;
     }
-    function closeSplit(){if(splitComposing||hooks.isComposing?.())return false;if(!pane)return true;pane.hidden=true;pane.parentElement.classList.remove('editor-dual-open');hooks.getWritingArea?.().classList.remove('editor-dual-primary');splitOwner=null;splitChapterId=null;hooks.resizeEditor?.();return true;}
+    function scheduleComparison(){
+      if(!pane||pane.hidden)return;clearTimeout(comparisonTimer);
+      if((baseline?.length||0)+(hooks.getEditor()?.value.length||0)<20000)sync();else comparisonTimer=setTimeout(sync,100);
+    }
+    function clearComparison(){
+      clearTimeout(comparisonTimer);comparisonTimer=null;baseline=null;lastCompared=null;splitOwner=null;splitChapterId=null;
+      if(!pane)return;const area=hooks.getWritingArea(),top=area?.scrollTop;pane.hidden=true;pane.parentElement.classList.remove('editor-dual-open','editor-dual-stacked');pane._controls.original.replaceChildren();pane._controls.title.textContent='';delete pane._controls.original.dataset.chapterId;area?.classList.remove('editor-dual-primary');hooks.resizeEditor?.();if(area)area.scrollTop=top;
+    }
+    function closeSplit(){if(hooks.isComposing?.())return false;clearComparison();return true;}
     function forcePurge(bookId,ids=null,wholeBook=false){
-      if(!splitOwner||splitOwner.id!==bookId||!wholeBook&&!(ids||[]).includes(splitChapterId))return false;
-      const ownComposition=splitComposing;splitComposing=false;splitOwner=null;splitChapterId=null;
-      if(pane){const{editor,title}=pane._controls;for(const control of[editor,title]){control.disabled=true;control.value='';if(document.activeElement===control)control.blur();}pane.hidden=true;pane.parentElement.classList.remove('editor-dual-open');}
-      hooks.getWritingArea?.().classList.remove('editor-dual-primary');if(ownComposition)hooks.setComposing?.(false);hooks.resizeEditor?.();return true;
+      if(!splitOwner||splitOwner.id!==bookId)return false;
+      // Legacy short sections share one manuscript owner. Purging an alias can
+      // remove part of that owner's body without changing its chapter ID.
+      if(!wholeBook&&!(ids||[]).includes(splitChapterId)&&!(splitOwner.kind==='short'&&(ids||[]).length))return false;
+      clearComparison();return true;
     }
-    function sync(){if(pane&&!pane.hidden){if(book()!==splitOwner||book()?.kind!=='long'||hooks.getView?.()&&hooks.getView()!=='write')closeSplit();else if(!splitComposing)renderSplit();}}
-    function configure(options){hooks=options;if(!rootObserver&&typeof MutationObserver==='function'){rootObserver=new MutationObserver(sync);const primary=hooks.getEditor?.(),title=document.getElementById('chapter-title');if(title)title.addEventListener('input',sync);if(primary)primary.addEventListener('input',sync);const list=document.getElementById('chapter-list');if(list)rootObserver.observe(list,{childList:true,subtree:false});}}
+    function sync(){if(pane&&!pane.hidden){if(book()!==splitOwner||hooks.getChapterId()!==splitChapterId||!active(book()?.chapters).some(item=>item.id===splitChapterId)||hooks.getView?.()&&hooks.getView()!=='write')clearComparison();else renderSplit();}}
+    function configure(options){hooks=options;if(!rootObserver&&typeof MutationObserver==='function'){rootObserver=new MutationObserver(sync);const primary=hooks.getEditor?.(),title=document.getElementById('chapter-title');if(title)title.addEventListener('input',scheduleComparison);if(primary)primary.addEventListener('input',scheduleComparison);const list=document.getElementById('chapter-list');if(list)rootObserver.observe(list,{childList:true,subtree:false});}}
     function beforeSwitch(){return closeSplit();}
     return{configure,menu,showOrganizer,splitCurrent,showSearch,showSplit,closeSplit,forcePurge,sync,beforeSwitch,mutate,resize:growSplit};
   }

@@ -90,6 +90,12 @@ def main():
     (args.destination / "SHA256SUMS.txt").write_text("\n".join(checksums) + "\n", "ascii")
     (args.destination / "release-notes.md").write_text(f"""作家工作台 · Writer's Desk {version}
 
+本版将双稿分屏替换为同章对照修改：左侧保留打开时的原文快照，标色显示删改文字和新增位置；右侧编辑并自动保存，长篇和短篇均可使用。保留原生撤销、中文输入法和滚动位置。
+
+修复 GitHub 匿名 API 限流导致更新检查持续失败的问题，限流或服务故障时自动读取固定官网更新索引；安装文件仍来自指定 GitHub 发行，逐个校验平台、架构和 SHA256。无需用户填写 GitHub Token。
+
+大纲与写作的流式回复已用慢速隔离服务复验：生成结束前显示首段，停止后保留部分回复，刷新可恢复完整或取消记录。
+
 原生安装包：Linux x64 `.deb`、Windows x64 `.exe`、macOS Apple Silicon / Intel 各自的 `.dmg`。Linux 同时保留离线升级 `.tar.gz`。
 
 支持 Ubuntu 22.04+ 或兼容桌面环境、Windows 10+、macOS 13+。每个包由对应操作系统和 CPU 的原生工作流生成。本次发行收集要求安装包提取/安装、桌面启动、十万字示例、本机保存与重启检查通过；校验报告随包提供。
@@ -98,7 +104,7 @@ def main():
 
 macOS 下载与处理器对应的包，将 App 拖到 Applications。作品仍保存在原有用户数据目录；卸载安装程序不会主动删除作品库。Linux 的旧用户安装快捷方式可能遮住系统 `.deb` 入口，迁移说明见仓库 `desktop/BUILD.md`。
 
-本版新增外部备份位置、卷章拖动与批量整理、拆分合并、双稿对照、跨书搜索、素材库和增强本地校对。多套 AI 服务可保存并快速切换，AI 用量按提供商实际返回 Token 与作者填写单价计算，未知用量或费用显示不可用。Word / EPUB / PDF 支持可编辑、可复用模板和自定义纸张、字体、页边距、行距及章标题样式。
+本版新增外部备份位置、卷章拖动与批量整理、拆分合并、同章对照修改、跨书搜索、素材库和增强本地校对。多套 AI 服务可保存并快速切换，AI 用量按提供商实际返回 Token 与作者填写单价计算，未知用量或费用显示不可用。Word / EPUB / PDF 支持可编辑、可复用模板和自定义纸张、字体、页边距、行距及章标题样式。
 
 新增 App 内联网更新，匹配当前平台和架构并校验 SHA256，保存后进入托管升级或原生安装器。Windows 助手等待旧进程退出后再次校验安装器；macOS 当前打开已校验的 DMG 安装引导，不自动替换 App，也不绕过系统安全检查。
 
@@ -112,7 +118,7 @@ Linux TAR 延续完整清单及包内安装脚本验收，报告绑定本次压�
 
 内置 101,506 字示例《潮汐档案馆》，包含 6 卷 36 章、32 位人物、12 条伏笔与 18 个时间事件。旧示例及个人作品不会被覆盖，可从书架载入新版示例副本。
 
-本轮验收见 [docs/acceptance-0.8.0.md](https://github.com/asoming/writer-desk/blob/main/docs/acceptance-0.8.0.md)，功能说明与原有边界见 docs/acceptance-v0.6.0.md。Word 已验证结构和全文完整性；本次环境中的 LibreOffice 渲染受运行库版本限制，尚未验证 Word 阅读器实际分页。PDF 已用 Electron 实际生成完整示例，检查自定义纸张和 Letter 页面尺寸。AI 使用隔离模拟服务验收，没有调用真实收费服务。
+本轮验收见 [docs/acceptance-{version}.md](https://github.com/asoming/writer-desk/blob/main/docs/acceptance-{version}.md)，功能说明与原有边界见 docs/acceptance-v0.6.0.md。Word 已验证结构和全文完整性；本次环境中的 LibreOffice 渲染受运行库版本限制，尚未验证 Word 阅读器实际分页。PDF 已用 Electron 实际生成完整示例，检查自定义纸张和 Letter 页面尺寸。AI 使用隔离模拟服务验收，没有调用真实收费服务。
 
 Mac 适配双指滚动与惯性、人物图双指平移和以手势位置为中心的捏合缩放。非编辑区域支持横向返回书架，`Command + [` 也可返回；返回前经过保存检查。使用原生窗口按钮及常用 Command 快捷键。实体触控板的手感仍需真人在 Mac 上验证。
 
