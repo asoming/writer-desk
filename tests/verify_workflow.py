@@ -4,6 +4,7 @@ Run with TMPDIR set to a scratch directory when retaining all test IO under work
 The canonical 101,506-character novel is only read, never rewritten.
 """
 import copy
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -220,7 +221,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.get_book(book["id"]), before_restart)
         self.assertEqual(len(self.shelf()), len(self.initial) + 2)
         self.assert_other_books_unchanged(book["id"])
-        with sqlite3.connect(self.data / "writer.sqlite3") as connection:
+        with closing(sqlite3.connect(self.data / "writer.sqlite3")) as connection, connection:
             history = connection.execute("SELECT revision,payload FROM history WHERE book_id=? ORDER BY revision", (book["id"],)).fetchall()
             self.assertEqual([row[0] for row in history], list(range(1, revision)))
             self.assertEqual(json.loads(history[0][1]), self.initial[book["id"]]["book"])
