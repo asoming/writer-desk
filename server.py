@@ -22,9 +22,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from socketserver import TCPServer
 from types import SimpleNamespace
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 import protection
 import chapter_history
+import planning
+import story_memory
+import ai_stream
+from formatted_export import render_book_export
 from ai_service import AIService, AIError
 from chat_images import ChatImageStore
 from skills import SkillsService, SkillError
@@ -85,7 +89,8 @@ def new_book(title="未命名作品", kind="long"):
     book_id = uid()
     book = {"id": book_id, "title": title, "kind": kind, "cover": "", "coverTemplate": "",
             "volumes": [first_volume(book_id)] if kind == "long" else [], "chapters": [],
-            "notes": [], "outline": [], "relations": []}
+            "notes": [], "outline": [], "relations": [],
+            "storyTools": planning.defaults(), "storyMemory": story_memory.validate_memory(None)}
     return normalize_short_book(book)
 
 
@@ -151,6 +156,7 @@ def normalize_short_book(book):
     for item in book.get("notes", []) + book.get("outline", []) + book.get("relations", []):
         item["chapterIds"] = list(dict.fromkeys(manuscript["id"] if value in aliases and value not in recycled else value
                                                 for value in item.get("chapterIds", [])))
+    planning.remap_short_links(book, aliases, manuscript["id"], recycled)
     return book
 
 
@@ -176,6 +182,7 @@ def upgrade_book(book):
     book.setdefault("kind", "long")
     book.setdefault("cover", "")
     book.setdefault("coverTemplate", "")
+    book.setdefault("storyMemory", story_memory.validate_memory(None))
     legacy_volumes = "volumes" not in book
     book.setdefault("volumes", [first_volume(book["id"])] if book["kind"] == "long" else [])
     book.setdefault("outline", [])
@@ -198,7 +205,7 @@ def upgrade_book(book):
         item.setdefault("type", "other")
         item.setdefault("stage", "")
         item.setdefault("volumeIds", [])
-    return normalize_short_book(book)
+    return planning.normalize(normalize_short_book(book))
 
 
 def sample_book():
@@ -285,6 +292,7 @@ def initialize():
                     conn.execute("CREATE TABLE IF NOT EXISTS pending_book_purges(book_id TEXT PRIMARY KEY)")
                     protection.initialize(conn)
                     chapter_history.initialize(conn)
+                    planning.initialize(conn)
                     seeded = conn.execute("SELECT 1 FROM app_migrations WHERE name IN (?,?) LIMIT 1", (INITIAL_LIBRARY_MIGRATION, DEFAULT_EXAMPLE_MIGRATION)).fetchone()
                     if not seeded and not conn.execute("SELECT 1 FROM books LIMIT 1").fetchone():
                         insert_book(conn, sample_book())
@@ -562,6 +570,8 @@ def validate_book(data):
                 raise ValueError("大纲层级不能循环或指向其他作品")
             seen.add(parent_id)
             parent_id = parents[parent_id]
+    planning.validate(result, data)
+    result["storyMemory"] = story_memory.validate_memory(data.get("storyMemory"), result)
     normalize_short_book(result)
     if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > MAX_BOOK:
         raise ValueError("单部作品超过 25 MB，请拆分为多部作品")
@@ -652,6 +662,7 @@ def purge_book_rows(conn, book_id):
     conn.execute("INSERT OR IGNORE INTO pending_book_purges(book_id) VALUES(?)", (book_id,))
     conn.execute("DELETE FROM history WHERE book_id=?", (book_id,))
     conn.execute("DELETE FROM backup_runs WHERE book_id=?", (book_id,))
+    planning.purge_book(conn, book_id)
     conn.execute("DELETE FROM books WHERE id=?", (book_id,))
     conn.execute("DELETE FROM pending_chapter_purges WHERE book_id=?", (book_id,))
 
@@ -1132,10 +1143,12 @@ class Handler(BaseHTTPRequestHandler):
         if args and str(args[1] if len(args) > 1 else "") not in ("200", "201", "304"):
             super().log_message(fmt, *args)
 
-    def send_bytes(self, content, status=200, content_type="application/json; charset=utf-8"):
+    def send_bytes(self, content, status=200, content_type="application/json; charset=utf-8", filename=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(content)))
+        if filename is not None:
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(filename, safe=""))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
@@ -1177,6 +1190,20 @@ class Handler(BaseHTTPRequestHandler):
             chapter_result = chapter_history.read(chapter_history_context(), path)
             if chapter_result is not None:
                 self.send_json(chapter_result)
+                return
+            planned = planning.read(chapter_history_context(), path)
+            if planned is not None:
+                self.send_json(planned)
+                return
+            memory_match = re.fullmatch(r"/api/books/([^/]+)/memory", path)
+            if memory_match:
+                with connect() as conn:
+                    row = conn.execute("SELECT * FROM books WHERE id=?", (memory_match[1],)).fetchone()
+                if row is None:
+                    self.send_json({"error": "找不到这部作品"}, 404)
+                    return
+                require_active_book(row)
+                self.send_json(story_memory.memory_index(book_result(row)["book"]))
                 return
             protected = read_protection(path)
             if protected is not None:
@@ -1227,12 +1254,15 @@ class Handler(BaseHTTPRequestHandler):
                 files["/theme.js"] = "theme.js"
                 files["/theme.css"] = "theme.css"
                 files["/textarea-autosize.js"] = "textarea-autosize.js"
+                files["/editor-layout.js"] = "editor-layout.js"
                 files["/chat-images.js"] = "chat-images.js"
                 files["/work-plan.js"] = "work-plan.js"
                 files["/work-plan.css"] = "work-plan.css"
                 files["/chapter-history.js"] = "chapter-history.js"
                 files["/chapter-history.css"] = "chapter-history.css"
                 files["/content-cleanup.js"] = "content-cleanup.js"
+                for resource in ("story-tools.js", "story-tools.css", "story-memory.js", "ai-stream.js", "formatted-export.js", "formatted-export.css", "book-search.js", "version-diff.js", "revision-tools.css"):
+                    files["/" + resource] = resource
                 filename = files.get(path)
                 if not filename:
                     self.send_json({"error": "找不到这个页面"}, 404)
@@ -1268,6 +1298,21 @@ class Handler(BaseHTTPRequestHandler):
             protected = write_protection(path, data)
             if protected is not None:
                 self.send_json(protected)
+                return
+            if ai_stream.serve(self, path, data, chapter_history_context()):
+                return
+            export_match = re.fullmatch(r"/api/books/([^/]+)/export-formatted", path)
+            if export_match:
+                if not isinstance(data, dict):
+                    raise ValueError("排版导出参数不正确。")
+                with connect() as conn:
+                    row = conn.execute("SELECT * FROM books WHERE id=?", (export_match[1],)).fetchone()
+                if row is None:
+                    self.send_json({"error": "找不到这部作品"}, 404)
+                    return
+                require_active_book(row)
+                content, mime, filename = render_book_export(book_result(row)["book"], data.get("format"), data)
+                self.send_bytes(content, content_type=mime, filename=filename)
                 return
             ai_result = handle_ai_request(path, data)
             if ai_result is not None:
@@ -1349,6 +1394,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "找不到这个操作"}, 404)
                 return
             book_id = path[len("/api/books/"):]
+            if data.get("saveReason", "edit") not in ("edit", "restore"):
+                raise ValueError("保存类型不正确")
             book = validate_book(data.get("book"))
             if book["id"] != book_id or type(data.get("revision")) is not int:
                 raise ValueError("作品编号或保存版本不正确")
@@ -1367,6 +1414,8 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 stamp = now()
                 preserve_history(conn, row, stamp)
+                if data.get("saveReason") != "restore":
+                    planning.record_save(conn, json.loads(row["payload"]), book, stamp)
                 conn.execute("UPDATE books SET title=?,payload=?,revision=revision+1,updated_at=? WHERE id=?", (book["title"], json.dumps(book, ensure_ascii=False), stamp, book_id))
             result = {"revision": row["revision"] + 1, "updatedAt": stamp}
             try:

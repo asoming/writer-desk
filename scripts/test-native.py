@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SUITES = (
     "verify_native_bundle.py", "verify_native_smoke.py", "verify_safe_fs.py", "verify_loopback_startup.py", "verify_portable_library.py", "verify_api.py", "verify_protection.py",
     "verify_book_folders.py", "verify_chat_images.py", "verify_chapter_history.py",
+    "verify_ai_stream.py", "verify_planning.py", "verify_planning_api.py", "verify_formatted_export.py", "verify_formatted_export_http.py",
     "verify_book_purge.py", "verify_short_manuscript.py", "verify_default_demo.py",
 )
 

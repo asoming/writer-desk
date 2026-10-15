@@ -15,6 +15,7 @@ app.setName("Writer's Desk");
 const hasLock = app.requestSingleInstanceLock();
 let window = null, service = null, origin = '', closing = false, allowQuit = false, saveReady = false;
 let closeRequest = null, lastServiceLog = '', updateBusy = false, stoppingService = false;
+let pdfBusy = false;
 const serviceToken = randomBytes(32).toString('hex');
 const settingsPath = path.join(userData, 'settings.json');
 const storagePath = path.join(userData, 'client-storage.json');
@@ -207,6 +208,31 @@ ipcMain.handle('writer:open-book-folder', async (event, bookId) => {
   if (!trusted(event)) return { error: text('当前窗口无权打开作品文件夹。', 'This window is not authorized to open book folders.'), code: 'untrusted-sender' };
   try { return await openBookFolder(bookId); }
   catch (error) { return { error: error.message, code: error.code || 'open-folder-failed' }; }
+});
+ipcMain.handle('writer:print-book-pdf', async (event, options) => {
+  if (!trusted(event)) return { error: text('当前窗口无权导出 PDF。', 'This window is not authorized to export PDF.'), code: 'untrusted-sender' };
+  if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some(key => !['title', 'paper'].includes(key)) || typeof options.title !== 'string' || [...options.title].length > 200 || !['a4', 'a5'].includes(options.paper)) return { error: text('PDF 排版选项不正确。', 'Invalid PDF layout options.'), code: 'pdf-invalid-request' };
+  if (pdfBusy || closing || allowQuit || updateBusy) return { error: text('请等待当前操作完成。', 'Wait for the current operation to finish.'), code: 'pdf-busy' };
+  pdfBusy = true;
+  let temporary;
+  try {
+    // Print the authenticated app's prepared document only. The bridge accepts
+    // no HTML, URL or destination path and never creates a privileged window.
+    const prepared = await window.webContents.executeJavaScript("document.body.classList.contains('formatted-printing') && document.querySelectorAll('#formatted-print-root[data-writer-export=book] > .formatted-book').length === 1 && !!document.getElementById('formatted-print-styles')", true);
+    if (prepared !== true) throw new Error('Missing prepared book');
+    const name = options.title.replace(/[<>:\"/\\|?*\u0000-\u001f\u007f]/g, '_').replace(/[. ]+$/, '').slice(0, 100) || 'WriterDesk';
+    const selected = await dialog.showSaveDialog(window, { title: text('导出 PDF', 'Export PDF'), defaultPath: path.join(app.getPath('downloads'), name + '.pdf'), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+    if (selected.canceled || !selected.filePath) return { canceled: true };
+    if (!window || window.isDestroyed() || closing || allowQuit) throw new Error('App is closing');
+    const buffer = await window.webContents.printToPDF({ pageSize: options.paper.toUpperCase(), preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false, generateTaggedPDF: true });
+    if (!Buffer.isBuffer(buffer) || buffer.length < 5 || buffer.subarray(0, 5).toString() !== '%PDF-' || buffer.length > 200 * 1024 * 1024) throw new Error('Invalid PDF output');
+    temporary = selected.filePath + '.' + randomBytes(8).toString('hex') + '.tmp';
+    await fs.promises.writeFile(temporary, buffer, { flag: 'wx', mode: 0o600 });
+    await fs.promises.rename(temporary, selected.filePath);
+    temporary = undefined;
+    return { saved: true };
+  } catch { return { error: text('无法导出 PDF，请检查磁盘空间和文件权限后重试。', 'Could not export PDF. Check disk space and file permissions, then try again.'), code: 'pdf-export-failed' }; }
+  finally { if (temporary) { try { await fs.promises.unlink(temporary); } catch { } } pdfBusy = false; }
 });
 ipcMain.on('writer:storage', (event, request) => {
   event.returnValue = { error: 'Storage unavailable' };

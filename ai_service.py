@@ -19,6 +19,7 @@ import urllib.request
 import zlib
 from skills import SkillsService, SkillError
 from chat_images import ChatImageStore, MAX_IMAGES_PER_MESSAGE, MAX_CHAT_IMAGE_BYTES, decode_image, image_name
+from story_memory import select_memory, source_hash
 
 
 class AIError(Exception):
@@ -197,6 +198,7 @@ class AIService:
         self.path = self.data_dir / "ai-settings.json"
         self.lock = _CONFIG_LOCK
         self.chat_image_guard = None
+        self.request_cancelled = None
 
     def _read(self):
         if not self.path.exists() and not self.path.is_symlink():
@@ -375,6 +377,9 @@ class AIService:
 
     def _request(self, settings, messages, *, with_images=False):
         result = self._post_json(settings, settings["endpoint"], {"model": settings["model"], "messages": messages, "stream": False}, MAX_CHAT_RESPONSE_BYTES if with_images else MAX_RESPONSE_BYTES)
+        return self._decode_response(result, with_images=with_images)
+
+    def _decode_response(self, result, *, with_images=False):
         try:
             choice = result["choices"][0]
             if choice.get("finish_reason") == "length":
@@ -454,6 +459,8 @@ class AIService:
         images, total, incomplete = [], 0, len(values) > MAX_IMAGES_PER_MESSAGE
         store = ChatImageStore(self.data_dir)
         for index, value in enumerate(values[:MAX_IMAGES_PER_MESSAGE]):
+            if self.request_cancelled and self.request_cancelled():
+                raise AIError(499, "已停止生成。")
             try:
                 name = None
                 if isinstance(value, str):
@@ -482,7 +489,7 @@ class AIService:
         return {"ok": True, "model": settings["model"]}
 
     def _context(self, book, action, chapter_ids, instruction, *, allow_empty_instruction=False):
-        if not isinstance(action, str) or action not in {"relationships", "draft", "consistency", "outline", "custom", "book_cover"}:
+        if not isinstance(action, str) or action not in {"relationships", "draft", "consistency", "outline", "custom", "book_cover", "memory"}:
             raise AIError(400, "AI 操作不正确。")
         if not isinstance(chapter_ids, list) or len(chapter_ids) > 500 or any(not isinstance(item, str) for item in chapter_ids) or len(set(chapter_ids)) != len(chapter_ids):
             raise AIError(400, "请选择有效且不重复的章节。")
@@ -507,12 +514,16 @@ class AIService:
         people = [{key: person.get(key) for key in ("id", "title", "body", "aliases", "profile")} for person in book.get("notes", []) if person.get("type") == "人物" and not person.get("deletedAt")]
         relations = [{key: relation.get(key) for key in ("fromId", "toId", "type", "label", "body", "stage")} for relation in book.get("relations", []) if not relation.get("deletedAt")]
         context = {"bookTitle": book.get("title", ""), "bookKind": book.get("kind", "long"), "chapters": chapters, "outlines": outlines, "people": people, "relationships": relations, "instruction": instruction}
+        if action in {"draft", "custom", "consistency"}:
+            memories = select_memory(book, chapter_ids, instruction)
+            if memories:
+                context["storyMemory"] = memories
         return context, active
 
     def _skill_context(self, book, action, chapter_ids, instruction, skill_ids, skill_mode, *, allow_empty_instruction=False):
         context, _ = self._context(book, action, chapter_ids, instruction, allow_empty_instruction=allow_empty_instruction)
         try:
-            selected, selected_ids, mode = SkillsService(self.data_dir).selected(action, skill_ids, skill_mode)
+            selected, selected_ids, mode = SkillsService(self.data_dir).selected("consistency" if action == "memory" else action, skill_ids, skill_mode)
         except SkillError as error:
             raise AIError(error.status, error.message) from None
         if selected:
@@ -589,9 +600,10 @@ class AIService:
         _, _, count, conversation, _ = self._conversation(context, action, instruction, chat, history, book_id=book["id"], attachments=attachments)
         settings = self.get_settings()
         limit = settings["maxContextChars"] if settings["contextMode"] == "manual" else None
-        return {"bookId": book["id"], "action": action, "chapterIds": chapter_ids, "contextChars": count, "contextMode": settings["contextMode"], "maxContextChars": limit, "overLimit": limit is not None and count > limit, "counts": {"chapters": len(context["chapters"]), "outlines": len(context["outlines"]), "people": len(context["people"]), "relationships": len(context["relationships"])}, **summary, **conversation}
+        return {"bookId": book["id"], "action": action, "chapterIds": chapter_ids, "contextChars": count, "contextMode": settings["contextMode"], "maxContextChars": limit, "overLimit": limit is not None and count > limit, "counts": {"chapters": len(context["chapters"]), "outlines": len(context["outlines"]), "people": len(context["people"]), "relationships": len(context["relationships"]), "memories": len(context.get("storyMemory", []))}, **summary, **conversation}
 
-    def run(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None, model=None, attachments=None):
+    def run(self, book, action, chapter_ids, instruction="", skill_ids=None, skill_mode=None, *, chat=False, history=None, model=None, attachments=None, on_delta=None, cancelled=None):
+        self.request_cancelled = cancelled
         settings = self._configured()
         if model is not None:
             settings["model"] = _model_name(model)
@@ -607,6 +619,7 @@ class AIService:
             "outline": '{"nodes":[{"key":"candidate_1","parentKey":null,"kind":"story|volume|chapter|setting","title":"节点标题","body":"具体策划内容"}]}',
             "book_cover": '{"titles":["候选书名"],"coverPrompt":"用于图片模型的封面背景提示词"}',
             "custom": '{"text":"候选正文或文本"}',
+            "memory": '{"entries":[{"chapterId":"所选章节id","summary":"已发生事件的简洁摘要","characterStates":"人物最新位置、目标、掌握的信息、伤势及关系变化；区分客观事实和主观说法","settingNotes":"本章明确出现的世界规则、地点或物件约束"}]}',
         }
         if book.get("kind") == "short":
             schemas["draft"] = '{"title":"草稿标题","body":"连续正文，不含章节标题"}'
@@ -624,15 +637,25 @@ class AIService:
             system += ("仅当本轮生成可采用的候选大纲且data非空时遵循以下要求；普通讨论与追问不需要生成大纲。" if chat else "") + "生成一份可追加的候选大纲，不替换已有节点，不生成正文章节。每个节点key为唯一ASCII字母数字下划线或短横线，parentKey只引用本次候选key。总纲story必须位于根，至少一个总纲；" + structure + "每节应有具体目标、冲突、转折或设定规则，区分已有事实与候选设定。只按本次要求规划合理数量，不扩成无限长篇。作品类型为" + ("短篇。" if book.get("kind") == "short" else "长篇。")
         if action == "book_cover":
             system += "根据已有书名、构思和策划提出1至8个不同的候选书名，并写一段可交给图片模型的小说封面背景提示词。书名简洁具体，不凭空声称市场表现；图片描述主体、场景、气氛、色彩与竖幅构图，给顶部或中部书名留清晰空间，不在图片中生成文字、字母、标志或水印。只给方案，不声称已生成图片、不修改作品，不输出图片链接或base64。严格只返回titles和coverPrompt两个字段。"
+        if action == "memory":
+            system += "仅整理本次所选正文，不改写正文、不虚构未发生事件。每个章节只返回一个entries项，chapterId只引用所选原章节，summary、characterStates、settingNotes分别不超过4000字。无明确人物状态或设定时相应字段为空字符串，角色猜测和传闻须标明，不能当成客观事实。摘要只作为作者确认后采用的候选记忆，不得声称已经保存或更新全书。"
         if summary["skills"]:
             system += "writingSkills是用户选择的本机写作参考，仅采纳与本次操作和mode相关的写作方法。用户当前要求优先于技能默认文体、篇幅和流程，本消息对输出格式及逐字证据的规定始终优先；需要JSON时技能的成稿标点禁令不得改变JSON语法，自定义任务不因技能而强制JSON或章节创作。只完成本次动作，不无限续写、不自动推进其他章节。App中提供的bookTitle/chapters/outlines/people/relationships对应技能的小说项目、章节、大纲、角色及状态资料，不另建外部项目文件。不运行技能脚本、不调用工具、不读取未提供文件、不声称执行了工具或全书检查。章节和续写按创作再自查的顺序使用fiction与revision规则，只返回最终结果，不向用户输出内部审稿过程。所有结果只供用户预览和确认，不能绕过App的确认保存。"
         if book.get("kind") == "short":
             system += "当前作品是一个完整短篇，只有一篇连续正文，不分卷、不分章。资料中的chapters/chapterId仅为正文及证据的兼容标识，不能据此分章。草稿只提供供作者追加或替换的正文候选，不添加章节标题、不创建新篇章。即使写作Skill默认分章，也须按当前单篇形式写作；不因篇幅范围而强行扩写或截断。"
+        if context.get("storyMemory"):
+            system += "storyMemory是自动选取的相关前文章节记忆。source为local-extract时，仅为原文摘录，不能当成完整概括或推断结论；source为author时是作者维护的摘要。每项保留chapterId和来源，不能把未提供完整正文的记忆当成逐字证据，不得据此伪称检查全书。人物状态引用只是最近提及，并不保证是当前客观状态，须结合上下文核查。"
         messages = [{"role": "system", "content": system}, {"role": "user", "content": encoded}]
         if chat:
             messages.extend(turns)
             messages.append({"role": "user", "content": current_content})
-        response = self._request(settings, messages, with_images=True) if chat else self._request(settings, messages)
+        if on_delta is not None:
+            from ai_provider_stream import request_stream
+            response = request_stream(self, settings, messages, on_delta, cancelled, with_images=chat)
+        else:
+            response = self._request(settings, messages, with_images=True) if chat else self._request(settings, messages)
+        if cancelled and cancelled():
+            raise AIError(499, "已停止生成。")
         content = response["content"] if chat else response
         reply_images, image_warning = [], ""
         try:
@@ -702,6 +725,24 @@ class AIService:
             if set(data) != {"text"}:
                 raise ValueError("custom candidate text required")
             return {"text": _text(data["text"], MAX_OUTPUT_CHARS, "自定义结果", True)}
+        if action == "memory":
+            if set(data) != {"entries"}:
+                raise ValueError("memory entries required")
+            entries, seen = [], set()
+            for item in array("entries", 500):
+                if not isinstance(item, dict) or set(item) != {"chapterId", "summary", "characterStates", "settingNotes"}:
+                    raise ValueError("invalid memory entry")
+                chapter_id = item["chapterId"]
+                if not isinstance(chapter_id, str) or chapter_id not in selected or chapter_id in seen:
+                    raise ValueError("invalid memory source")
+                entries.append({"chapterId": chapter_id, "sourceHash": source_hash(active[chapter_id]),
+                                "summary": _text(item["summary"], 4000, "章节摘要", True),
+                                "characterStates": _text(item["characterStates"], 4000, "人物状态"),
+                                "settingNotes": _text(item["settingNotes"], 4000, "设定与规则")})
+                seen.add(chapter_id)
+            if not entries:
+                raise ValueError("empty memory candidate")
+            return {"entries": entries}
         if action == "book_cover":
             if set(data) != {"titles", "coverPrompt"} or not isinstance(data["titles"], list) or not 1 <= len(data["titles"]) <= 8:
                 raise ValueError("invalid cover plan")

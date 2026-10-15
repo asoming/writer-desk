@@ -49,6 +49,8 @@ function harness({ strictIds = false } = {}) {
     setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: callback => callback(), structuredClone,
     WriterAnalysis: { analyzeBook: () => ({ appearances: {}, cooccurrences: [], candidates: [], ambiguous: [] }) },
   });
+  // Geometry is exercised in editor-layout-electron.cjs; this DOM has no layout.
+  context.WriterEditorLayout={resize(){}};
   context.window = context;
   for (const file of ['public/vendor/dagre.min.js', 'public/atlas-layout.js', 'public/app.js', 'public/atlas-ui.js', 'public/workspace.js']) {
     let source = fs.readFileSync(path.join(root, file), 'utf8');

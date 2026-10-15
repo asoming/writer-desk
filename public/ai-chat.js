@@ -2,7 +2,7 @@
 
 // Each book has independent planning and manuscript conversations. Only an
 // explicit send may reach the configured AI service; previews stay local.
-const aiChatTasks={custom:'自由对话',outline:'生成大纲',draft:'生成写作草稿',consistency:'检查人物与剧情一致性',relationships:'提取人物与关系'};
+const aiChatTasks={custom:'自由对话',outline:'生成大纲',draft:'生成写作草稿',memory:'整理长篇记忆',consistency:'检查人物与剧情一致性',relationships:'提取人物与关系'};
 let aiChatView=null;
 
 function aiChatChannel(){return state.book&&['outline','write'].includes(state.view)?state.view:null;}
@@ -57,7 +57,7 @@ function syncAIChat(){
 
 function createAIChatView(panel,book,channel){
   const saved=aiChatRead(book.id,channel),key=aiChatStorageKey(book.id,channel),root=el('div','ai-chat-inner');
-  let disposed=false,active=false,requestSeq=0,previewSeq=0,loadSeq=0,modelSeq=0,preview=null,previewKey='',previewDelay=null,writeDelay=null,pending=null,configuration=null,skills=[],ready=false,composing=false,scopeKey='',storageError=false,modelIds=[],modelSaving=false,modelsLoading=false,configurationLoading=false;
+  let disposed=false,active=false,requestSeq=0,previewSeq=0,loadSeq=0,modelSeq=0,preview=null,previewKey='',previewDelay=null,writeDelay=null,pending=null,pendingAbort=null,configuration=null,skills=[],ready=false,composing=false,scopeKey='',storageError=false,modelIds=[],modelSaving=false,modelsLoading=false,configurationLoading=false;
   const candidates=new Map(),bubbles=new Map(),deferredCandidates=new Set(),imageViews=new Map();
   const header=el('header','ai-chat-header'),heading=el('strong',null,'AI'),headerActions=el('div','ai-chat-header-actions');
   const fresh=action('＋','icon-button',newConversation),close=action('×','icon-button',()=>controller.close());fresh.setAttribute('aria-label',T('新对话'));fresh.title=T('新对话');close.setAttribute('aria-label',T('关闭 AI 对话'));close.title=T('关闭 AI 对话');headerActions.append(fresh,close);header.append(heading,headerActions);
@@ -66,6 +66,7 @@ function createAIChatView(panel,book,channel){
   const transcript=el('div','ai-chat-transcript');transcript.setAttribute('role','log');transcript.setAttribute('aria-label',T('AI 对话'));transcript.setAttribute('aria-live','polite');
   const footer=el('div','ai-chat-footer'),material=el('details','ai-chat-material'),materialSummary=el('summary'),materialBody=el('div','ai-chat-material-body'),chapterChoices=el('div','ai-chat-chapters'),skillChoices=el('div','ai-chat-skills'),skillMode=writingSkillModeSelect('ai-chat-skill-mode'),materialCount=el('span','ai-chat-material-count');
   const chapterTools=el('div','ai-chat-material-tools'),selectAll=action(T('全选'),'text-button',()=>chooseChapters(true)),clearChapters=action(T('清空'),'text-button',()=>chooseChapters(false));chapterTools.append(selectAll,clearChapters);materialBody.append(chapterTools,chapterChoices,el('div','ai-chat-skill-label',T('写作 Skill')),skillChoices,skillMode,materialCount);material.append(materialSummary,materialBody);
+  const memoryButton=window.WriterStoryMemory?action(T('长篇记忆'),'text-button',()=>{if(!pending&&current())window.WriterStoryMemory.open(book,{onChanged:schedulePreview});}):null;if(memoryButton)materialBody.append(memoryButton);
   const composer=el('div','ai-chat-composer'),input=el('textarea'),send=action('↑','ai-chat-send',()=>run()),composerBar=el('div','ai-chat-composer-bar'),modelGroup=el('div','ai-chat-model-group'),modelChoice=el('select','ai-chat-model'),refreshModels=action('↻','ai-chat-model-refresh',()=>loadModels(true));modelChoice.id='ai-chat-model';modelChoice.setAttribute('aria-label',T('模型'));refreshModels.setAttribute('aria-label',T('刷新模型'));refreshModels.title=T('刷新模型');input.id='ai-chat-prompt';input.rows=3;input.maxLength=10000;input.value=saved.prompt;input.placeholder=T('输入提示词…');input.setAttribute('aria-label',T('提示词'));send.setAttribute('aria-label',T('发送'));send.title=T('发送');modelGroup.append(modelChoice,refreshModels);composerBar.append(modelGroup,send);composer.append(input,composerBar);
   const composerTools=el('div','ai-chat-composer-tools'),reset=action(T('恢复默认提示词'),'text-button',()=>chooseTask(task.value,true)),status=el('p','ai-chat-status'),configure=action(T('打开 AI 设置'),'text-button',()=>showAppSettings('ai'));configure.hidden=true;composerTools.append(reset);footer.append(material,status,configure,composer,composerTools);root.append(header,context,transcript,footer);panel.replaceChildren(root);
 
@@ -99,11 +100,12 @@ function createAIChatView(panel,book,channel){
   }
   function available(){return ready&&configuration?.enabled&&configuration.endpoint&&configuration.model;}
   function controls(){
-    send.disabled=!!pending||!!imageInput?.isBusy()||modelSaving||configurationLoading||!!aiModelChangePending||!available()||!hasPrompt()||!preview||preview.overLimit||previewKey!==JSON.stringify(payload())||(['relationships','consistency'].includes(task.value)&&!saved.chapterIds.length);
+    send.disabled=!!pending||!!imageInput?.isBusy()||modelSaving||configurationLoading||!!aiModelChangePending||!available()||!hasPrompt()||!preview||preview.overLimit||previewKey!==JSON.stringify(payload())||(['relationships','consistency','memory'].includes(task.value)&&!saved.chapterIds.length);
     task.disabled=reset.disabled=selectAll.disabled=clearChapters.disabled=!!pending;skillMode.disabled=!!pending||!ready;
     chapterChoices.querySelectorAll('input').forEach(box=>box.disabled=!!pending);skillChoices.querySelectorAll('input').forEach(box=>box.disabled=!!pending||box.dataset.available!=='true');
     configure.hidden=!!available();reset.hidden=task.value==='custom';
     modelChoice.disabled=!!pending||modelSaving||!ready;refreshModels.disabled=!!pending||modelSaving||modelsLoading||!configuration?.endpoint;
+    if(memoryButton)memoryButton.disabled=!!pending;
   }
   function renderModels(){
     modelChoice.replaceChildren();const selected=configuration?.model||'',ids=selected?[selected,...modelIds.filter(id=>id!==selected)]:modelIds;
@@ -158,8 +160,8 @@ function createAIChatView(panel,book,channel){
   }
   function renderAnswer(turn){
     const answer=bubbles.get(turn.id)?.answer;if(!answer)return;renderImages(turn.id+':reply',answer,[]);answer.replaceChildren();candidates.get(turn.id)?.dispose();candidates.delete(turn.id);deferredCandidates.delete(turn.id);
-    if(turn.status==='pending'){answer.append(el('span','ai-chat-waiting',T('正在思考…')),action(T('停止等待'),'text-button',cancelPending));return;}
-    if(turn.status!=='complete'){answer.append(el('p','ai-chat-message-error',T(turn.error||'请求中断，可重试。')));if(turn===saved.turns.at(-1))answer.append(action(T('重试'),'text-button',()=>run(turn)));return;}
+    if(turn.status==='pending'){answer.append(el('div',turn.reply?'ai-chat-message-text ai-chat-streaming':'ai-chat-waiting',turn.reply||T('正在思考…')),action(T('停止等待'),'text-button',cancelPending));return;}
+    if(turn.status!=='complete'){if(turn.reply)answer.append(el('div','ai-chat-message-text',turn.reply));answer.append(el('p','ai-chat-message-error',T(turn.error||'请求中断，可重试。')));if(turn===saved.turns.at(-1))answer.append(action(T('重试'),'text-button',()=>run(turn)));return;}
     if(turn.reply)answer.append(el('div','ai-chat-message-text',turn.reply));renderImages(turn.id+':reply',answer,turn.images);if(typeof turn.imageWarning==='string'&&turn.imageWarning.length<=2000)answer.append(el('p','ai-chat-message-error',T(turn.imageWarning)));
     if(turn.data&&!turn.consumed){
       const host=el('div','ai-chat-candidate');answer.append(host);
@@ -173,7 +175,7 @@ function createAIChatView(panel,book,channel){
   function resumeCandidates(){if(!visible()||modalOpen())return;saved.turns.filter(turn=>deferredCandidates.has(turn.id)).forEach(renderAnswer);}
   function restoreTurnPrompt(turn){if(!hasPrompt()){input.value=turn.user;setDraftImages(turn.attachments||[]);}}
   function cancelPending(){
-    if(!pending)return;const turn=pending;pending=null;++requestSeq;++previewSeq;turn.status='cancelled';turn.error=T('已停止等待');restoreTurnPrompt(turn);renderAnswer(turn);persist();renderChoices();schedulePreview();
+    if(!pending)return;pendingAbort?.abort();pendingAbort=null;const turn=pending;pending=null;++requestSeq;++previewSeq;turn.status='cancelled';turn.error=T('已停止等待');restoreTurnPrompt(turn);renderAnswer(turn);persist();renderChoices();schedulePreview();
   }
   async function run(retry=null){
     if(pending||imageInput?.isBusy()||modelSaving||configurationLoading||aiModelChangePending||!visible()||modalOpen()||!ready||!available()||composing||state.composing||state.transitioning)return;
@@ -185,16 +187,24 @@ function createAIChatView(panel,book,channel){
     try{
       if(!await requireSaved()||!current()||modalOpen()||sequence!==requestSeq)return;
       const checked=await updatePreview(request);if(!current()||modalOpen()||sequence!==requestSeq)return;if(!checked||checked.overLimit)return;
-      if(['relationships','consistency'].includes(request.action)&&!request.chapterIds.length){status.textContent=T('请先选择正文资料。');return;}
-      turn.status='pending';turn.error='';if(!saved.turns.includes(turn)){saved.turns.push(turn);appendTurn(turn);}else renderAnswer(turn);
+      if(['relationships','consistency','memory'].includes(request.action)&&!request.chapterIds.length){status.textContent=T('请先选择正文资料。');return;}
+      turn.status='pending';turn.error='';turn.reply='';turn.data=null;if(!saved.turns.includes(turn)){saved.turns.push(turn);appendTurn(turn);}else renderAnswer(turn);
       if(input.value===turn.user&&aiChatSameImages(draftImages(),turn.attachments)){input.value='';setDraftImages([]);}persist();
-      const response=await api('/api/books/'+encodeURIComponent(book.id)+'/ai','POST',request);
+      const path='/api/books/'+encodeURIComponent(book.id)+'/ai';
+      pendingAbort=window.WriterAIStream?new AbortController():null;
+      const response=window.WriterAIStream?await window.WriterAIStream.request(path,request,{signal:pendingAbort.signal,onDelta:fragment=>{
+        if(sequence!==requestSeq||!current()||turn.status!=='pending')return;
+        if(typeof fragment!=='string'||turn.reply.length+fragment.length>100000){pendingAbort?.abort();throw Error(T('AI 返回内容过大，请减少生成范围后重试。'));}
+        const follow=transcript.scrollHeight-transcript.scrollTop-transcript.clientHeight<80;
+        turn.reply+=fragment;const answer=bubbles.get(turn.id)?.answer,text=answer?.firstElementChild;if(text){text.className='ai-chat-message-text ai-chat-streaming';text.textContent=turn.reply;}else renderAnswer(turn);
+        if(follow)scrollEnd();
+      }}):await api(path,'POST',request);
       if(sequence!==requestSeq||!current())return;
       const images=aiChatImages(response?.images,book.id);
       if(response?.bookId!==book.id||response.action!==request.action||response.chat!==true||!Array.isArray(response.chapterIds)||JSON.stringify(response.chapterIds)!==JSON.stringify(request.chapterIds)||typeof response.reply!=='string'||(!response.reply.trim()&&!images.length)||response.reply.length>100000||(response.images!==undefined&&(!Array.isArray(response.images)||response.images.length!==images.length)))throw Error(T('AI 结果与当前作品不匹配。'));
       turn.reply=response.reply;turn.images=images;turn.imageWarning=typeof response.imageWarning==='string'&&response.imageWarning.length<=2000?response.imageWarning:'';turn.data=response.data||null;turn.status='complete';renderAnswer(turn);persist();scrollEnd();
     }catch(error){if(sequence===requestSeq&&current()){turn.status='error';turn.error=error.message;if(!saved.turns.includes(turn)){saved.turns.push(turn);appendTurn(turn);}else renderAnswer(turn);restoreTurnPrompt(turn);persist();}}
-    finally{if(sequence===requestSeq){pending=null;if(current()){renderChoices();schedulePreview();}}}
+    finally{if(sequence===requestSeq){pending=null;pendingAbort=null;if(current()){renderChoices();schedulePreview();}}}
   }
   async function newConversation(){
     if(!visible()||modalOpen()||!await requireSaved()||!visible())return;cancelPending();candidates.forEach(renderer=>renderer.dispose());candidates.clear();deferredCandidates.clear();clearImageViews();bubbles.clear();saved.turns=[];saved.action=task.value='custom';saved.prompts={};input.value='';setDraftImages([]);transcript.replaceChildren();status.textContent='';persist();schedulePreview();input.focus();

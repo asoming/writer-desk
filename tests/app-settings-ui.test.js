@@ -98,6 +98,8 @@ function harness({ desktop = true, language = 'zh', view = 'write', fullscreenEn
     setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: callback => callback(), location: { reload: () => reloads++ },
     addEventListener: (type, callback, options = {}) => { const list = windowEvents.get(type) || []; list.push({ callback, once: !!options.once }); windowEvents.set(type, list); }
   });
+  // Geometry is exercised in editor-layout-electron.cjs; this DOM has no layout.
+  context.WriterEditorLayout={resize(){}};
   context.window = context; if (desktop) context.WriterDesktop = native;
   document.fullscreenEnabled = fullscreenEnabled;
   for (const file of ['public/i18n.js', 'public/app.js', 'public/workspace.js','public/settings.js']) {

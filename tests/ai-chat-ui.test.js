@@ -33,6 +33,30 @@ function harness(storage=new Map()){
   h.open=async()=>{h.run('syncAIChat()');await h.tick();};h.prompt=async value=>{const input=h.field('ai-chat-prompt');input.value=value;input.listeners.input();await h.flush();};h.send=()=>h.button('发送').listeners.click();h.records=()=>JSON.parse(storage.get('yejian.ai-chat.'+h.state.book.id+'.'+h.state.view));return h;
 }
 
+test('streaming shows incremental reply without rendering a candidate before the validated final result',async()=>{
+  const h=harness();h.context.AbortController=AbortController;let finish,delta;
+  h.context.WriterAIStream={request:(url,request,options)=>{delta=options.onDelta;return new Promise(resolve=>{finish=()=>resolve({bookId:'one',action:request.action,chapterIds:request.chapterIds,chat:true,reply:'第一段第二段',data:{text:'完整候选'}});});}};
+  await h.open();await h.prompt('逐步讨论');const pending=h.send();await h.tick();delta('第一段');assert.ok(find(h.panel(),node=>node.textContent==='第一段'));assert.equal(h.candidates.length,0);delta('第二段');finish();await pending;assert.equal(h.records().turns[0].reply,'第一段第二段');assert.equal(h.records().turns[0].status,'complete');assert.equal(h.candidates.length,1);
+});
+
+test('stream cancel aborts transport and ignores late tokens and candidates',async()=>{
+  const h=harness();h.context.AbortController=AbortController;let finish,delta,signal;
+  h.context.WriterAIStream={request:(url,request,options)=>{delta=options.onDelta;signal=options.signal;return new Promise(resolve=>{finish=()=>resolve({bookId:'one',action:request.action,chapterIds:request.chapterIds,chat:true,reply:'晚到的完整答复',data:{text:'不应采用'}});});}};
+  await h.open();await h.prompt('可停止的讨论');const pending=h.send();await h.tick();delta('已显示片段');h.button('停止等待').listeners.click();assert.ok(signal.aborted);delta('晚到片段');finish();await pending;assert.equal(h.records().turns[0].status,'cancelled');assert.equal(h.records().turns[0].reply,'已显示片段');assert.equal(h.candidates.length,0);
+});
+
+test('AI memory is an explicit task, preserves source hash, and adopts only checked editable candidates',async()=>{
+  const h=harness(),{createHash,webcrypto}=require('node:crypto');h.context.crypto=webcrypto;h.context.TextEncoder=TextEncoder;h.context.Uint8Array=Uint8Array;vm.runInContext(fs.readFileSync(path.join(root,'public/story-memory.js'),'utf8'),h.context);h.useRealRenderer();
+  const hash=createHash('sha256').update('第一章\n正文一').digest('hex');h.response=request=>({bookId:'one',action:'memory',chapterIds:request.chapterIds,chat:true,reply:'这是待确认的章节记忆。',data:{entries:[{chapterId:'a',sourceHash:hash,summary:'事件摘要',characterStates:'人物状态',settingNotes:''}]}});
+  await h.open();h.run("toggleAIChat('memory')");await h.flush();assert.match(h.field('ai-chat-prompt').value,/章节记忆/);assert.equal(h.state.book.storyMemory,undefined);await h.send();await h.tick();assert.equal(h.state.book.storyMemory,undefined);
+  const box=find(h.panel(),node=>node.tagName==='INPUT'&&node.type==='checkbox'&&!node.value);assert.ok(box);assert.equal(box.disabled,false);box.checked=true;const summary=find(h.panel(),node=>node.tagName==='TEXTAREA'&&node.id?.endsWith('-summary'));summary.value='作者修改后的摘要';await h.button('采用勾选的记忆').listeners.click();assert.equal(h.state.book.storyMemory.entries[0].summary,'作者修改后的摘要');assert.equal(h.state.book.storyMemory.entries[0].sourceHash,hash);
+});
+
+test('a memory candidate from an earlier source revision is read only after chat restore',async()=>{
+  const {createHash,webcrypto}=require('node:crypto'),hash=createHash('sha256').update('第一章\n旧正文').digest('hex');
+  const turn={id:'old-memory',user:'整理章节',action:'memory',chapterIds:['a'],status:'complete',reply:'待确认',data:{entries:[{chapterId:'a',sourceHash:hash,summary:'旧摘要',characterStates:'',settingNotes:''}]}},h=harness(new Map([['yejian.ai-chat.one.write',JSON.stringify({version:1,open:true,turns:[turn]})]]));h.context.crypto=webcrypto;h.context.TextEncoder=TextEncoder;h.context.Uint8Array=Uint8Array;vm.runInContext(fs.readFileSync(path.join(root,'public/story-memory.js'),'utf8'),h.context);h.useRealRenderer();await h.open();await h.tick();assert.ok(find(h.panel(),node=>node.textContent==='来源正文已变化，请重新整理记忆。'));const box=find(h.panel(),node=>node.tagName==='INPUT'&&node.type==='checkbox'&&!node.value);assert.equal(box.disabled,true);assert.equal(h.state.book.storyMemory,undefined);
+});
+
 test('planning and writing get a docked conversation, no service request on opening',async()=>{
   const h=harness();await h.open();assert.equal(h.panel().hidden,false);assert.equal(h.field('ai-chat-task').value,'custom');assert.equal(h.field('ai-chat-prompt').value,'');assert.ok(h.button('发送').disabled);assert.deepEqual(h.notes,[false]);assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
   h.state.view='outline';h.run('syncAIChat()');await h.tick();assert.equal(find(h.panel(),node=>node.className==='ai-chat-scope').textContent,'第一卷');

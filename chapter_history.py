@@ -13,6 +13,7 @@ import re
 import stat
 
 import protection
+import planning
 
 PENDING_WARNING = "章节已从稿件和历史版本中删除，但本机副本清理尚未完成，将在后台重试。"
 FOLDER_WARNING = "作品文件夹中的文件已被手动修改或无法确认归属。请先移走或删除这些文件，再彻底删除章节。"
@@ -112,7 +113,13 @@ def sanitize(book, chapter_ids):
                 item["chapterIds"] = list(dict.fromkeys(replacements.get(value, value)
                                                        for value in item["chapterIds"]
                                                        if value in replacements or value not in chapter_ids))
-    return result
+    memory = result.get("storyMemory")
+    if isinstance(memory, dict):
+        memory["entries"] = [entry for entry in memory.get("entries", []) if entry.get("chapterId") not in chapter_ids]
+        # A combined short manuscript changed when any original section was removed.
+        if result.get("kind") == "short":
+            memory["entries"] = []
+    return planning.sanitize(result, chapter_ids, replacements)
 
 
 def valid_date(value):

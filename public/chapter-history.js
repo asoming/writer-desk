@@ -30,6 +30,7 @@ window.WriterChapterHistory=(()=>{
       const result=await api('/api/history/chapters');if(!current())return false;
       if(!Array.isArray(result.chapters)||result.chapters.some(record=>!validRecord(record)))throw new Error(T('历史记录无效，请重试。'));
       content.replaceChildren();
+      if(state.book&&typeof showHistory==='function')content.append(action(T('历史版本与差异对比'),'secondary-button',()=>{if(current())showHistory(state.book.id);}));
       if(result.cleanupPendingBooks?.length||pendingCopies.size){const pending=el('div','chapter-history-pending');pending.append(el('p','dialog-description',T('部分本机副本尚未清理完成，作家工作台会继续重试。')),action(T('重试'),'secondary-button',()=>retryCleanup(current)));content.append(pending);}
       if(!result.chapters.length){content.append(el('p','empty-hint',T('暂无删除的章节。')));return true;}
       const groups=new Map();

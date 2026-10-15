@@ -28,6 +28,7 @@ function aiSaveModelChoice(model){
 }
 
 function aiDefaultPrompt(action,book=state.book){
+  if(action==='memory')return T('请仅根据所选正文整理可维护的章节记忆。每章简洁概括已发生事件、人物目标与行动、转折和未解决的问题，另列人物最新位置、已知信息、伤势与关系变化，以及明确的世界规则。区分事实、猜测和传闻，不凭常识补全缺失信息，不把大纲中尚未发生的情节写成既成事实。只返回候选摘要，确认后才保存；不改写正文。');
   if(book?.kind==='short'){
     const prompts={
       relationships:T('请仅根据整篇正文提取人物与关系。优先使用已登记姓名，区分真名、别名和称呼。每个人物与关系都给出可逐字核对的原文证据；共同提及不等于确认关系。不要根据常识补全亲属、阵营或感情，不确定的内容请略去。'),
@@ -140,7 +141,7 @@ async function showAIAssistant(initialAction='draft'){
 
 function renderAIResult(result,response,options={}){
   const book=options.book,bookId=book?.id,chapters=options.chapters||book?.chapters.filter(chapter=>!chapter.deletedAt)||[],sourceOutline=options.sourceOutline;
-  if(!bookId||response?.bookId!==bookId||!['relationships','draft','outline','custom','book_cover','consistency'].includes(response.action))throw new Error(T('AI 结果与当前作品不匹配。'));
+  if(!bookId||response?.bookId!==bookId||!['relationships','draft','outline','custom','book_cover','consistency','memory'].includes(response.action))throw new Error(T('AI 结果与当前作品不匹配。'));
   let disposed=false,anchor=null;
   const decisions=new Set(),current=()=>!disposed&&(!anchor||result.contains(anchor))&&state.book===book&&state.book?.id===bookId&&(typeof options.current!=='function'||options.current()),settings=()=>typeof options.settings==='function'?options.settings():options.settings;
   const fieldId=id=>(options.idPrefix||'')+id;
@@ -236,12 +237,30 @@ function renderAIResult(result,response,options={}){
     result.append(el('h3',null,T('自定义结果')));const body=el('textarea','text-field ai-custom-result');body.id=fieldId('ai-custom-result');body.value=data.text;body.rows=14;body.maxLength=100000;result.append(body,action(T('复制结果'),'secondary-button',async()=>{try{await navigator.clipboard.writeText(body.value);toast(T('结果已复制。'));}catch{body.focus();body.select();toast(T('请按 Ctrl+C 或 Command+C 复制选中文字。'));}}));
   }
   function renderConsistency(data){result.append(el('h3',null,T('一致性检查结果')));if(!data.issues.length){result.append(el('p','subtle',T('所选资料中没有返回待核查问题。')));return;}data.issues.forEach(issue=>{const card=el('section','ai-suggestion');card.append(el('h4',null,issue.title),el('p',null,issue.description));citations(issue.evidence,card);result.append(card);});}
+  function renderMemory(data){
+    if(!Array.isArray(data?.entries)||!data.entries.length||data.entries.length>500)throw Error(T('长篇记忆无效，请重试。'));
+    const entries=[],seen=new Set();result.append(el('h3',null,T('长篇记忆预览')));
+    data.entries.forEach((entry,index)=>{
+      const chapter=chapters.find(item=>item.id===entry?.chapterId),fields={};
+      if(!chapter||seen.has(entry.chapterId)||typeof entry.sourceHash!=='string'||!/^[a-f0-9]{64}$/.test(entry.sourceHash)||['summary','characterStates','settingNotes'].some(key=>typeof entry[key]!=='string'||entry[key].length>4000))throw Error(T('长篇记忆无效，请重试。'));seen.add(entry.chapterId);
+      const card=el('section','ai-suggestion'),box=el('input'),label=el('label','checkbox-row');box.type='checkbox';label.append(box,el('strong',null,book.kind==='short'?T('正文'):chapter.title));card.append(label);
+      for(const [name,title] of [['summary','章节摘要'],['characterStates','人物状态'],['settingNotes','设定与规则']]){const input=el('textarea','text-field');input.id=fieldId('ai-memory-'+index+'-'+name);input.value=entry[name];input.maxLength=4000;input.rows=name==='summary'?5:3;fields[name]=input;addField(card,T(title),input);}
+      const sourceBody=chapter.body,sourceTitle=chapter.title,record={entry,box,fields,sourceBody,sourceTitle,verified:false};box.disabled=true;entries.push(record);result.append(card);
+      window.WriterStoryMemory?.sourceHash(chapter).then(hash=>{if(!current())return;record.verified=hash===entry.sourceHash;box.disabled=!record.verified;if(!record.verified)card.append(el('p','ai-chat-message-error',T('来源正文已变化，请重新整理记忆。')));}).catch(()=>{if(current())card.append(el('p','ai-chat-message-error',T('无法核对记忆来源，请重试。')));});
+    });
+    adoption(T('采用勾选的记忆'),result,()=>{
+      const chosen=entries.filter(item=>item.box.checked);if(!chosen.length){toast(T('请先勾选要采用的建议。'));return false;}
+      for(const item of chosen){const chapter=book.chapters.find(chapter=>chapter.id===item.entry.chapterId&&!chapter.deletedAt);if(!item.verified||!chapter||chapter.body!==item.sourceBody||chapter.title!==item.sourceTitle){toast(T('来源正文已变化，请重新整理记忆。'));return false;}if(!item.fields.summary.value.trim()){toast(T('章节摘要不能为空。'));return false;}}
+      const replaced=new Set(chosen.map(item=>item.entry.chapterId));book.storyMemory={version:1,enabled:book.storyMemory?.enabled!==false,entries:[...(book.storyMemory?.entries||[]).filter(item=>!replaced.has(item.chapterId)),...chosen.map(item=>({chapterId:item.entry.chapterId,sourceHash:item.entry.sourceHash,...Object.fromEntries(Object.entries(item.fields).map(([key,input])=>[key,input.value]))}))]};
+    });
+  }
   if(!current())return{dispose(){disposed=true;},hasUnsavedAdoption(){return false;}};
   if(response.action==='relationships')renderRelationships(response.data);
   else if(response.action==='draft')renderDraft(response.data,options.chapterIds||response.chapterIds||[]);
   else if(response.action==='outline')renderOutlineSuggestions(response.data);
   else if(response.action==='custom')renderCustom(response.data);
   else if(response.action==='book_cover')renderBookCover(response.data);
+  else if(response.action==='memory')renderMemory(response.data);
   else renderConsistency(response.data);
   anchor=result.children[result.children.length-1]||null;
   return{

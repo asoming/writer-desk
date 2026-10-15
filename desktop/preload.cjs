@@ -65,6 +65,12 @@ contextBridge.exposeInMainWorld('WriterDesktop', {
     if (result?.error) throw Object.assign(new Error(result.error), { code: result.code });
     return result;
   },
+  printBookPDF: async options => {
+    const result = await nativeRequest('writer:print-book-pdf', options);
+    if (result.canceled === true) return { canceled: true };
+    if (result.saved === true) return { saved: true };
+    throw Object.assign(new Error('Invalid PDF export response'), { code: 'invalid-response' });
+  },
   onBeforeClose: callback => {
     if (typeof callback !== 'function') throw new TypeError('A save callback is required');
     beforeClose = callback;

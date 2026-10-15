@@ -202,11 +202,17 @@ def service_smoke(backend, data):
             except urllib.error.HTTPError as error:
                 assert error.code == 403
             assert b"<!doctype html>" in request("/").lower()
+            for asset in ("/editor-layout.js", "/book-search.js", "/version-diff.js", "/revision-tools.css", "/story-memory.js", "/ai-stream.js", "/story-tools.js", "/story-tools.css", "/formatted-export.js", "/formatted-export.css"):
+                assert request(asset), asset
             books = request("/api/books")["books"]
             demo_summary = next(book for book in books if book["title"] == "潮汐档案馆")
             demo = request("/api/books/" + urllib.parse.quote(demo_summary["id"], safe=""))["book"]
             assert len(demo["volumes"]) == 6 and len(demo["chapters"]) == 36
             assert sum(not character.isspace() for chapter in demo["chapters"] for character in chapter["body"]) == 101506
+            assert len(demo["storyTools"]["foreshadows"]) == 12 and len(demo["storyTools"]["timeline"]) == 18
+            route_demo = "/api/books/" + urllib.parse.quote(demo_summary["id"], safe="")
+            assert len(request(route_demo + "/memory")["entries"]) == 36
+            assert request(route_demo + "/writing-stats")["todayChars"] == 0
             if attempt == 0:
                 fixture = request("/api/books", "POST", {"title": "跨平台检查", "kind": "short"})
                 fixture_id = fixture["book"]["id"]

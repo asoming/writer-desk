@@ -63,7 +63,7 @@ def verify(service=None):
                     assert status == expected, (method, path, status, raw.decode("utf-8", errors="replace")[:1000])
                     return raw if binary else json.loads(raw)
 
-                for asset in ("/", "/work-plan.js", "/chapter-history.js", "/content-cleanup.js", "/gestures.js", "/gestures.css"):
+                for asset in ("/", "/work-plan.js", "/chapter-history.js", "/content-cleanup.js", "/gestures.js", "/gestures.css", "/editor-layout.js", "/book-search.js", "/version-diff.js", "/revision-tools.css", "/story-memory.js", "/ai-stream.js", "/story-tools.js", "/story-tools.css", "/formatted-export.js", "/formatted-export.css"):
                     assert request("GET", asset, binary=True), asset
                 created = request("POST", "/api/books", {"title": "跨平台本机验收", "kind": "long"}, expected=201)
                 assert "protectionWarning" not in created, created

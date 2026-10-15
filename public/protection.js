@@ -64,7 +64,7 @@ async function showHistory(bookId=state.book?.id){
           });if(restored&&visible())await showHistory(bookId);
         }catch(error){toast(error.message);}finally{restore.disabled=false;}
       });
-      heading.append(el('strong',null,protectionVersion(snapshot)),restore);
+      heading.append(el('strong',null,protectionVersion(snapshot)),action(T('对比当前稿'),'secondary-button',()=>window.WriterVersionDiff.open(snapshot,bookId,short?undefined:selector.value)),restore);
       const plans=el('details','protection-plans');plans.append(el('summary',null,T('大纲与人物预览')));
       const planText=el('div','protection-plan-text');
       snapshot.book.outline.filter(item=>!item.deletedAt).forEach(item=>planText.append(el('h4',null,item.title),el('p',null,item.body)));

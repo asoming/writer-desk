@@ -65,6 +65,8 @@ function harness(book) {
     addEventListener() {}, crypto: { randomUUID }, sessionStorage: storage, clientStorage: storage, T,
     setTimeout: () => 0, clearTimeout() {}, requestAnimationFrame: callback => callback(),
   });
+  // Geometry is exercised in editor-layout-electron.cjs; this DOM has no layout.
+  context.WriterEditorLayout={resize(){}};
   context.window = context;
   for (const file of ['public/app.js', 'public/workspace.js']) {
     const source = fs.readFileSync(path.join(root, file), 'utf8').replace(/\ninitialize\(\);\s*$/, '\n');

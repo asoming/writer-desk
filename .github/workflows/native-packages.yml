@@ -68,7 +68,13 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb desktop-file-utils libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libxtst6 libsecret-1-0 libnotify4
       - name: Native packaging and macOS window contracts
-        run: node --test tests/packaging.test.cjs tests/desktop-mac.test.js
+        run: node --test --test-concurrency=2 tests/*.test.js tests/*.test.cjs
+      - name: Real editor typing and IME regression on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/editor-layout-electron.cjs --report dist/editor-layout-regression.json
+      - name: Real editor typing and IME regression on Windows and macOS
+        if: runner.os != 'Linux'
+        run: node node_modules/electron/cli.js tests/editor-layout-electron.cjs --report dist/editor-layout-regression.json
       - name: Native storage and lifecycle regression tests
         run: python scripts/test-native.py
       - name: Linux desktop and updater contracts
@@ -97,6 +103,7 @@ jobs:
             dist/WriterDesk-*.tar.gz
             dist/WriterDesk-*.sha256
             dist/installer-smoke.json
+            dist/editor-layout-regression.json
       - name: Upload failed native diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
