@@ -4,6 +4,7 @@ WRITER_DESK_SERVICE may point to a frozen service; no installed library is read.
 """
 import concurrent.futures
 import copy
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -92,7 +93,7 @@ class BookTrashTests(unittest.TestCase):
         return self.request("/api/books/" + book["id"])[1]
 
     def db_row(self, book_id):
-        with sqlite3.connect(self.folder / "writer.sqlite3") as conn:
+        with closing(sqlite3.connect(self.folder / "writer.sqlite3")) as conn, conn:
             conn.row_factory = sqlite3.Row
             return dict(conn.execute("SELECT * FROM books WHERE id=?", (book_id,)).fetchone())
 
@@ -225,7 +226,7 @@ class BookTrashTests(unittest.TestCase):
         code, result = self.request(path + "/purge", "POST", {"revision": revision + 1}, index=1)
         self.assertEqual(code, 200)
         self.assertEqual(result, {"ok": True, "id": book["id"]})
-        with sqlite3.connect(self.folder / "writer.sqlite3") as conn:
+        with closing(sqlite3.connect(self.folder / "writer.sqlite3")) as conn, conn:
             for table, column in (("books", "id"), ("history", "book_id"), ("backup_runs", "book_id"), ("pending_book_purges", "book_id")):
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM " + table + " WHERE " + column + "=?", (book["id"],)).fetchone()[0], 0)
         backup_folder = self.folder / "backups" / ("book-" + hashlib.sha256(book["id"].encode()).hexdigest())
@@ -268,14 +269,14 @@ class BookTrashTests(unittest.TestCase):
         legacy = self.folder / "legacy"
         legacy.mkdir()
         payload = json.dumps(original, ensure_ascii=False)
-        with sqlite3.connect(legacy / "writer.sqlite3") as conn:
+        with closing(sqlite3.connect(legacy / "writer.sqlite3")) as conn, conn:
             conn.execute("CREATE TABLE books(id TEXT PRIMARY KEY,title TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)")
             conn.execute("CREATE TABLE history(id INTEGER PRIMARY KEY,book_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,saved_at TEXT NOT NULL)")
             conn.execute("INSERT INTO books VALUES(?,?,?,?,?,?)", (original["id"], original["title"], payload, 19, STAMP, STAMP))
             conn.execute("INSERT INTO history VALUES(1,?,?,?,?)", (original["id"], 18, payload, STAMP))
         index = self.start_service(legacy)
         self.assertEqual(self.request("/api/books/" + original["id"], index=index)[1]["revision"], 19)
-        with sqlite3.connect(legacy / "writer.sqlite3") as conn:
+        with closing(sqlite3.connect(legacy / "writer.sqlite3")) as conn, conn:
             self.assertEqual(conn.execute("SELECT payload,revision,created_at,updated_at,deleted_at FROM books WHERE id=?", (original["id"],)).fetchone(),
                              (payload, 19, STAMP, STAMP, None))
             self.assertEqual(conn.execute("SELECT payload,revision FROM history WHERE book_id=?", (original["id"],)).fetchone(), (payload, 18))
@@ -290,7 +291,7 @@ class BookTrashTests(unittest.TestCase):
         index = self.start_service(self.folder)
         self.assertEqual(self.request("/api/books", index=index)[1], {"books": [], "trashCount": len(before)})
         self.assertEqual(self.request("/api/trash/books", index=index)[1]["books"], before)
-        with sqlite3.connect(self.folder / "writer.sqlite3") as conn:
+        with closing(sqlite3.connect(self.folder / "writer.sqlite3")) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM books").fetchone()[0], len(before))
 
     def test_zzz_purging_the_entire_library_stays_empty_after_concurrent_initialization(self):
@@ -300,7 +301,7 @@ class BookTrashTests(unittest.TestCase):
             indices = list(pool.map(lambda _: self.start_service(self.folder), range(2)))
         for index in indices:
             self.assertEqual(self.request("/api/books", index=index)[1], {"books": [], "trashCount": 0})
-        with sqlite3.connect(self.folder / "writer.sqlite3") as conn:
+        with closing(sqlite3.connect(self.folder / "writer.sqlite3")) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM books").fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM history").fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM backup_runs").fetchone()[0], 0)

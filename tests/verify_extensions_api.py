@@ -2,6 +2,7 @@
 """Disposable real-loopback API checks for the 0.8 desktop integrations."""
 import argparse
 import copy
+from contextlib import closing
 from http_fixtures import LoopbackHTTPServer
 import json
 from pathlib import Path
@@ -177,7 +178,7 @@ class ExtensionsAPI(unittest.TestCase):
             client.request("/api/sync/sync", "POST", {"bookId": book_id})
         peer.request("/api/sync/sync", "POST", {"bookId": identity})
         self.get_missing(peer, identity)
-        with sqlite3.connect(peer.data / "writer.sqlite3") as conn:
+        with closing(sqlite3.connect(peer.data / "writer.sqlite3")) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM books WHERE id=?", (identity,)).fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM history WHERE book_id=?", (identity,)).fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM sync_tombstones WHERE book_id=?", (identity,)).fetchone()[0], 1)
@@ -250,7 +251,7 @@ class ExtensionsAPI(unittest.TestCase):
         trashed = self.request("/api/books/" + identity + "/trash", "POST", {"revision": latest["revision"]})
         final = self.request("/api/books/" + identity + "/purge", "POST", {"revision": trashed["revision"]})
         self.assertTrue(final.get("cleanupPending", False), final)
-        with sqlite3.connect(self.data / "sync/hub/collaboration.sqlite3") as conn:
+        with closing(sqlite3.connect(self.data / "sync/hub/collaboration.sqlite3")) as conn, conn:
             payload = json.loads(conn.execute("SELECT payload FROM books WHERE id=?", (identity,)).fetchone()[0])
             self.assertTrue(payload["permanentlyDeleted"])
         self.request("/api/sync/host-start", "POST", {"host": "127.0.0.1", "port": port})

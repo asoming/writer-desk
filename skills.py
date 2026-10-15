@@ -238,8 +238,8 @@ class SkillsService:
                     for name, content in files.items():
                         file = temporary / name
                         _chain(file.parent, create=True)
-                        with file.open("x", encoding="utf-8") as handle:
-                            handle.write(content)
+                        with file.open("xb") as handle:
+                            handle.write(content.encode("utf-8"))
                         file.chmod(0o600)
                     if target.exists():
                         target.rename(backup)

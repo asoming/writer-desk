@@ -238,6 +238,7 @@ const englishMessages={
   "另存副本会保留本机稿件，并为它新建一部作品；原作品采用服务端版本。": "Saving a copy creates a separate book from the local manuscript. The original book keeps the server version.",
   "本机稿件另存副本": "Save local manuscript as a copy",
   "浏览器无法使用本机存储，请允许此站点保存数据后重试。": "Local storage is unavailable. Allow this site to save data, then try again.",
+  "浏览器不支持安全随机数，请更新浏览器后重试。": "Secure randomness is unavailable. Update your browser, then try again.",
   "离线缓存暂未完成，稿件仍保存在本机。": "Offline caching is incomplete. Your manuscript is still saved on this device.",
   "本机保存失败，请检查存储空间。": "Local save failed. Check the available storage.",
   "请填写作品名称。": "Enter a book title.",
