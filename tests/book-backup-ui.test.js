@@ -5,7 +5,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {randomUUID}=require('node:crypto'),{test}=require('node:test');
 const root=path.resolve(__dirname,'..'),copy=value=>JSON.parse(JSON.stringify(value));
 class Element{
-  constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.textContent='';this.value='';this.listeners={};this.open=false;this.hidden=false;this.isConnected=true;this.attributes={};this.style={setProperty(){}};this.classList={toggle(){},add(){},remove(){}};}
+  constructor(tag='div'){this.dataset = {}; this.tagName=tag.toUpperCase();this.children=[];this.textContent='';this.value='';this.listeners={};this.open=false;this.hidden=false;this.isConnected=true;this.attributes={};this.style={setProperty(){}};this.classList={toggle(){},add(){},remove(){}};}
   append(...items){for(const item of items){this.children.push(item);item.parentElement=this;for(const node of all(item))node.isConnected=true;}}
   replaceChildren(...items){for(const item of this.children)for(const node of all(item))node.isConnected=false;this.children=[];this.append(...items);}
   contains(item){return all(this).includes(item);}

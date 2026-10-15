@@ -64,7 +64,7 @@ check('opening only reads planning and does not touch manuscript or mark dirty',
   const h = harness(), before = copy(h.state.book);
   assert.equal(await h.module.open(), true);
   assert.equal(h.dialog().open, true); assert.deepEqual(h.state.book, before); assert.equal(h.state.dirty, 0);
-  assert.equal(h.all().filter(item => item.attributes.role === 'tab').length, 3);
+  assert.equal(h.all().filter(item => item.attributes.role === 'tab').length, 2);
 });
 check('failed save blocks opening a tool on unsaved content', async () => {
   const h = harness(); h.state.saved = false;
@@ -124,27 +124,21 @@ check('planning deletion respects cancel and only deletes its selected record', 
   h.state.confirmed = false; await h.click('删除'); assert.equal(h.state.book.storyTools.timeline.length, 2);
   const preserved = h.state.book.storyTools.timeline[0]; h.state.confirmed = true; await h.click('删除'); assert.equal(h.state.book.storyTools.timeline.length, 1); assert.equal(h.state.book.storyTools.timeline[0], preserved);
 });
-check('statistics save first, then show activity, trends and calendar', async () => {
-  const h = harness(); await h.module.open('stats'); await ticks();
-  assert.deepEqual(h.state.calls, ['/api/books/one/writing-stats']); assert.ok(h.state.saves >= 2);
-  assert.ok(h.all().some(item => item.tagName === 'STRONG' && item.textContent === '456 字'));
-  assert.ok(h.all().some(item => item.tagName === 'STRONG' && item.textContent === '101,506 字'));
-  assert.equal(h.all().filter(item => item.className === 'story-tools-chart-column').length, 7);
-  await h.click('30 天'); assert.equal(h.all().filter(item => item.className === 'story-tools-chart-column').length, 30);
-  assert.equal(h.all().filter(item => item.className.split(' ').includes('story-tools-calendar-day')).length, 31);
-  assert.ok(h.all().some(item => item.className.split(' ').includes('is-today') && item.children[0].textContent === '15'));
+check('legacy statistics action opens the homepage without touching book metadata or requesting per-book stats', async () => {
+  let opened = 0;
+  const h = harness(book(), {openHome: async () => { opened++; return true; }}), before = copy(h.state.book);
+  await h.module.open();
+  assert.equal(await h.module.open('stats'), true);
+  assert.equal(opened, 1); assert.equal(h.dialog().open, false);
+  assert.deepEqual(h.state.book, before); assert.equal(h.state.dirty, 0); assert.deepEqual(h.state.calls, []);
 });
-check('daily goal updates book metadata and rejects invalid targets', async () => {
-  const h = harness(); await h.module.open('stats'); await ticks();
-  const target = h.field('每日目标'); target.value = '3000'; await target.dispatch('change'); assert.equal(h.state.book.storyTools.dailyGoal, 3000); assert.equal(h.state.dirty, 1);
-  target.value = '-1'; await target.dispatch('change'); assert.equal(h.state.book.storyTools.dailyGoal, 3000); assert.equal(target.value, '3000');
-  target.value = '0'; await target.dispatch('change'); assert.equal(h.state.book.storyTools.dailyGoal, 0); assert.equal(h.all().find(item => item.tagName === 'PROGRESS').hidden, true);
-});
-check('late statistics response cannot replace another book or tab', async () => {
-  let resolve; const pending = new Promise(yes => { resolve = yes; }); const h = harness(book(), {api: () => pending});
-  await h.module.open('stats'); await ticks(); await h.click('故事时间线'); resolve({bookId: 'one', days: [], today: '2026-10-15'}); await ticks();
-  assert.ok(h.find('+ 新建事件')); assert.equal(h.all().some(item => item.className === 'story-tools-stat-cards'), false);
-  h.state.book = book('two'); h.module.sync(); assert.equal(h.dialog().open, false);
+check('planning exposes only foreshadows and timeline, with keyboard wraparound', async () => {
+  const h = harness(); await h.module.open();
+  assert.equal(h.find('写作统计'), undefined);
+  await h.find('伏笔追踪').dispatch('keydown', {key: 'ArrowLeft', preventDefault() {}});
+  assert.ok(h.find('+ 新建事件'));
+  await h.find('故事时间线').dispatch('keydown', {key: 'ArrowRight', preventDefault() {}});
+  assert.ok(h.find('+ 新建伏笔'));
 });
 check('book-switch synchronization closes a tool rather than writing to a new book', async () => {
   const h = harness(); await h.module.open(); await h.click('+ 新建伏笔'); const title = h.field('标题'); const old = h.state.book;

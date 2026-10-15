@@ -12,7 +12,7 @@ const copy = value => JSON.parse(JSON.stringify(value));
 
 class Element {
   constructor(tag = 'div') {
-    this.tagName = tag.toUpperCase(); this.children = []; this.value = ''; this.textContent = '';
+    this.dataset = {}; this.tagName = tag.toUpperCase(); this.children = []; this.value = ''; this.textContent = '';
     this.hidden = false; this.open = false; this.inert = false; this.listeners = {}; this.attributes = {};
     this.style = { setProperty() {} }; this.classList = { toggle() {}, add() {}, remove() {} };
   }

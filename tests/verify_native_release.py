@@ -77,6 +77,8 @@ class NativeReleaseTests(unittest.TestCase):
         notes = (self.destination / "release-notes.md").read_text("utf-8")
         self.assertIn("AppArmor", notes)
         self.assertIn(f"https://github.com/asoming/writer-desk/blob/main/docs/acceptance-{VERSION}.md", notes)
+        self.assertIn("新增默认首页", notes)
+        self.assertIn("退出对照", notes)
         self.assertIn("同章对照修改", notes)
         self.assertIn("GitHub 匿名 API 限流", notes)
         self.assertIn("可信 HTTPS", notes)

@@ -14,6 +14,7 @@ window.WriterContentCleanup=(()=>{
   function clear(bookId,purgedAt,force=false){
     if(typeof bookId!=='string'||!bookId||typeof purgedAt!=='string'||!Number.isFinite(Date.parse(purgedAt)))throw new Error(T('章节清理记录无效。'));
     if(!force&&clientStorage.getItem(marker(bookId))===purgedAt)return;
+    window.WriterHomeDashboard?.invalidate()?.catch(()=>{});
     if(typeof clearAIChatBookHistory==='function')clearAIChatBookHistory(bookId);
     if(typeof clientStorage.clearBookContent==='function')clientStorage.clearBookContent(bookId,purgedAt);
     else{

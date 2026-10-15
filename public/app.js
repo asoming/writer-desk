@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const state={book:null,revision:0,chapterId:null,noteId:null,dirty:false,seq:0,saving:null,timer:null,error:null,conflict:false,composing:false,transitioning:false,fontSize:19,kind:"long",view:"shelf",books:[],trashBookCount:0,outlineId:null,personId:null,trail:null,folderWarning:null,protectionWarning:null};
+const state={book:null,revision:0,chapterId:null,noteId:null,dirty:false,seq:0,saving:null,timer:null,error:null,conflict:false,composing:false,transitioning:false,fontSize:19,kind:"long",view:"home",books:[],trashBookCount:0,outlineId:null,personId:null,trail:null,folderWarning:null,protectionWarning:null};
 const activeChapters=()=>state.book?.chapters.filter(c=>!c.deletedAt)||[];
 const currentChapter=()=>state.book?.chapters.find(c=>c.id===state.chapterId);
 const currentNote=()=>state.book?.notes.find(n=>n.id===state.noteId&&!n.deletedAt);
@@ -394,10 +394,12 @@ async function registerTools(){
   }catch{console.info(T('当前浏览器未启用写作工具接口。'));}
 }
 async function initialize(){
-  state.kind=preference('yejian.kind')==='short'?'short':'long';const oldView=preference('yejian.view');if(['shelf','write','outline','people'].includes(oldView))state.view=oldView;state.collection=null;
-  window.WriterStoryTools?.configure({getBook:()=>state.book,markDirty,saveNow,api,T,setComposing:value=>{state.composing=value;if(value)clearTimeout(state.timer);else if(state.dirty&&!state.conflict){clearTimeout(state.timer);state.timer=setTimeout(saveNow,650);}},jumpToChapter:id=>jumpToChapter(id),jumpToPerson:id=>jumpToOwner({type:'person',item:people().find(p=>p.id===id)})});
+  state.kind=preference('yejian.kind')==='short'?'short':'long';state.view='home';state.collection=null;
+  window.WriterHomeDashboard?.configure({api,getBooks:()=>state.books,getView:()=>state.view,isVisible:()=>state.view==='home',openBook,navigate,translate:T,icons:svgIcon,getLanguage:()=>uiLanguage});
+  window.WriterInterfacePolish?.configure({translate:T,getContext:()=>({kind:state.kind,outlineMode:state.outlineMode,personEditing:state.personEditing,trailView:state.trail?.view})});
+  window.WriterStoryTools?.configure({openHome:()=>navigate('home'),getBook:()=>state.book,markDirty,saveNow,api,T,setComposing:value=>{state.composing=value;if(value)clearTimeout(state.timer);else if(state.dirty&&!state.conflict){clearTimeout(state.timer);state.timer=setTimeout(saveNow,650);}},jumpToChapter:id=>jumpToChapter(id),jumpToPerson:id=>jumpToOwner({type:'person',item:people().find(p=>p.id===id)})});
   bindEvents();window.WriterWorkPlan?.bind();window.WriterChapterHistory?.configure({beforePurge:record=>suspendAIChatForPurge(record.bookId),afterPurge:(record,result)=>window.WriterContentCleanup.clear(record.bookId,result.purgedAt)});$('open-history')?.addEventListener('click',()=>window.WriterChapterHistory?.open());bindWorkspaceEvents();bindLanguageEvents();bindAppSettingsEvents();if(typeof bindContinuationEvents==='function')bindContinuationEvents();installIcons();const font=Number(preference('yejian.font-size'));if(font>=16&&font<=26)state.fontSize=font;setFont(0);
-  try{await window.WriterContentCleanup?.sync();await refreshBooks();await loadKind(state.kind);renderShell();if(state.book)await recoverDraft();await registerTools();}catch(e){saveStatus(T('无法打开作品'),true);showError(e);}
+  try{await window.WriterContentCleanup?.sync();await refreshBooks();await loadKind(state.kind);state.view='home';renderShell();if(state.book)await recoverDraft();await registerTools();}catch(e){saveStatus(T('无法打开作品'),true);showError(e);}
 }
 
 
@@ -406,7 +408,7 @@ const activeOutline=()=>state.book?.outline.filter(o=>!o.deletedAt)||[];
 const people=()=>state.book?.notes.filter(n=>n.type==='人物'&&!n.deletedAt)||[];
 const currentOutline=()=>activeOutline().find(o=>o.id===state.outlineId);
 const currentPerson=()=>people().find(n=>n.id===state.personId);
-function svgIcon(name){const paths={review:'M5 3h10l4 4v6M15 3v5h4M5 3v18h7M8 8h3M8 12h7M15 18l2 2 4-5',search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14M15 15l6 6',history:'M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2',sun:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5',moon:'M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14',sparkles:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM19 3v4M17 5h4',book:'M3 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-3H3zM21 4h-6a3 3 0 0 0-3 3v14a4 4 0 0 1 4-3h5z',shield:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6',keyboard:'M3 6h18v13H3zM7 10h.01M11 10h.01M15 10h.01M18 10h.01M7 13h.01M11 13h.01M15 13h.01M7 16h10',download:'M12 3v12M7 10l5 5 5-5M4 16v5h16v-5',info:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 11v6M12 7h.01',settings:'M9 3h6l1 4 4 1v6l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0',minimize:'M5 12h14',maximize:'M5 5h14v14H5z',restore:'M8 8h11v11H8zM5 16V5h11',close:'M6 6l12 12M18 6 6 18',folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
+function svgIcon(name){const paths={home:'M3 11l9-8 9 8M5 9v12h5v-7h4v7h5V9',compare:'M3 4h18v16H3zM12 4v16M6 8h3M6 12h3M15 8h3M15 12h3',review:'M5 3h10l4 4v6M15 3v5h4M5 3v18h7M8 8h3M8 12h7M15 18l2 2 4-5',search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14M15 15l6 6',history:'M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2',sun:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5',moon:'M20.5 14a8.5 8.5 0 0 1-10.5-10.5A8.5 8.5 0 1 0 20.5 14',sparkles:'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5zM19 3v4M17 5h4',book:'M3 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-3H3zM21 4h-6a3 3 0 0 0-3 3v14a4 4 0 0 1 4-3h5z',shield:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6',keyboard:'M3 6h18v13H3zM7 10h.01M11 10h.01M15 10h.01M18 10h.01M7 13h.01M11 13h.01M15 13h.01M7 16h10',download:'M12 3v12M7 10l5 5 5-5M4 16v5h16v-5',info:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 11v6M12 7h.01',settings:'M9 3h6l1 4 4 1v6l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0',minimize:'M5 12h14',maximize:'M5 5h14v14H5z',restore:'M8 8h11v11H8zM5 16V5h11',close:'M6 6l12 12M18 6 6 18',folder:'M3 7V5h6l2 2h10v13H3zM3 7h18',brand:'M5 4h10a3 3 0 0 1 3 3v14H8a3 3 0 0 1-3-3V4zM5 17h13M9 8h5M9 11h5',shelf:'M5 4v16M9 4v16M13 5l5-1 3 15-5 1z',outline:'M5 5h14M5 12h14M5 19h14M3 5h.1M3 12h.1M3 19h.1',people:'M8 7a3 3 0 1 0 0 .1M17 17a3 3 0 1 0 0 .1M10 9l5 5M5 18a2 2 0 1 0 0 .1M7 16l2-5',pen:'M4 20l4-1L20 7l-3-3L5 16zM15 6l3 3',short:'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4',menu:'M4 6h16M4 12h16M4 18h16',notes:'M5 4h14v16H5zM9 8h6M9 12h6M9 16h3',focus:'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',backup:'M12 3v12M8 11l4 4 4-4M4 17v4h16v-4',links:'M10 13l4-4M8 15l-2 2a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M14 9l2-2a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0'};return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(paths[name]||paths.notes)+'"/></svg>';}
 async function refreshBooks(){const result=await api('/api/books');state.books=result.books.map(book=>({...book,kind:book.kind||'long'}));state.trashBookCount=Number.isSafeInteger(result.trashCount)?result.trashCount:0;renderTrashCount();}
 function clearBook(){if(window.WriterEditorTools?.beforeSwitch()===false)return false;clearTimeout(state.timer);state.book=null;resetReviewAnchors();state.chapterId=null;state.outlineId=null;state.personId=null;state.noteId=null;state.dirty=false;state.conflict=false;state.error=null;state.trail=null;for(const id of ['editor','chapter-title','note-title','note-body','outline-title','outline-body','person-title','person-body']){const input=$(id);if(input)input.value='';}$('error-banner').hidden=true;$('editor').disabled=true;$('chapter-title').disabled=true;$('book-name').textContent='';$('book-name').hidden=true;$('chapter-list').replaceChildren();renderTrashCount();saveStatus(T('本机保存'));document.title=T('作家工作台 · {0}书架',kindName());}
 async function loadKind(kind){
@@ -415,17 +417,18 @@ async function loadKind(kind){
   if(book)setBook(await api('/api/books/'+book.id));else{clearBook();state.view='shelf';state.collection=null;}
 }
 async function navigate(view,kind=state.kind){
+  if(view==='home')return showHome();
   if(!state.book||state.book.kind!==kind)return showCollection('shelf',kind);
   return transition(async()=>{if(!await requireSaved())return false;state.view=view;state.collection=null;state.trail=null;closeDialog();closeNav();exitFocus();renderShell();return true;});
 }
 function closeNav(){$('workspace').classList.remove('nav-open');$('nav-backdrop').hidden=true;}
-function renderShell(){renderWorkspaceShell();window.WriterStoryTools?.sync();if(typeof syncAIChat==='function')syncAIChat();window.WriterWorkPlan?.sync();window.WriterEditorTools?.sync();}
+function renderShell(){renderWorkspaceShell();window.WriterInterfacePolish?.apply();window.WriterStoryTools?.sync();if(typeof syncAIChat==='function')syncAIChat();window.WriterWorkPlan?.sync();window.WriterEditorTools?.sync();}
 
 function renderShelf(){renderCollection();}
 
 function outlineRows(){const list=activeOutline(),ids=new Set(list.map(o=>o.id)),children=new Map(),result=[];list.forEach(o=>{const key=ids.has(o.parentId)?o.parentId:null;if(!children.has(key))children.set(key,[]);children.get(key).push(o);});const stack=(children.get(null)||[]).map(o=>({o,depth:0})).reverse();while(stack.length){const entry=stack.pop();result.push(entry);(children.get(entry.o.id)||[]).slice().reverse().forEach(o=>stack.push({o,depth:entry.depth+1}));}return result;}
 function isDescendant(candidate,id){const map=new Map(state.book.outline.map(o=>[o.id,o.parentId]));let p=map.get(candidate),limit=map.size;while(p&&limit--){if(p===id)return true;p=map.get(p);}return false;}
-function renderOutline(){renderOutlineWorkspace();if(typeof syncAIChat==='function')syncAIChat();}
+function renderOutline(){renderOutlineWorkspace();window.WriterInterfacePolish?.apply();if(typeof syncAIChat==='function')syncAIChat();}
 
 function addOutline(parentId=null,kind='scene',volumeId=null){
   if(!state.book||state.composing)return;const parent=activeOutline().find(o=>o.id===parentId),item={id:uid(),title:'',body:'',parentId,kind,volumeId:volumeId||parent?.volumeId||null,chapterIds:[],deletedAt:null};
@@ -483,7 +486,7 @@ function renderGraph(){renderAtlas();}
 function renderPersonRelations(){renderRelationsForPerson();}
 
 function renderPersonSearch(){const query=$('person-search').value.trim().toLocaleLowerCase(),container=$('person-results');container.replaceChildren();container.hidden=!query;if(!query)return;const found=people().filter(p=>[p.title,...p.aliases,p.profile.group].join(' ').toLocaleLowerCase().includes(query)).slice(0,30);found.forEach(p=>container.append(action(p.title||T('未命名人物'),'',()=>{state.personId=p.id;resetAtlasForPerson();$('person-search').value='';container.hidden=true;renderPeople();})));if(!found.length)container.append(el('p','empty-hint',T('没有找到这个人物。')));}
-function renderPeople(){renderPersonWorkspace();}
+function renderPeople(){renderPersonWorkspace();window.WriterInterfacePolish?.apply();}
 
 function addPerson(){if(!state.book||state.composing)return;const person={id:uid(),title:'',type:'人物',body:'',chapterIds:[],aliases:[],profile:emptyProfile(),deletedAt:null};state.book.notes.push(person);state.personId=person.id;resetAtlasForPerson();state.personEditing=true;markDirty();renderPeople();renderNotes();$('person-title').focus();}
 function showRelation(relation=null){
@@ -497,6 +500,7 @@ function showRelation(relation=null){
   const a=el('div','dialog-actions');if(!fresh)a.append(action(T('移入回收站'),'secondary-button',()=>confirmTrash('relation')));a.append(action(T('关闭'),'secondary-button',()=>{closeDialog();renderPeople();}));const submit=el('button','primary-button',T('保存关系'));submit.type='submit';a.append(submit);form.append(a);form.addEventListener('submit',async event=>{event.preventDefault();if(apply()&&await saveNow()){closeDialog();renderPeople();toast(T('人物关系已保存。'));}});showDialog(fresh?T('添加人物关系'):T('人物关系'),form);
 }
 function bindPlanningEvents(){
+  $('nav-home').addEventListener('click',()=>navigate('home'));$('writing-compare').addEventListener('click',()=>window.WriterEditorTools?.showSplit());
   $('nav-shelf').addEventListener('click',()=>showCollection('shelf'));$('nav-outline').addEventListener('click',()=>navigate('outline'));$('nav-people').addEventListener('click',()=>navigate('people'));
   $('nav-write').addEventListener('click',()=>navigate('write'));
   ['long','short'].forEach(kind=>$('shelf-'+kind).addEventListener('click',()=>showCollection('shelf',kind)));

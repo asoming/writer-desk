@@ -1826,6 +1826,67 @@ Object.assign(englishMessages,{
   "一句话概括内容：人物，世界观，金手指，主要目标。\n什么人，在什么地方，凭借什么，做什么。\n故事1：\n故事2：\n故事3：": "Summarize the characters, world, special advantage and main goal in one sentence.\nWho does what, where, and with what means?\nEvent 1:\nEvent 2:\nEvent 3:",
   "主要情节\n一句话概括内容：人物，世界观，金手指，主要目标。\n什么人，在什么地方，凭借什么，做什么。\n开端：\n发展：\n转折：\n高潮：\n结局：": "Key events\nSummarize the characters, world, special advantage and main goal in one sentence.\nWho does what, where, and with what means?\nOpening:\nDevelopment:\nTurning point:\nClimax:\nEnding:"
 });
+Object.assign(englishMessages,{
+  "首页":"Home",
+  "作家工作台 · 首页":"Writer’s Desk · Home",
+  "修改稿":"Revision",
+  "退出对照修改":"Exit comparison"
+});
+Object.assign(englishMessages,{
+  "写作概览": "Writing overview",
+  "查看书架": "View bookshelf",
+  "正在读取写作统计…": "Loading writing activity…",
+  "写作统计读取失败，请重试。": "Could not load writing activity. Try again.",
+  "仅统计书架作品成功保存的新增正文，导入与恢复不计入。": "Counts saved new prose in active books. Imports and restored text are excluded.",
+  "每日目标 {0} 字": "Daily goal: {0} characters",
+  "未设置每日目标": "No daily goal",
+  "调整每日目标": "Edit daily goal",
+  "书架总字数": "Library characters",
+  "{0} 章正文": "{0} chapters",
+  "连续写作": "Writing streak",
+  "累计 {0} 天 · 最长 {1} 天": "{0} writing days · Best streak {1}",
+  "作品": "Books",
+  "长篇 {0} · 短篇 {1}": "Novels {0} · Short stories {1}",
+  "趋势范围": "Trend period",
+  "近 {0} 天": "Last {0} days",
+  "日均 {0} 字": "{0} characters per day",
+  "近 {0} 天新增 {1} 字": "{1} characters added in the last {0} days",
+  "最近作品": "Recent books",
+  "书架还是空的": "Your bookshelf is empty",
+  "前往书架": "Open bookshelf",
+  "打开{0}": "Open {0}",
+  "{0}封面": "Cover of {0}",
+  "字": "characters",
+  "天": "days",
+  "本": "books",
+  "少": "Less",
+  "多": "More",
+  "一": "Mon",
+  "二": "Tue",
+  "三": "Wed",
+  "四": "Thu",
+  "五": "Fri",
+  "六": "Sat",
+  "日": "Sun",
+  "大纲节点上移": "Move outline section up",
+  "大纲节点下移": "Move outline section down",
+  "正文识别人名": "Find names in prose",
+  "缩小人物图": "Zoom out",
+  "放大人物图": "Zoom in",
+  "将资料移到回收站": "Move note to recycle bin",
+  "关闭关联与资料": "Close links and materials",
+  "返回编辑": "Back to editing",
+  "章节目录": "Chapter list",
+  "＋ 关联章节": "Link chapters",
+  "＋ 子节点": "Add child section",
+  "＋ 添加关系": "Add relationship",
+  "＋ 新建分图": "New diagram",
+  "＋ 新建人物": "New character",
+  "＋ 新建节点": "New section"
+});
+Object.assign(englishMessages,{
+  "暂无记录": "No record"
+});
 function T(source,...values){
   if(typeof source==='string'){
     const modelFailure=source.match(/^无法读取模型列表（HTTP (\d{3})），可手动填写模型名称。$/);

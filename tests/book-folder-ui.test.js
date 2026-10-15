@@ -13,7 +13,7 @@ class Element {
   constructor(tag = 'div') {
     this.tagName = tag.toUpperCase(); this.children = []; this.value = ''; this.textContent = '';
     this.hidden = false; this.open = false; this.inert = false; this.listeners = {}; this.attributes = {};
-    this.style = { setProperty() {} }; this.classList = { toggle() {}, add() {}, remove() {} };
+    this.dataset = {}; this.style = { setProperty() {} }; this.classList = { toggle() {}, add() {}, remove() {} };
   }
   append(...children) { for (const child of children) { this.children.push(child); if (typeof child === 'object') child.parentElement = this; } }
   replaceChildren(...children) { this.children = []; this.append(...children); }

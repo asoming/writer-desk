@@ -1,9 +1,9 @@
 'use strict';
 
-// Planning stays in the selected book. Activity is read from successful saves.
+// Per-book planning; writing activity lives on the library homepage.
 window.WriterStoryTools = (() => {
   let options = null, dialog = null, owner = null, tab = 'foreshadows', selected = null;
-  let statusFilter = 'unresolved', statsRequest = 0, statsData = null, chartDays = 7, calendarMonth = null;
+  let statusFilter = 'unresolved';
   const translate = (...args) => options?.T ? options.T(...args) : args[0];
   const node = (tag, className, text) => {
     const element = document.createElement(tag);
@@ -21,7 +21,6 @@ window.WriterStoryTools = (() => {
   const chapters = () => (owner?.chapters || []).filter(item => !item.deletedAt);
   const people = () => (owner?.notes || []).filter(item => item.type === '人物' && !item.deletedAt);
   const statusLabel = status => translate(({planted: '埋下', developing: '推进', resolved: '回收'})[status] || '埋下');
-  const wordLabel = value => translate('{0} 字', Number(value).toLocaleString());
   const ensure = book => {
     if (!book.storyTools) book.storyTools = {foreshadows: [], timeline: [], dailyGoal: 2000};
     return book.storyTools;
@@ -54,7 +53,7 @@ window.WriterStoryTools = (() => {
     dialog.id = 'story-tools-dialog';
     dialog.setAttribute('aria-label', translate('创作工具'));
     document.body.append(dialog);
-    dialog.addEventListener('close', () => { statsRequest++; owner = null; options?.setComposing?.(false); });
+    dialog.addEventListener('close', () => { owner = null; options?.setComposing?.(false); });
     dialog.addEventListener('click', event => { if (event.target === dialog) close(); });
   }
   function render() {
@@ -68,8 +67,8 @@ window.WriterStoryTools = (() => {
     const tabs = node('div', 'story-tools-tabs');
     tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', translate('创作工具'));
-    const keys = ['foreshadows', 'timeline', 'stats'];
-    const labels = ['伏笔追踪', '故事时间线', '写作统计'];
+    const keys = ['foreshadows', 'timeline'];
+    const labels = ['伏笔追踪', '故事时间线'];
     keys.forEach((key, index) => {
       const control = button(translate(labels[index]), 'story-tools-tab', () => selectTab(key));
       control.setAttribute('role', 'tab'); control.id = 'story-tools-tab-' + key;
@@ -78,7 +77,7 @@ window.WriterStoryTools = (() => {
       control.addEventListener('keydown', event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowRight' ? 1 : 2)) % 3;
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? keys.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : keys.length - 1)) % keys.length;
         selectTab(keys[next]); dialog.querySelector('#story-tools-tab-' + keys[next])?.focus();
       });
       tabs.append(control);
@@ -86,7 +85,7 @@ window.WriterStoryTools = (() => {
     const body = node('div', 'story-tools-body'); body.id = 'story-tools-body';
     body.setAttribute('role', 'tabpanel'); body.setAttribute('aria-labelledby', 'story-tools-tab-' + tab);
     dialog.replaceChildren(header, tabs, body);
-    if (tab === 'stats') renderStats(body); else renderPlanning(body);
+    renderPlanning(body);
   }
   function selectTab(next) {
     if (!current()) return;
@@ -208,88 +207,15 @@ window.WriterStoryTools = (() => {
     }
     details.append(choices); group.append(details); return group;
   }
-  async function loadStats() {
-    const request = ++statsRequest, book = owner;
-    const saved = await options.saveNow();
-    if (!saved || request !== statsRequest || !current() || owner !== book) return;
-    try {
-      const result = await options.api('/api/books/' + encodeURIComponent(book.id) + '/writing-stats');
-      if (request !== statsRequest || !current() || owner !== book || tab !== 'stats') return;
-      statsData = result; calendarMonth = result.today.slice(0, 7); render();
-    } catch (error) {
-      if (request !== statsRequest || !current() || tab !== 'stats') return;
-      const content = dialog.querySelector('.story-tools-body'); content.replaceChildren(node('p', 'story-tools-error', error.message));
-      content.append(button(translate('重试'), 'secondary-button', () => { statsData = null; loadStats(); }));
-    }
-  }
-  function renderStats(body) {
-    body.classList.add('story-tools-statistics');
-    if (!statsData || statsData.bookId !== owner.id) {
-      body.append(node('p', 'story-tools-empty', translate('正在加载…'))); loadStats(); return;
-    }
-    const summary = node('div', 'story-tools-stat-cards');
-    const today = node('div', 'story-tools-stat-card'); today.append(node('span', null, translate('今日新增')), node('strong', null, wordLabel(statsData.todayChars)));
-    today.title = translate('按成功保存的正文增量统计，导入与恢复不计入');
-    const total = node('div', 'story-tools-stat-card'); total.append(node('span', null, translate('全书字数')), node('strong', null, wordLabel(statsData.totalChars)));
-    const goal = node('div', 'story-tools-stat-card'), goalInput = node('input', 'story-tools-input story-tools-goal-input');
-    goalInput.type = 'number'; goalInput.min = '0'; goalInput.max = '1000000'; goalInput.step = '1'; goalInput.value = String(ensure(owner).dailyGoal);
-    goalInput.setAttribute('aria-label', translate('每日目标')); goal.append(field('每日目标', goalInput));
-    const progress = node('progress', 'story-tools-goal-progress'); progress.max = Math.max(1, ensure(owner).dailyGoal); progress.value = statsData.todayChars;
-    progress.setAttribute('aria-label', translate('目标进度')); progress.hidden = ensure(owner).dailyGoal === 0; goal.append(progress);
-    goalInput.addEventListener('change', () => {
-      if (!current()) return;
-      if (!/^\d+$/.test(goalInput.value) || Number(goalInput.value) > 1000000) { goalInput.value = String(ensure(owner).dailyGoal); return; }
-      ensure(owner).dailyGoal = Number(goalInput.value); changed(); progress.max = Math.max(1, ensure(owner).dailyGoal); progress.value = statsData.todayChars; progress.hidden = ensure(owner).dailyGoal === 0;
-    });
-    const refresh = button(translate('刷新'), 'secondary-button story-tools-stats-refresh', () => { statsData = null; render(); });
-    summary.append(today, total, goal); body.append(summary, refresh);
-    const trend = node('section', 'story-tools-trend');
-    const trendHeader = node('div', 'story-tools-section-header'); trendHeader.append(node('h3', null, translate('字数趋势')));
-    [7, 30].forEach(days => { const control = button(translate('{0} 天', days), 'story-tools-range' + (chartDays === days ? ' selected' : ''), () => { chartDays = days; render(); }); control.setAttribute('aria-pressed', String(chartDays === days)); trendHeader.append(control); });
-    trend.append(trendHeader);
-    const chart = node('div', 'story-tools-chart'); chart.setAttribute('role', 'list'); chart.setAttribute('aria-label', translate('每日新增字数'));
-    const days = statsData.days.slice(-chartDays), maximum = Math.max(1, ...days.map(day => day.addedChars));
-    days.forEach(day => {
-      const bar = node('div', 'story-tools-chart-column'); bar.setAttribute('role', 'listitem'); bar.tabIndex = 0; bar.title = day.date + ' · ' + wordLabel(day.addedChars); bar.setAttribute('aria-label', bar.title);
-      const height = node('div', 'story-tools-chart-track'), fill = node('span', 'story-tools-chart-fill'); fill.style.height = (day.addedChars / maximum * 100) + '%'; height.append(fill);
-      bar.append(height, node('small', null, day.date.slice(8))); chart.append(bar);
-    });
-    trend.append(chart); body.append(trend); renderCalendar(body);
-  }
-  function shiftMonth(value, offset) {
-    const [year, month] = value.split('-').map(Number), shifted = new Date(year, month - 1 + offset, 1);
-    return shifted.getFullYear() + '-' + String(shifted.getMonth() + 1).padStart(2, '0');
-  }
-  function renderCalendar(body) {
-    const section = node('section', 'story-tools-calendar'), header = node('div', 'story-tools-section-header');
-    const month = calendarMonth || statsData.today.slice(0, 7);
-    const previous = button('‹', 'icon-button', () => { calendarMonth = shiftMonth(month, -1); render(); }); previous.setAttribute('aria-label', translate('上个月'));
-    previous.disabled = shiftMonth(month, -1) + '-01' < statsData.days[0].date;
-    const next = button('›', 'icon-button', () => { calendarMonth = shiftMonth(month, 1); render(); }); next.setAttribute('aria-label', translate('下个月')); next.disabled = month >= statsData.today.slice(0, 7);
-    header.append(node('h3', null, translate('写作日历')), previous, node('strong', 'story-tools-calendar-month', month), next); section.append(header);
-    const grid = node('div', 'story-tools-calendar-grid');
-    ['周一', '周二', '周三', '周四', '周五', '周六', '周日'].forEach(day => grid.append(node('span', 'story-tools-weekday', translate(day))));
-    const [year, number] = month.split('-').map(Number), firstDay = new Date(year, number - 1, 1), count = new Date(year, number, 0).getDate(), offset = (firstDay.getDay() + 6) % 7;
-    for (let at = 0; at < offset; at++) grid.append(node('span'));
-    const lookup = new Map(statsData.days.map(day => [day.date, day.addedChars])), goal = ensure(owner).dailyGoal;
-    for (let at = 1; at <= count; at++) {
-      const day = month + '-' + String(at).padStart(2, '0'), amount = lookup.get(day) || 0;
-      const cell = node('div', 'story-tools-calendar-day' + (amount ? ' has-writing' : '') + (goal > 0 && amount >= goal ? ' reached-goal' : '') + (day === statsData.today ? ' is-today' : ''));
-      cell.title = day + ' · ' + wordLabel(amount); cell.setAttribute('aria-label', cell.title); cell.tabIndex = 0;
-      cell.append(node('span', null, String(at)), node('small', null, amount ? amount.toLocaleString() : ''));
-      if (day > statsData.today) { cell.classList.add('future'); cell.tabIndex = -1; }
-      grid.append(cell);
-    }
-    section.append(grid); body.append(section);
-  }
   async function open(next = 'foreshadows', selectedId = null) {
+    if (next === 'stats') { close(); return !!await options?.openHome?.(); }
     const book = options?.getBook?.();
     if (!book || !await options.saveNow() || options.getBook() !== book) return false;
     owner = book;
-    ensure(owner); tab = ['foreshadows', 'timeline', 'stats'].includes(next) ? next : 'foreshadows'; selected = selectedId; if(selectedId)statusFilter='all'; statsData = null; statsRequest++;
+    ensure(owner); tab = ['foreshadows', 'timeline'].includes(next) ? next : 'foreshadows'; selected = selectedId; if(selectedId)statusFilter='all';
     initializeDialog(); render(); if (!dialog.open) dialog.showModal(); return true;
   }
-  function close() { if (dialog?.open) dialog.close(); else { owner = null; statsRequest++; } }
+  function close() { if (dialog?.open) dialog.close(); else { owner = null; } }
   function sync() { if (dialog?.open && !current()) close(); }
   function configure(value) { options = value; }
   return {configure, open, close, sync};

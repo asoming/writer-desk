@@ -33,6 +33,9 @@ function buildBookCover(book,size=''){
   else{let hash=0;for(const ch of book.title)hash=(hash*31+ch.charCodeAt(0))>>>0;cover.classList.add('cover-tone-'+hash%5);cover.append(el('span','cover-category',kindName(book.kind)),el('strong','cover-book-title',book.title));}
   return cover;
 }
+async function showHome(){
+  return transition(async()=>{if(!await requireSaved())return false;try{await refreshBooks();state.view='home';state.collection=null;state.trail=null;closeDialog();closeNav();exitFocus();renderShell();return true;}catch(error){toast(error.message);return false;}});
+}
 async function showCollection(target='shelf',kind=state.kind){
   return transition(async()=>{if(!await requireSaved())return false;try{await refreshBooks();if(state.book&&(state.book.kind!==kind||!state.books.some(book=>book.id===state.book.id)))clearBook();state.kind=kind;preference('yejian.kind',kind);state.view='shelf';state.collection=null;state.trail=null;closeDialog();closeNav();exitFocus();renderShell();return true;}catch(e){toast(e.message);return false;}});
 }
@@ -54,19 +57,20 @@ async function openBookFolder(bookId){
   });
 }
 function renderWorkspaceShell(){
-  const missing=!state.book&&state.view!=='shelf';
-  ['shelf','outline','people','write'].forEach(view=>{$(view+'-view').hidden=missing||state.view!==view;});
+  const missing=!state.book&&!['home','shelf'].includes(state.view);
+  ['home','shelf','outline','people','write'].forEach(view=>{$(view+'-view').hidden=missing||state.view!==view;});
   $('no-book').hidden=!missing;$('no-book-title').textContent=T('还没有{0}作品',kindName());$('empty-new-book').textContent=T('＋ 新建{0}',kindName());
-  const names={shelf:T('书架'),outline:T('故事大纲'),people:T('人物脉络'),write:T('写作')};
-  $('page-title').textContent=names[state.view];$('book-name').textContent=state.book?.title||'';$('book-name').hidden=state.view==='shelf'||!state.book;
-  document.title=state.view==='shelf'?T('作家工作台 · {0}书架',kindName()):(state.book?.title||'')+T(' · 作家工作台');
+  const names={home:T('首页'),shelf:T('书架'),outline:T('故事大纲'),people:T('人物脉络'),write:T('写作')};
+  $('page-title').textContent=names[state.view];$('book-name').textContent=state.book?.title||'';$('book-name').hidden=['home','shelf'].includes(state.view)||!state.book;
+  document.title=state.view==='home'?T('作家工作台 · 首页'):state.view==='shelf'?T('作家工作台 · {0}书架',kindName()):(state.book?.title||'')+T(' · 作家工作台');
   if(state.book)renderStats();else renderTrashCount();
-  ['shelf','outline','people','write'].forEach(view=>{const active=state.view===view;$('nav-'+view).classList.toggle('active',active);$('nav-'+view).setAttribute('aria-current',active?'page':'false');});
+  ['home','shelf','outline','people','write'].forEach(view=>{const active=state.view===view;$('nav-'+view).classList.toggle('active',active);$('nav-'+view).setAttribute('aria-current',active?'page':'false');});
   $('link-current-chapter').disabled=!currentChapter();$('backlinks-edit').disabled=!currentChapter();$('toggle-notes').hidden=state.view!=='write'||missing;$('toggle-focus').hidden=state.view!=='write'||missing||!currentChapter();$('open-trash').disabled=false;
   $('chapter-list-label').textContent=state.kind==='short'?T('正文'):T('卷与章节');$('add-volume').hidden=state.kind==='short';
   $('sidebar').hidden=state.kind==='short';$('toggle-sidebar').hidden=state.kind==='short';$('add-chapter').hidden=state.kind==='short';$('write-view').classList.toggle('short-manuscript',state.kind==='short');
   $('return-source').hidden=!state.trail;$('return-source').textContent=state.trail?.view==='outline'?T('返回大纲'):T('返回人物脉络');
   preference('yejian.view',state.view);preference('yejian.collection','');
+  if(state.view==='home')window.WriterHomeDashboard?.render($('home-view'));else window.WriterHomeDashboard?.sync();
   if(state.view==='shelf')renderShelf();
   if(state.book&&state.view==='outline')renderOutline();
   if(state.book&&state.view==='people')renderPeople();
@@ -85,13 +89,14 @@ function renderCollection(){
     const bottom=el('div','shelf-book-bottom');bottom.append(el('span',null,meta));
     info.append(bottom,el('p','shelf-book-updated',T('最近编辑 ')+new Date(book.updatedAt).toLocaleString(uiLanguage==='en'?'en-GB':'zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})));
     const actions=el('div','shelf-book-actions');
-    [[T('大纲'),'outline'],[T('人物脉络'),'people'],[book.chapterCount?T('继续写作'):T('开始正文'),'write']].forEach(([label,view])=>actions.append(action(label,view==='write'?'primary-button':'secondary-button',()=>openBook(book.id,view))));
+    [[T('大纲'),'outline'],[T('人物脉络'),'people'],[book.chapterCount?T('继续写作'):T('开始正文'),'write']].forEach(([label,view])=>{const button=action(label,view==='write'?'primary-button':'secondary-button',()=>openBook(book.id,view));button.dataset.uiAction=view;actions.append(button);});
     const tools=el('div','shelf-book-tools'),folder=action('','text-button book-folder-button',()=>openBookFolder(book.id));
     folder.innerHTML=svgIcon('folder');folder.append(el('span',null,T('打开文件夹')));folder.setAttribute('aria-label',T('打开{0}的文件夹',book.title));
-    tools.append(action(T('封面与书名'),'text-button',()=>editBookSettings(book.id)),action(T('导出与备份'),'text-button',()=>showBackup(book.id)),folder,action(T('移入回收站'),'text-button',()=>confirmTrashBook(book.id)));
+    const cover=action(T('封面与书名'),'text-button',()=>editBookSettings(book.id)),backup=action(T('导出与备份'),'text-button',()=>showBackup(book.id)),trash=action(T('移入回收站'),'text-button',()=>confirmTrashBook(book.id));for(const [button,name] of [[cover,'cover'],[backup,'backup'],[folder,'folder'],[trash,'trash']])button.dataset.uiAction=name;tools.append(cover,backup,folder,trash);
     actions.append(tools);card.append(coverButton,info,actions);grid.append(card);
   });
   if(!books.length){const empty=el('div','shelf-empty');empty.append(el('span',null,T('还没有{0}作品',kindName())),action(T('新建作品，从大纲开始'),'primary-button',()=>showBookName(false)));grid.append(empty);}
+  window.WriterInterfacePolish?.apply();
 }
 async function confirmTrashBook(bookId){
   return transition(async()=>{if(!await requireSaved())return false;try{const record=await api('/api/books/'+encodeURIComponent(bookId)),body=el('div'),buttons=el('div','dialog-actions');body.append(el('p','dialog-description',T('将整部「{0}」移入回收站？封面、正文、卷章、大纲和人物关联都会保留，可在回收站恢复。',record.book.title)));const confirm=action(T('移入回收站'),'primary-button',async()=>{if(confirm.disabled)return;confirm.disabled=true;try{await trashBook(record);}finally{confirm.disabled=false;}});buttons.append(action(T('取消'),'secondary-button',closeDialog),confirm);body.append(buttons);showDialog(T('移入作品回收站'),body);return true;}catch(error){toast(error.message);return false;}});

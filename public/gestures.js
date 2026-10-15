@@ -8,7 +8,7 @@
   let bound = false, stroke = null, returning = false, blockedUntil = 0;
 
   function canReturn() {
-    return !!state.book && state.view !== 'shelf' && !state.composing && !state.transitioning &&
+    return !!state.book && !['home', 'shelf'].includes(state.view) && !state.composing && !state.transitioning &&
       !document.hidden && !$('dialog')?.open && !$('settings-dialog')?.open;
   }
 

@@ -137,7 +137,7 @@
     function syncPrimary(){const editor=hooks.getEditor?.(),chapter=book()?.chapters.find(item=>item.id===hooks.getChapterId?.());if(editor&&chapter&&editor.value!==chapter.body){const start=editor.selectionStart,end=editor.selectionEnd,area=hooks.getWritingArea?.(),top=area?.scrollTop;editor.value=chapter.body;editor.setSelectionRange(Math.min(start,editor.value.length),Math.min(end,editor.value.length));hooks.resizeEditor?.();if(area)area.scrollTop=top;}}
     function menu(){
       if(blocked())return;const root=node('div','editor-tools-menu');
-      const actions=[['全局搜索',showSearch],...(book()?.kind==='long'?[['卷章整理',showOrganizer],['拆分当前章',splitCurrent]]:[]),['对照修改',showSplit]];
+      const actions=[['全局搜索',showSearch],...(book()?.kind==='long'?[['卷章整理',showOrganizer],['拆分当前章',splitCurrent]]:[])];
       for(const [label,handler]of actions)root.append(button(label,'choice-button',handler));for(const extra of hooks.extraActions||[])root.append(button(extra.label,'choice-button',extra.run));hooks.showDialog(t('写作工具'),root);
     }
     async function splitCurrent(){
@@ -193,19 +193,21 @@
       if(!pane)buildPane();if(!pane)return;
       splitOwner=owner;splitChapterId=id;baseline=chapter.body;lastCompared=null;pane.hidden=false;
       const area=hooks.getWritingArea(),top=area.scrollTop;area.classList.add('editor-dual-primary');pane.parentElement.classList.add('editor-dual-open');
-      renderSplit();hooks.closeDialog();hooks.resizeEditor?.();area.scrollTop=top;
+      renderSplit();syncComparisonControls();hooks.closeDialog();hooks.resizeEditor?.();area.scrollTop=top;
     }
     function buildPane(){
       const area=hooks.getWritingArea(),parent=area?.parentElement;if(!parent)return;
       pane=node('section','editor-dual-pane');pane.hidden=true;pane.setAttribute('aria-label',t('原文'));
-      const divider=node('div','editor-dual-divider'),header=node('div','editor-dual-header'),label=node('span','editor-compare-label',t('原文')),close=button('关闭对照修改','icon-button',()=>closeSplit()),title=node('h2','editor-dual-title'),scroll=node('div','editor-dual-scroll'),original=node('div','editor-compare-original');
-      close.textContent='×';close.setAttribute('aria-label',t('关闭对照修改'));close.title=t('关闭对照修改');
+      const divider=node('div','editor-dual-divider'),heading=node('div','chapter-heading editor-compare-heading'),label=node('span','eyebrow editor-compare-label',t('原文')),title=node('h2','editor-dual-title'),scroll=node('div','editor-dual-scroll'),original=node('div','editor-compare-original');
+      const rightHeading=area.querySelector('.chapter-heading'),rightLabel=node('span','eyebrow editor-compare-right-label',t('修改稿')),exit=button('退出对照修改','icon-button editor-compare-exit',()=>closeSplit());
+      exit.id='exit-comparison';exit.textContent='';exit.title=t('退出对照修改');exit.setAttribute('aria-label',t('退出对照修改'));
+      const icon=document.createElementNS('http://www.w3.org/2000/svg','svg'),path=document.createElementNS('http://www.w3.org/2000/svg','path');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('width','18');icon.setAttribute('height','18');icon.setAttribute('fill','none');icon.setAttribute('stroke','currentColor');icon.setAttribute('stroke-width','1.6');icon.setAttribute('aria-hidden','true');path.setAttribute('d','M6 6l12 12M18 6L6 18');icon.append(path);exit.append(icon);rightHeading?.prepend(rightLabel);rightHeading?.append(exit);
       divider.tabIndex=0;divider.setAttribute('role','separator');divider.setAttribute('aria-orientation','vertical');divider.setAttribute('aria-label',t('调整对照宽度'));
       original.setAttribute('role','document');original.setAttribute('aria-readonly','true');original.tabIndex=0;original.setAttribute('aria-label',t('原文'));
-      header.append(label,close);scroll.append(title,original);pane.append(header,scroll,divider);parent.insertBefore(pane,area);pane._controls={title,scroll,original,divider};
-      let drag=null;const width=()=>Number.parseFloat(parent.style.getPropertyValue('--editor-original-width'))||45;
-      const setWidth=value=>{const top=area.scrollTop,amount=Math.min(70,Math.max(25,value));parent.style.setProperty('--editor-original-width',amount+'%');hooks.preference?.('yejian.editor-original-width',String(amount));hooks.resizeEditor?.();growSplit();area.scrollTop=top;divider.setAttribute('aria-valuenow',String(Math.round(amount)));};
-      setWidth(Number(hooks.preference?.('yejian.editor-original-width'))||45);
+      heading.append(label);scroll.append(heading,title,original);pane.append(scroll,divider);parent.insertBefore(pane,area);pane._controls={title,scroll,original,divider,heading,rightHeading};
+      let drag=null;const width=()=>Number.parseFloat(parent.style.getPropertyValue('--editor-original-width'))||50;
+      const setWidth=value=>{const top=area.scrollTop,amount=Math.min(70,Math.max(25,value));parent.style.setProperty('--editor-original-width',amount+'%');hooks.preference?.('yejian.editor-compare-width',String(amount));hooks.resizeEditor?.();growSplit();area.scrollTop=top;divider.setAttribute('aria-valuenow',String(Math.round(amount)));};
+      setWidth(Number(hooks.preference?.('yejian.editor-compare-width'))||50);
       divider.addEventListener('pointerdown',event=>{if(event.button!==0)return;drag={x:event.clientX,width:width(),parentWidth:parent.getBoundingClientRect().width};divider.setPointerCapture?.(event.pointerId);event.preventDefault();});
       divider.addEventListener('pointermove',event=>{if(drag)setWidth(drag.width+(event.clientX-drag.x)/drag.parentWidth*100);});for(const name of ['pointerup','pointercancel'])divider.addEventListener(name,()=>drag=null);
       divider.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();setWidth(width()+(event.key==='ArrowRight'?2:-2));}});
@@ -213,13 +215,16 @@
     }
     function growSplit(){
       if(!pane||pane.hidden)return;pane.parentElement.classList.toggle('editor-dual-stacked',pane.parentElement.getBoundingClientRect().width<640);
-      const {original}=pane._controls,css=window.getComputedStyle(hooks.getEditor());for(const name of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','wordSpacing','tabSize'])if(original.style[name]!==css[name])original.style[name]=css[name];
+      const {original,title,heading,rightHeading}=pane._controls,css=window.getComputedStyle(hooks.getEditor());for(const name of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','wordSpacing','tabSize'])if(original.style[name]!==css[name])original.style[name]=css[name];
+      const primaryTitle=document.getElementById(book()?.kind==='short'?'short-story-title':'chapter-title')||document.getElementById('chapter-title');
+      if(primaryTitle){const titleCSS=window.getComputedStyle(primaryTitle);for(const name of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','marginTop','marginBottom'])if(title.style[name]!==titleCSS[name])title.style[name]=titleCSS[name];const height=primaryTitle.getBoundingClientRect().height+'px';if(title.style.height!==height)title.style.height=height;}
+      if(rightHeading){const height=rightHeading.getBoundingClientRect().height+'px',margin=window.getComputedStyle(rightHeading).marginBottom;if(heading.style.height!==height)heading.style.height=height;if(heading.style.marginBottom!==margin)heading.style.marginBottom=margin;}
     }
     function renderSplit(){
       if(!pane||pane.hidden||book()!==splitOwner||hooks.getChapterId()!==splitChapterId)return;
       const chapter=active(splitOwner.chapters).find(item=>item.id===splitChapterId);if(!chapter)return;
       const {title,original,scroll}=pane._controls,editor=hooks.getEditor(),text=editor.value,top=scroll.scrollTop;
-      title.textContent=splitOwner.kind==='short'?splitOwner.title:document.getElementById('chapter-title')?.value||chapter.title||splitOwner.title;original.dataset.chapterId=chapter.id;
+      title.textContent=splitOwner.kind==='short'?splitOwner.title:document.getElementById('chapter-title')?.value||chapter.title||splitOwner.title;title.style.whiteSpace=splitOwner.kind==='short'?'normal':'nowrap';original.dataset.chapterId=chapter.id;
       if(lastCompared!==text){const fragment=document.createDocumentFragment();for(const part of model.compareParts(baseline,text)){
         if(part.kind==='added'){const marker=node('span','editor-compare-insertion','+');marker.title=t('新增：{0}',part.text);marker.setAttribute('aria-label',marker.title);fragment.append(marker);}
         else fragment.append(node('span',part.kind==='removed'?'editor-compare-source editor-compare-removed':'editor-compare-source',part.text));
@@ -233,6 +238,7 @@
     function clearComparison(){
       clearTimeout(comparisonTimer);comparisonTimer=null;baseline=null;lastCompared=null;splitOwner=null;splitChapterId=null;
       if(!pane)return;const area=hooks.getWritingArea(),top=area?.scrollTop;pane.hidden=true;pane.parentElement.classList.remove('editor-dual-open','editor-dual-stacked');pane._controls.original.replaceChildren();pane._controls.title.textContent='';delete pane._controls.original.dataset.chapterId;area?.classList.remove('editor-dual-primary');hooks.resizeEditor?.();if(area)area.scrollTop=top;
+      syncComparisonControls();
     }
     function closeSplit(){if(hooks.isComposing?.())return false;clearComparison();return true;}
     function forcePurge(bookId,ids=null,wholeBook=false){
@@ -242,9 +248,11 @@
       if(!wholeBook&&!(ids||[]).includes(splitChapterId)&&!(splitOwner.kind==='short'&&(ids||[]).length))return false;
       clearComparison();return true;
     }
-    function sync(){if(pane&&!pane.hidden){if(book()!==splitOwner||hooks.getChapterId()!==splitChapterId||!active(book()?.chapters).some(item=>item.id===splitChapterId)||hooks.getView?.()&&hooks.getView()!=='write')clearComparison();else renderSplit();}}
+    function isComparing(){return!!pane&&!pane.hidden&&book()===splitOwner&&hooks.getChapterId()===splitChapterId;}
+    function syncComparisonControls(){const control=document.getElementById('writing-compare');if(!control)return;control.setAttribute('aria-pressed',String(isComparing()));control.disabled=!active(book()?.chapters).some(item=>item.id===hooks.getChapterId())||!!hooks.getView?.()&&hooks.getView()!=='write';}
+    function sync(){if(pane&&!pane.hidden){if(book()!==splitOwner||hooks.getChapterId()!==splitChapterId||!active(book()?.chapters).some(item=>item.id===splitChapterId)||hooks.getView?.()&&hooks.getView()!=='write')clearComparison();else renderSplit();}syncComparisonControls();}
     function configure(options){hooks=options;if(!rootObserver&&typeof MutationObserver==='function'){rootObserver=new MutationObserver(sync);const primary=hooks.getEditor?.(),title=document.getElementById('chapter-title');if(title)title.addEventListener('input',scheduleComparison);if(primary)primary.addEventListener('input',scheduleComparison);const list=document.getElementById('chapter-list');if(list)rootObserver.observe(list,{childList:true,subtree:false});}}
     function beforeSwitch(){return closeSplit();}
-    return{configure,menu,showOrganizer,splitCurrent,showSearch,showSplit,closeSplit,forcePurge,sync,beforeSwitch,mutate,resize:growSplit};
+    return{configure,menu,showOrganizer,splitCurrent,showSearch,showSplit,closeSplit,isComparing,forcePurge,sync,beforeSwitch,mutate,resize:growSplit};
   }
 })(typeof window==='undefined'?globalThis:window);

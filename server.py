@@ -27,6 +27,7 @@ from urllib.parse import quote, unquote, urlparse
 import protection
 import chapter_history
 import planning
+import home_dashboard
 import review_tools
 import manuscript_import
 import story_memory
@@ -309,6 +310,7 @@ def initialize():
                     conn.execute("CREATE TABLE IF NOT EXISTS sync_tombstones(book_id TEXT PRIMARY KEY,deleted_at TEXT NOT NULL)")
                     chapter_history.initialize(conn)
                     planning.initialize(conn)
+                    home_dashboard.initialize(conn)
                     seeded = conn.execute("SELECT 1 FROM app_migrations WHERE name IN (?,?) LIMIT 1", (INITIAL_LIBRARY_MIGRATION, DEFAULT_EXAMPLE_MIGRATION)).fetchone()
                     if not seeded and not conn.execute("SELECT 1 FROM books LIMIT 1").fetchone():
                         insert_book(conn, sample_book())
@@ -1305,6 +1307,12 @@ class Handler(BaseHTTPRequestHandler):
             if planned is not None:
                 self.send_json(planned)
                 return
+            if path == "/api/home":
+                with DB_LOCK, connect() as conn:
+                    conn.execute("BEGIN")
+                    result = home_dashboard.statistics(conn, book_summary)
+                self.send_json(result)
+                return
             memory_match = re.fullmatch(r"/api/books/([^/]+)/memory", path)
             if memory_match:
                 with connect() as conn:
@@ -1366,12 +1374,14 @@ class Handler(BaseHTTPRequestHandler):
                 files["/textarea-autosize.js"] = "textarea-autosize.js"
                 files["/editor-layout.js"] = "editor-layout.js"
                 files["/chat-images.js"] = "chat-images.js"
+                files["/interface-polish.js"] = "interface-polish.js"
+                files["/interface-polish.css"] = "interface-polish.css"
                 files["/work-plan.js"] = "work-plan.js"
                 files["/work-plan.css"] = "work-plan.css"
                 files["/chapter-history.js"] = "chapter-history.js"
                 files["/chapter-history.css"] = "chapter-history.css"
                 files["/content-cleanup.js"] = "content-cleanup.js"
-                for resource in ("workspace-expansion.js", "editor-tools.js", "editor-tools.css", "asset-library.js", "asset-library.css", "external-backups.js", "external-backups.css", "sync-panel.js", "sync-panel.css", "network-updater.js", "network-updater.css", "story-tools.js", "story-tools.css", "story-memory.js", "ai-stream.js", "formatted-export.js", "formatted-export.css", "book-search.js", "version-diff.js", "revision-tools.css", "manuscript-import.js", "manuscript-import.css", "local-proofreading-model.js", "local-proofreading.js", "local-proofreading.css", "manuscript-marks.js", "manuscript-marks.css", "review-entry.js"):
+                for resource in ("workspace-expansion.js", "home-dashboard.js", "home-dashboard.css", "editor-tools.js", "editor-tools.css", "asset-library.js", "asset-library.css", "external-backups.js", "external-backups.css", "sync-panel.js", "sync-panel.css", "network-updater.js", "network-updater.css", "story-tools.js", "story-tools.css", "story-memory.js", "ai-stream.js", "formatted-export.js", "formatted-export.css", "book-search.js", "version-diff.js", "revision-tools.css", "manuscript-import.js", "manuscript-import.css", "local-proofreading-model.js", "local-proofreading.js", "local-proofreading.css", "manuscript-marks.js", "manuscript-marks.css", "review-entry.js"):
                     files["/" + resource] = resource
                 files['/purge-model.js'] = '../mobile/purge-model.js'
                 files['/live-sync.js'] = 'live-sync.js'
@@ -1535,6 +1545,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/protection/settings":
                 with DB_LOCK, connect() as conn:
                     result = protection.update_settings(conn, data)
+                self.send_json({"settings": result})
+                return
+            if path == "/api/home/settings":
+                with DB_LOCK, connect() as conn:
+                    result = home_dashboard.update_settings(conn, data)
                 self.send_json({"settings": result})
                 return
             if not path.startswith("/api/books/"):
