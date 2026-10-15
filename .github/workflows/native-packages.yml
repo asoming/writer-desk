@@ -77,7 +77,7 @@ jobs:
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/review-jump-electron.cjs --report dist/review-jump-regression.json
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/editor-tools-electron.cjs --report dist/editor-tools-regression.json
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/formatted-export-electron.cjs --report dist/formatted-export-regression.json
-          xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/expansion-workflow-electron.cjs --report dist/expansion-workflow-regression.json
+          xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/expansion-workflow-electron.cjs --compact --report dist/expansion-workflow-regression.json
       - name: Real editor typing and IME regression on Windows and macOS
         if: runner.os != 'Linux'
         run: |

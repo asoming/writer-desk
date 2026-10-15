@@ -28,7 +28,7 @@ app.whenReady().then(async()=>{try{
   await start();const appSession=session.fromPartition('writer-expansion-'+randomBytes(8).toString('hex'));
   appSession.webRequest.onBeforeRequest((details,done)=>{let local=false;try{local=new URL(details.url).origin===origin;}catch{}done({cancel:!local&&!details.url.startsWith('data:image/')&&!details.url.startsWith('blob:'+origin)});});
   appSession.webRequest.onBeforeSendHeaders((details,done)=>done({requestHeaders:{...details.requestHeaders,'X-Writer-Desktop':token}}));
-  win=new BrowserWindow({show:false,width:1440,height:920,webPreferences:{session:appSession,sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
+  const compact=process.argv.includes('--compact');win=new BrowserWindow({show:false,width:compact?1024:1440,height:compact?656:920,useContentSize:compact,webPreferences:{session:appSession,sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
   win.webContents.on('render-process-gone',(_event,details)=>{results.rendererExit={reason:details.reason,exitCode:details.exitCode};});
   win.webContents.on('console-message',(_event,details)=>{if(details.level==='error'){results.rendererErrors??=[];results.rendererErrors.push({message:details.message,line:details.lineNumber,source:details.sourceId});results.rendererErrors=results.rendererErrors.slice(-10);}});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));await win.loadURL(origin+'/');
@@ -39,6 +39,14 @@ app.whenReady().then(async()=>{try{
   const library=await run(()=>state.books.map(book=>({id:book.id,title:book.title,kind:book.kind,charCount:book.charCount}))),demo=library.find(book=>book.title==='潮汐档案馆');assert.ok(demo);assert.equal(demo.charCount,101506);const short=library.find(book=>book.kind==='short');assert.ok(short);await run(async id=>{if(!await openBook(id,'write'))throw Error('Cannot open demonstration work');},demo.id);
   const original=await run(()=>({first:state.book.chapters[0].id,second:state.book.chapters[1].id,third:state.book.chapters[2].id,firstBody:state.book.chapters[0].body,secondBody:state.book.chapters[1].body,marks:state.book.reviewTools.bookmarks.length,people:state.book.notes.filter(note=>note.type==='人物').length}));assert.equal(original.marks,6);assert.equal(original.people,32);
   results.cases.productionStartup={complete101506CharacterSample:true,volumes:6,chapters:36,characters:32,bookmarks:6};
+  // The AI panel overlays the editor below 1250px. Follow the real close/reopen
+  // controls before using the writing toolbar; never click through that panel.
+  if(await run(()=>!$('ai-chat-panel').hidden))await nativeClick('#ai-chat-panel button[aria-label="关闭 AI 对话"]');
+  await until(()=>$('ai-chat-panel').hidden,'close initial AI sidebar');
+  await nativeClick('#writing-ai');await until(()=>!$('ai-chat-panel').hidden,'reopen AI sidebar');
+  await nativeClick('#ai-chat-panel button[aria-label="关闭 AI 对话"]');await until(()=>$('ai-chat-panel').hidden,'close AI sidebar before split writing');
+  results.cases.productionStartup.nativeAiSidebarToggle=true;
+
 
   await run(()=>{selectChapter(state.book.chapters[0].id);const editor=$('editor'),area=$('writing-area');editor.focus({preventScroll:true});editor.setSelectionRange(editor.value.length,editor.value.length);area.style.scrollBehavior='auto';area.scrollTop=area.scrollHeight;});
   // Establish a native, visible caret before measuring scrolling. The absolute
