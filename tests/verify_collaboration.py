@@ -8,12 +8,17 @@ import tempfile
 import threading
 import sqlite3
 import unittest
+from unittest import mock
+from types import SimpleNamespace
+import struct
+import socket
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import collaboration as hub
+import sync_client
 from sync_client import SyncService
 from server import new_book, chapter, validate_book
 
@@ -146,6 +151,10 @@ class HubTest(unittest.TestCase):
         self.assertEqual(result["book"]["chapters"], sample["chapters"])
 
     def test_mobile_static_and_traversal(self):
+        for path in ("/", "/mobile"):
+            with urlopen(self.url + path, timeout=5) as response:
+                self.assertEqual(response.geturl(), self.url + "/mobile/")
+                self.assertIn("作家工作台", response.read().decode("utf-8"))
         for path, text in [("/mobile/", "作家工作台"), ("/mobile/sw.js", "writerdesk-mobile"), ("/shared/manuscript-marks.js", "reanchorChapter")]:
             with urlopen(self.url + path) as response:
                 self.assertIn(text, response.read().decode())
@@ -327,6 +336,113 @@ class HubTest(unittest.TestCase):
             for item in services:
                 item.close()
             local_temp.cleanup()
+
+
+class LANAddressTests(unittest.TestCase):
+    def test_linux_reads_up_interfaces_when_hostname_resolves_only_to_loopback(self):
+        class LocalSocket:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                pass
+            def fileno(self):
+                return 42
+            def connect(self, *_args):
+                raise AssertionError("Interface discovery must not connect")
+            send = sendto = connect
+
+        addresses = {"lo": "127.0.0.1", "wlan0": "192.168.10.15", "bridge0": "172.17.0.1", "down0": "10.0.0.8"}
+        def ioctl(descriptor, operation, query):
+            self.assertEqual(descriptor, 42)
+            name = query.split(b"\0", 1)[0].decode()
+            result = bytearray(256)
+            if operation == 0x8913:
+                struct.pack_into("H", result, 16, 0 if name == "down0" else 1)
+            elif operation == 0x8915:
+                if name == "ipv6only":
+                    raise OSError("No IPv4 address")
+                struct.pack_into("H", result, 16, socket.AF_INET)
+                result[20:24] = socket.inet_aton(addresses[name])
+            else:
+                self.fail("Unexpected ioctl")
+            return bytes(result)
+        with mock.patch.object(sync_client.sys, "platform", "linux"), mock.patch.object(sync_client.socket, "socket", return_value=LocalSocket()), mock.patch.object(sync_client.socket, "if_nameindex", return_value=[(1, "lo"), (2, "wlan0"), (3, "bridge0"), (4, "down0"), (5, "ipv6only")], create=True), mock.patch.object(sync_client.socket, "gethostbyname_ex", return_value=("pbl", [], ["127.0.1.1"])) as hostname, mock.patch.dict(sys.modules, {"fcntl": SimpleNamespace(ioctl=ioctl)}):
+            self.assertEqual(sync_client.lan_ipv4_addresses(), ["192.168.10.15", "172.17.0.1"])
+            hostname.assert_not_called()
+
+    def test_darwin_uses_bsd_ifreq_layout(self):
+        descriptor = mock.MagicMock()
+        descriptor.__enter__.return_value = descriptor
+        descriptor.fileno.return_value = 9
+        operations = []
+        def ioctl(_descriptor, operation, _query):
+            operations.append(operation)
+            result = bytearray(256)
+            if operation == 0xC0206911:
+                struct.pack_into("H", result, 16, 1)
+            else:
+                self.assertEqual(operation, 0xC0206921)
+                result[16], result[17] = 16, socket.AF_INET
+                result[20:24] = socket.inet_aton("192.168.4.25")
+            return bytes(result)
+        with mock.patch.object(sync_client.sys, "platform", "darwin"), mock.patch.object(sync_client.socket, "socket", return_value=descriptor), mock.patch.object(sync_client.socket, "if_nameindex", return_value=[(4, "en0")], create=True), mock.patch.dict(sys.modules, {"fcntl": SimpleNamespace(ioctl=ioctl)}):
+            self.assertEqual(sync_client.lan_ipv4_addresses(), ["192.168.4.25"])
+        self.assertEqual(operations, [0xC0206911, 0xC0206921])
+
+    def test_windows_ip_helper_reads_ipv4_skips_down_loopback_and_ipv6(self):
+        import ctypes
+        Adapter, Unicast = sync_client._windows_adapter_types()
+        if ctypes.sizeof(ctypes.c_void_p) == 8:
+            # Match the documented Win64 prefixes, rather than merely casting
+            # between two equally wrong fixture definitions.
+            self.assertEqual(Adapter.next.offset, 8)
+            self.assertEqual(Adapter.unicast.offset, 24)
+            self.assertEqual(Adapter.interface_type.offset, 100)
+            self.assertEqual(Adapter.oper_status.offset, 104)
+            self.assertEqual(Unicast.address.offset, 16)
+            self.assertEqual(ctypes.sizeof(Unicast), 32)
+        holders = []
+        def address(value, family=socket.AF_INET):
+            raw = struct.pack("H", family) + b"\0\0" + socket.inet_aton(value) + b"\0" * 8
+            buffer = ctypes.create_string_buffer(raw)
+            item = Unicast()
+            item.address.sockaddr, item.address.length = ctypes.addressof(buffer), 16
+            holders.extend((buffer, item))
+            return item
+        live, ipv6, down_address, loop_address = address("192.168.5.12"), address("10.0.0.6", 23), address("10.0.0.7"), address("127.0.1.1")
+        live.next = ctypes.pointer(ipv6)
+        first, down, loop = Adapter(), Adapter(), Adapter()
+        first.oper_status, first.interface_type, first.unicast = 1, 6, ctypes.pointer(live)
+        down.oper_status, down.interface_type, down.unicast = 2, 6, ctypes.pointer(down_address)
+        loop.oper_status, loop.interface_type, loop.unicast = 1, 24, ctypes.pointer(loop_address)
+        first.next, down.next = ctypes.pointer(down), ctypes.pointer(loop)
+        calls = []
+        def get_adapters(family, flags, _reserved, buffer, size):
+            calls.append((family, flags))
+            if len(calls) == 1:
+                size._obj.value = 30000
+                return 111
+            ctypes.memmove(buffer, ctypes.byref(first), ctypes.sizeof(first))
+            return 0
+        self.assertEqual(sync_client._windows_ipv4_addresses(get_adapters), ["192.168.5.12"])
+        self.assertEqual(calls, [(socket.AF_INET, 0x0E), (socket.AF_INET, 0x0E)])
+
+    def test_filter_all_loopbacks_unsafe_addresses_ipv6_and_duplicates(self):
+        values = ["127.0.0.1", "127.0.1.1", "127.255.1.2", "0.0.0.0", "224.0.0.1", "255.255.255.255", "169.254.1.2", "::1", "fe80::1%en0", "2001:db8::1", "::ffff:192.168.1.8", "bad", "192.168.1.8", "192.168.1.8", "10.0.0.9"]
+        with mock.patch.object(sync_client.sys, "platform", "win32"), mock.patch.object(sync_client, "_windows_ipv4_addresses", return_value=values):
+            self.assertEqual(sync_client.lan_ipv4_addresses(), ["192.168.1.8", "10.0.0.9"])
+
+    def test_local_mode_never_discovers_or_exposes_lan_interfaces(self):
+        service = SyncService.__new__(SyncService)
+        service.lock = threading.RLock()
+        service._config = lambda: None
+        service.last_result, service.last_error, service.last_sync = None, "", None
+        service.server = SimpleNamespace(server_address=("127.0.0.1", 8766))
+        with mock.patch.object(sync_client, "lan_ipv4_addresses", side_effect=AssertionError("Local mode must remain local")):
+            self.assertEqual(service.status()["hub"]["urls"], ["http://127.0.0.1:8766/mobile/"])
+        service.server.server_address = ("0.0.0.0", 8766)
+        with mock.patch.object(sync_client, "lan_ipv4_addresses", return_value=["192.168.8.9"]):
+            self.assertEqual(service.status()["hub"]["urls"], ["http://127.0.0.1:8766/mobile/", "http://192.168.8.9:8766/mobile/"])
 
 
 class MergeTest(unittest.TestCase):

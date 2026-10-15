@@ -1,11 +1,14 @@
 """Desktop bridge for the optional self-hosted collaboration hub."""
 import copy
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
 import socket
 import sqlite3
+import struct
+import sys
 import threading
 import time
 from urllib.error import HTTPError, URLError
@@ -20,6 +23,120 @@ SyncError = collaboration.SyncError
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, request, file, code, message, headers, new_url):
         return None  # Never forward a bearer credential to a redirected host.
+
+
+def _usable_ipv4(value):
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return None
+    if (not isinstance(address, ipaddress.IPv4Address) or address.is_loopback
+            or address.is_unspecified or address.is_multicast
+            or address.is_link_local or address.is_reserved):
+        return None
+    return str(address)
+
+
+def _unix_ipv4_addresses():
+    """Read interface state/address with ioctl; never send a network packet."""
+    import fcntl
+    if sys.platform == "darwin":
+        address_request, flags_request = 0xC0206921, 0xC0206911
+    else:
+        address_request, flags_request = 0x8915, 0x8913
+    result = []
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as descriptor:
+        for _index, name in socket.if_nameindex():
+            try:
+                query = struct.pack("256s", name.encode("utf-8")[:15])
+                flags = fcntl.ioctl(descriptor.fileno(), flags_request, query)
+                if len(flags) < 18 or not struct.unpack_from("H", flags, 16)[0] & 1:
+                    continue  # IFF_UP, including interfaces without DNS names.
+                address = fcntl.ioctl(descriptor.fileno(), address_request, query)
+                if len(address) < 24:
+                    continue
+                family = address[17] if sys.platform == "darwin" else struct.unpack_from("H", address, 16)[0]
+                if family == socket.AF_INET:
+                    result.append(socket.inet_ntop(socket.AF_INET, address[20:24]))
+            except (OSError, UnicodeError, struct.error):
+                continue  # An interface may disappear during the snapshot.
+    return result
+
+
+def _windows_adapter_types():
+    """Stable prefixes of Windows IP Helper structures, through OperStatus."""
+    import ctypes
+    class SocketAddress(ctypes.Structure):
+        _fields_ = [("sockaddr", ctypes.c_void_p), ("length", ctypes.c_int32)]
+    class Unicast(ctypes.Structure):
+        pass
+    Unicast._fields_ = [("alignment", ctypes.c_uint64), ("next", ctypes.POINTER(Unicast)), ("address", SocketAddress)]
+    class Adapter(ctypes.Structure):
+        pass
+    Adapter._fields_ = [
+        ("alignment", ctypes.c_uint64), ("next", ctypes.POINTER(Adapter)),
+        ("name", ctypes.c_void_p), ("unicast", ctypes.POINTER(Unicast)),
+        ("anycast", ctypes.c_void_p), ("multicast", ctypes.c_void_p),
+        ("dns_servers", ctypes.c_void_p), ("dns_suffix", ctypes.c_void_p),
+        ("description", ctypes.c_void_p), ("friendly_name", ctypes.c_void_p),
+        ("physical_address", ctypes.c_ubyte * 8), ("physical_length", ctypes.c_uint32),
+        ("flags", ctypes.c_uint32), ("mtu", ctypes.c_uint32),
+        ("interface_type", ctypes.c_uint32), ("oper_status", ctypes.c_int32)]
+    return Adapter, Unicast
+
+
+def _windows_ipv4_addresses(get_adapters=None):
+    """Read active Windows adapters using the OS API, without DNS or shelling out."""
+    import ctypes
+    Adapter, _unicast = _windows_adapter_types()
+    if get_adapters is None:
+        get_adapters = ctypes.WinDLL("iphlpapi", use_last_error=True).GetAdaptersAddresses
+        get_adapters.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.POINTER(Adapter), ctypes.POINTER(ctypes.c_uint32)]
+        get_adapters.restype = ctypes.c_uint32
+    size = ctypes.c_uint32(15000)
+    for _attempt in range(3):
+        if not 1 <= size.value <= 1024 * 1024:
+            return []
+        buffer = ctypes.create_string_buffer(size.value)
+        first = ctypes.cast(buffer, ctypes.POINTER(Adapter))
+        # Skip DNS, multicast and anycast entries. AF_INET requests only IPv4.
+        status = get_adapters(socket.AF_INET, 0x0E, None, first, ctypes.byref(size))
+        if status == 111:  # ERROR_BUFFER_OVERFLOW: interface list changed.
+            continue
+        if status != 0:
+            return []
+        result, adapter, seen = [], first, set()
+        while adapter and len(seen) < 4096:
+            pointer = ctypes.addressof(adapter.contents)
+            if pointer in seen:
+                break
+            seen.add(pointer)
+            item = adapter.contents
+            if item.oper_status == 1 and item.interface_type != 24:  # Up; not software loopback.
+                unicast, addresses = item.unicast, set()
+                while unicast and len(addresses) < 4096:
+                    pointer = ctypes.addressof(unicast.contents)
+                    if pointer in addresses:
+                        break
+                    addresses.add(pointer)
+                    value = unicast.contents.address
+                    if value.sockaddr and 16 <= value.length <= 128:
+                        raw = ctypes.string_at(value.sockaddr, value.length)
+                        if int.from_bytes(raw[:2], sys.byteorder) == socket.AF_INET:
+                            result.append(socket.inet_ntop(socket.AF_INET, raw[4:8]))
+                    unicast = unicast.contents.next
+            adapter = item.next
+        return result
+    return []
+
+
+def lan_ipv4_addresses():
+    """Return real, active interface IPv4 addresses, never hostname loopbacks."""
+    try:
+        values = _windows_ipv4_addresses() if sys.platform == "win32" else _unix_ipv4_addresses()
+    except (OSError, ImportError, AttributeError):
+        return []
+    return list(dict.fromkeys(address for value in values if (address := _usable_ipv4(value))))
 
 
 def checked_url(value):
@@ -112,10 +229,7 @@ class SyncService:
                 host, port = self.server.server_address[:2]
                 addresses = ["127.0.0.1"]
                 if host not in ("127.0.0.1", "localhost"):
-                    try:
-                        addresses += list(dict.fromkeys(socket.gethostbyname_ex(socket.gethostname())[2]))
-                    except OSError:
-                        pass
+                    addresses += lan_ipv4_addresses()
                 hub = {"host": host, "port": port, "urls": [f"http://{address}:{port}/mobile/" for address in addresses]}
             return {"connected": bool(config), "url": config["url"] if config else "", "workspaceId": config["workspaceId"] if config else "", "role": config.get("role", "") if config else "", "autoSync": config.get("autoSync", True) if config else False, "hub": hub, "lastSync": self.last_sync, "error": self.last_error, "result": self.last_result}
 

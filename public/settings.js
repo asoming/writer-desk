@@ -29,7 +29,9 @@ function groupAISettings(section){
 }
 function syncSettingsLayout(){
   if(!settingsLayoutBound)return;
-  const updates=$('settings-tab-updates');updates.hidden=!!$('settings-updates').hidden;
+  const updates=$('settings-tab-updates');
+  const networkUpdates=typeof window.WriterDesktop?.networkInfo==='function'&&typeof window.WriterDesktop?.networkCheck==='function';
+  updates.hidden=!!$('settings-updates').hidden&&!networkUpdates;
   for(const id of ['settings-ai','settings-skills','settings-protection']){
     const section=$(id)?.querySelector('details');if(!section)continue;section.open=true;if(id==='settings-ai')groupAISettings(section);
   }

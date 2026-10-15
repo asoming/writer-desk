@@ -68,7 +68,8 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb desktop-file-utils libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libxtst6 libsecret-1-0 libnotify4
       - name: Native packaging and macOS window contracts
-        run: node --test --test-concurrency=2 tests/*.test.js tests/*.test.cjs
+        # Keep the dense layout CPU budget deterministic on native CI runners.
+        run: node --test --test-concurrency=1 tests/*.test.js tests/*.test.cjs
       - name: Real editor typing and IME regression on Linux
         if: runner.os == 'Linux'
         run: |
@@ -139,6 +140,7 @@ jobs:
             dist/editor-tools-regression.json
             dist/formatted-export-regression.json
             dist/expansion-workflow-regression.json
+            dist/expansion-workflow-regression.png
             dist/builder-debug.yml
             build/backend/build-info.json
 

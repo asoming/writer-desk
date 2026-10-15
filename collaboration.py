@@ -564,7 +564,16 @@ class HubHandler(BaseHTTPRequestHandler):
         try:
             self._origin()
             path = urlsplit(self.path).path
-            if method == "GET" and (path == "/" or path.startswith("/mobile/") or path in ("/shared/manuscript-marks.js", "/shared/i18n.js")):
+            if method == "GET" and path in ("/", "/mobile"):
+                # Relative assets and the service-worker scope require this
+                # canonical directory, including its trailing slash.
+                self.send_response(302)
+                self.send_header("Location", "/mobile/")
+                self.send_header("Content-Length", "0")
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                return
+            if method == "GET" and (path.startswith("/mobile/") or path in ("/shared/manuscript-marks.js", "/shared/i18n.js")):
                 return self._static(path)
             if method == "GET" and path == "/v1/status":
                 return self._send(200, {"service": "WriterDeskSync", "protocol": 1, "configured": self.server.store.configured})

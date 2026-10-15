@@ -46,3 +46,16 @@ test('upgrade availability can change without rebuilding other forms or leaving 
   const h=harness();await h.run('showAppSettings()');h.get('settings-updates').hidden=false;h.run('syncSettingsLayout()');assert.equal(h.get('settings-tab-updates').hidden,false);assert.equal(h.run("selectSettingsPage('updates')"),true);h.get('settings-updates').hidden=true;h.run('syncSettingsLayout()');assert.equal(h.get('settings-tab-updates').hidden,true);assert.equal(h.get('settings-page-general').hidden,false);
   h.run('bindSettingsLayout();bindSettingsLayout()');assert.equal(h.get('settings-tab-ai').listeners.get('click').length,1);
 });
+test('Windows and Mac network updates remain reachable when Linux archive updates are unavailable',async()=>{
+  const h=harness();await h.run('showAppSettings()');
+  h.get('settings-updates').hidden=true;
+  h.context.window.WriterDesktop.networkInfo=async()=>({});
+  h.context.window.WriterDesktop.networkCheck=async()=>({});
+  h.run('syncSettingsLayout()');
+  assert.equal(h.get('settings-tab-updates').hidden,false);
+  assert.equal(h.run("selectSettingsPage('updates')"),true);
+  assert.equal(h.get('settings-page-updates').hidden,false);
+  delete h.context.window.WriterDesktop.networkCheck;h.run('syncSettingsLayout()');
+  assert.equal(h.get('settings-tab-updates').hidden,true);
+  assert.equal(h.get('settings-page-general').hidden,false);
+});
