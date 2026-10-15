@@ -6,9 +6,9 @@
 
 ## 安装与启动
 
-0.6.0 源码功能已实现，本轮安装包等待四平台原生 CI 验收。请以发行页实际提供的版本为准，上一版安装包不含本轮全部功能。
+0.6.0 已通过 Linux、Windows、Mac Apple 芯片与 Intel 四平台原生安装包验收，从[发行页](https://github.com/asoming/writer-desk/releases/tag/v0.6.0)下载对应文件与校验清单。
 
-| 系统 | 0.6.0 构建目标 | 安装方式 |
+| 系统 | 0.6.0 安装包 | 安装方式 |
 | --- | --- | --- |
 | Ubuntu 22.04+ / 兼容 Debian 桌面，x64 | `WriterDesk-0.6.0-linux-amd64.deb` | 使用系统软件安装器，或 `sudo apt install ./WriterDesk-0.6.0-linux-amd64.deb` |
 | Windows 10 / 11，x64 | `WriterDesk-0.6.0-windows-x64.exe` | 运行安装向导 |

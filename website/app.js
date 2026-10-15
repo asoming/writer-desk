@@ -9,7 +9,7 @@ const accessibleTranslations = Array.from(document.querySelectorAll('[data-en-ar
   en: element.dataset.enAria || element.dataset.enAlt,
 }));
 const views = {
-  writing: { src: './assets/writing.png', version: '0.4.10',
+  writing: { src: './assets/writing.png', version: '0.6.0',
     zh: '长篇按卷章写作，短篇是一篇连续正文。', en: 'Volumes and chapters for novels; one continuous manuscript for short stories.',
     altZh: '长篇写作：卷章目录、正文编辑与 AI 对话栏', altEn: 'Novel writing with volumes, chapters, a manuscript and the AI chat panel' },
   outline: { src: './assets/outline.png', version: '0.3.1',

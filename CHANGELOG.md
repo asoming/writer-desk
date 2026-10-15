@@ -4,7 +4,7 @@
 
 ## 0.6.0 — 2026-10-15
 
-当前为源码候选，本轮 Linux x64、Windows x64、macOS arm64 / x64 原生构建与安装包验收待完成。
+Linux x64、Windows x64、macOS arm64 / x64 原生构建与实际安装包验收均已通过，作为测试版发行。安装包与 SHA256 校验见 [0.6.0](https://github.com/asoming/writer-desk/releases/tag/v0.6.0)。
 
 ### 新增
 
