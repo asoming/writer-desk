@@ -1,5 +1,6 @@
 """HTTP planning journeys against disposable services and the full demo novel."""
 import copy
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -143,7 +144,7 @@ class PlanningAPITests(unittest.TestCase):
         trash = self.request("/api/books/" + book_id + "/trash", "POST", {"revision": result["revision"]})
         self.request("/api/books/" + book_id + "/writing-stats", status=409)
         self.request("/api/books/" + book_id + "/purge", "POST", {"revision": trash["revision"]})
-        with sqlite3.connect(self.data / "writer.sqlite3") as conn:
+        with closing(sqlite3.connect(self.data / "writer.sqlite3")) as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM writing_activity WHERE book_id=?", (book_id,)).fetchone()[0], 0)
         self.request("/api/books/" + book_id + "/writing-stats", status=404)
         self.assertEqual(self.stats(other["book"]["id"])["totalChars"], 101506)

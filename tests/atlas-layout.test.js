@@ -94,7 +94,14 @@ for (let from = 0; from < nodes.length; from += 1) {
 }
 assert.equal(denseEdges.length, 441);
 started = performance.now();
+const denseCpuStarted = process.cpuUsage();
 check({ nodes, edges: denseEdges });
 const denseMs = performance.now() - started;
-assert.ok(denseMs < 10000, `Dense layout unexpectedly slow: ${denseMs.toFixed(0)} ms`);
-console.log(`Atlas layout passed: 32 people / 35 relations ${sampleMs.toFixed(0)} ms; 441 co-mentions ${denseMs.toFixed(0)} ms (each includes determinism rerun).`);
+const denseCpu = process.cpuUsage(denseCpuStarted);
+const denseCpuMs = (denseCpu.user + denseCpu.system) / 1000;
+// The suite runs multiple CPU-heavy layout files concurrently on native CI.
+// Scheduling pauses inflate wall time without increasing this algorithm's work.
+// Retain the original 10-second compute budget and every determinism/geometry
+// assertion, but measure CPU consumed by this process instead of its neighbours.
+assert.ok(denseCpuMs < 10000, `Dense layout unexpectedly costly: ${denseCpuMs.toFixed(0)} CPU ms (${denseMs.toFixed(0)} wall ms)`);
+console.log(`Atlas layout passed: 32 people / 35 relations ${sampleMs.toFixed(0)} ms; 441 co-mentions ${denseCpuMs.toFixed(0)} CPU ms / ${denseMs.toFixed(0)} wall ms (each includes determinism rerun).`);
