@@ -38,6 +38,20 @@ class NativeReleaseTests(unittest.TestCase):
             report = folder / "installer-smoke.json"
             report.write_text(json.dumps({"passed": True, "version": VERSION, "platform": platform, "arch": arch}), "utf-8")
             self.reports.append(report)
+        self.tar_archive = next(path for path in self.installers if path.name.endswith(".tar.gz"))
+        self.tar_report = self.tar_archive.parent / "linux-tar-verification.json"
+        self.tar_evidence = {
+            "passed": True, "version": VERSION, "platform": "linux", "arch": "x64",
+            "archive": self.tar_archive.name,
+            "archiveSHA256": hashlib.sha256(self.tar_archive.read_bytes()).hexdigest(),
+            "manifestHash": hashlib.sha256(b"isolated complete final manifest").hexdigest(),
+            "fileCount": 187, "managedInstallPassed": True, "installerScriptPassed": True,
+            "checks": ["strict final manifest verified", "managed install and packaged installer passed"],
+        }
+        self.write_tar_report()
+
+    def write_tar_report(self, **changes):
+        self.tar_report.write_text(json.dumps({**self.tar_evidence, **changes}), "utf-8")
 
     def collect(self):
         return subprocess.run([sys.executable, str(ROOT / "scripts/collect-native-release.py"),
@@ -49,16 +63,20 @@ class NativeReleaseTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(message, result.stderr)
 
-    def test_collects_five_installers_four_reports_and_valid_source_archive(self):
+    def test_collects_five_installers_five_reports_and_valid_source_archive(self):
         result = self.collect()
         self.assertEqual(result.returncode, 0, result.stderr)
         summary = json.loads(result.stdout)
-        self.assertEqual(summary["nativeReports"], 4)
+        self.assertEqual(summary["nativeReports"], 5)
         self.assertEqual(len(summary["installers"]), 5)
         self.assertIn(f"WriterDesk-{VERSION}-linux-amd64.deb", summary["installers"])
         for artifact in self.installers:
             self.assertEqual((self.destination / artifact.name).read_bytes(), artifact.read_bytes())
-        self.assertEqual(len(list(self.destination.glob("*-verification.json"))), 4)
+        self.assertEqual(len(list(self.destination.glob("*-verification.json"))), 5)
+        self.assertEqual(json.loads((self.destination / f"WriterDesk-{VERSION}-linux-x64-tar-verification.json").read_text("utf-8")), self.tar_evidence)
+        notes = (self.destination / "release-notes.md").read_text("utf-8")
+        self.assertIn("AppArmor", notes)
+        self.assertIn("https://github.com/asoming/writer-desk/blob/main/docs/acceptance-v0.6.1.md", notes)
         archive = self.destination / f"WriterDesk-{VERSION}-source.zip"
         with zipfile.ZipFile(archive) as source:
             self.assertIsNone(source.testzip())
@@ -101,6 +119,62 @@ class NativeReleaseTests(unittest.TestCase):
         payload["passed"] = False
         self.reports[0].write_text(json.dumps(payload), "utf-8")
         self.assert_rejected("Installer smoke report failed")
+
+    def test_missing_tar_report_cannot_be_replaced_by_passing_deb_smoke(self):
+        self.tar_report.unlink()
+        self.assert_rejected("Missing or duplicate Linux TAR verification report")
+        self.assertFalse(self.destination.exists(), "No assets should be staged before the TAR gate")
+
+    def test_duplicate_tar_reports_are_rejected_even_if_they_agree(self):
+        duplicate = self.source / "duplicate-tar-report"
+        duplicate.mkdir()
+        (duplicate / self.tar_report.name).write_bytes(self.tar_report.read_bytes())
+        self.assert_rejected("Missing or duplicate Linux TAR verification report")
+
+    def test_tar_report_requires_success_for_both_real_install_paths(self):
+        for field in ("passed", "managedInstallPassed", "installerScriptPassed"):
+            for value in (False, None, 1, "true"):
+                with self.subTest(field=field, value=value):
+                    self.write_tar_report(**{field: value})
+                    self.assert_rejected("Linux TAR verification report failed or mismatched")
+
+    def test_tar_report_requires_current_version_platform_and_architecture(self):
+        for changes in ({"version": "0.0.0"}, {"platform": "win32"}, {"arch": "arm64"}):
+            with self.subTest(changes=changes):
+                self.write_tar_report(**changes)
+                self.assert_rejected("Linux TAR verification report failed or mismatched")
+
+    def test_tar_report_must_name_the_collected_archive(self):
+        for name in ("another.tar.gz", "../" + self.tar_archive.name, "", None):
+            with self.subTest(name=name):
+                self.write_tar_report(archive=name)
+                self.assert_rejected("Linux TAR archive verification mismatch")
+
+    def test_tar_report_rejects_wrong_archive_digest(self):
+        self.write_tar_report(archiveSHA256="0" * 64)
+        self.assert_rejected("Linux TAR archive verification mismatch")
+
+    def test_recomputed_sidecar_does_not_make_a_changed_tar_verified(self):
+        self.tar_archive.write_bytes(self.tar_archive.read_bytes() + b" changed after TAR install verification")
+        digest = hashlib.sha256(self.tar_archive.read_bytes()).hexdigest()
+        sidecar = self.tar_archive.with_name(self.tar_archive.name.removesuffix(".tar.gz") + ".sha256")
+        sidecar.write_text(f"{digest}  {self.tar_archive.name}\n", "ascii")
+        self.assert_rejected("Linux TAR archive verification mismatch")
+
+    def test_tar_report_requires_manifest_and_check_evidence(self):
+        invalid = ({"manifestHash": "bad"}, {"manifestHash": 1}, {"manifestHash": "g" * 64},
+                   {"fileCount": 0}, {"fileCount": -1}, {"fileCount": True}, {"fileCount": "187"},
+                   {"checks": []}, {"checks": "passed"}, {"checks": [""]}, {"checks": [" "]}, {"checks": [True]})
+        for changes in invalid:
+            with self.subTest(changes=changes):
+                self.write_tar_report(**changes)
+                self.assert_rejected("Invalid Linux TAR verification evidence")
+
+    def test_malformed_tar_report_is_rejected(self):
+        for content in (b"not-json", b"\xff", b"[]"):
+            with self.subTest(content=content):
+                self.tar_report.write_bytes(content)
+                self.assert_rejected("Linux TAR verification report failed or mismatched" if content == b"[]" else "Invalid Linux TAR verification report")
 
 
 if __name__ == "__main__":

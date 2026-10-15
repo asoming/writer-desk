@@ -29,7 +29,7 @@
 
 [下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.6.0) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
 
-> 当前测试版：**0.6.0**。Linux、Windows 与两种 Mac 架构的原生安装包均已通过验收。[下载与校验](https://github.com/asoming/writer-desk/releases/tag/v0.6.0)。Windows 发布者签名与 Apple 公证尚未配置。
+> 当前源码：**0.6.1**，正在补强 Linux 离线包安装验收。0.6.0 的 DEB、EXE 与 DMG 已通过原生启动检查；Linux TAR 包暂勿用于升级，等待修正版。Windows 发布者签名与 Apple 公证尚未配置。
 
 ## 功能
 
@@ -85,7 +85,7 @@
 
 升级前先保存并退出旧版。使用系统安装包的用户，通过相应平台的新版安装包升级；作品保留在独立的用户数据目录。
 
-Linux 另提供便携压缩包 [WriterDesk-0.6.0-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.6.0/WriterDesk-0.6.0-linux-x64.tar.gz)，保留既有用户安装与离线升级方式。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
+Linux 离线 TAR 包正在修正文件清单，0.6.0 压缩包暂勿用于安装。修正版继续保留既有用户安装与离线升级方式。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
 
 发行页附带各文件的 SHA256 校验文件和汇总清单。平台签名状态、原生验收范围及 Mac 实机检查项见 [跨平台发行说明](docs/distribution-checklist.md)。Mac 支持双指滚动、人物图平移与捏合缩放，以及保存后返回书架的手势；实体触控板手感仍需实机验收。
 

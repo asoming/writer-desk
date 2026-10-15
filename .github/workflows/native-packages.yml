@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Package version from package.json (for example 0.5.0)
+        description: Package version from package.json (for example 0.6.1)
         required: true
         type: string
 
@@ -104,6 +104,7 @@ jobs:
             dist/WriterDesk-*.sha256
             dist/installer-smoke.json
             dist/editor-layout-regression.json
+            dist/linux-tar-verification.json
       - name: Upload failed native diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -113,11 +114,14 @@ jobs:
           retention-days: 7
           path: |
             dist/*smoke*.json
+            dist/linux-tar-*.json
+            dist/linux-tar-*.log
+            dist/editor-layout-regression.json
             dist/builder-debug.yml
             build/backend/build-info.json
 
   draft-release:
-    name: Collect verified packages into private draft release
+    name: Collect verified packages into draft release
     needs: native
     runs-on: ubuntu-22.04
     timeout-minutes: 20

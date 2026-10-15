@@ -2,7 +2,7 @@
 
 日期：2026-10-15。范围：全书查找替换、版本差异、长篇记忆、伏笔、时间线、写作统计、排版导出、流式 AI，以及长章输入回顶问题。
 
-源码专项、真实浏览器与 Electron 输入回归，以及四平台 0.6.0 原生安装包验收全部通过。
+源码专项、真实浏览器与 Electron 输入回归，以及 Linux DEB、Windows EXE、两种 Mac DMG 的对应原生检查通过。发布后补做 Linux TAR 用户安装检查时发现清单遗漏，TAR 安装被拒绝；修复转入 [0.6.1](acceptance-v0.6.1.md)，不覆盖已发布的 0.6.0 资产。
 
 ## 功能与检查范围
 
@@ -83,12 +83,21 @@ python3 scripts/test-native.py
 
 | 目标 | 本轮状态 |
 | --- | --- |
-| Linux x64 DEB / 兼容 TAR | 通过原生构建、全部回归与实际安装包验收 |
+| Linux x64 DEB | 通过原生构建、全部回归与对应安装包检查 |
+| Linux x64 TAR | CI 构建完成；发布后实际用户安装因文件清单遗漏而被拒绝，待 0.6.1 修复 |
 | Windows x64 EXE | 通过原生构建、全部回归与实际安装包验收 |
 | macOS arm64 DMG | 通过原生构建、全部回归与实际安装包验收 |
 | macOS x64 DMG | 通过原生构建、全部回归与实际安装包验收 |
 
-本轮 [原生 CI #38672249354](https://github.com/asoming/writer-desk/actions/runs/38672249354) 使用源码 `b74a3de3464434c4c1aa51c9305ce5d4e67c5091`。四个平台均完成 35 个前端/桌面测试文件、18 个服务套件、真实 Electron 输入/中文合成测试，以及实际安装包提取或安装、原生窗口启动、十万字示例和保存重启检查。安装包、四份验证报告、源码与 SHA256 清单见 [0.6.0 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.6.0)。
+本轮 [原生 CI #38672249354](https://github.com/asoming/writer-desk/actions/runs/38672249354) 使用源码 `b74a3de3464434c4c1aa51c9305ce5d4e67c5091`。四个平台均完成 35 个前端 / 桌面测试文件、18 个服务套件、真实 Electron 输入 / 中文合成测试，以及 DEB、EXE、DMG 的提取或安装、原生窗口启动、十万字示例和保存重启检查。这些结果没有覆盖下述 TAR 用户安装清单问题。安装包、四份原生报告、源码与 SHA256 清单仍保留在 [0.6.0 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.6.0)，发行说明已追加已知问题。
+
+## 发布后追加：Linux TAR 安装清单遗漏
+
+在实际运行 `WriterDesk-0.6.0-linux-x64.tar.gz` 的用户安装校验时，最终发行目录比 `release-manifest.json` 多出 `resources/apparmor-profile`。该文件由 DEB 打包目标后续加入，原清单生成过早，未收录这项最终文件。
+
+TAR 安装器按完整清单拒绝了包，拒绝发生在复制及启动入口切换之前。检查没有修改用户真实作品库、替换旧 App 或切换旧入口。这个拒绝符合清单保护的预期，但使该 TAR 包无法通过正常用户安装流程。
+
+原有验收将 DEB 原生检查与 TAR 用户安装路径合并描述，范围不准确，现已拆开记录。请不要将该 TAR 包用于安装或离线升级；修正版使用独立版本 0.6.1，最终清单和真实 TAR 安装回归见 [0.6.1 验收记录](acceptance-v0.6.1.md)。八项写作功能及输入回顶修复不受这项打包问题影响。
 
 ## 已知边界
 

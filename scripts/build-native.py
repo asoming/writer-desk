@@ -54,10 +54,22 @@ def main():
         return
     output = ROOT / "dist"
     if args.platform == "linux":
+        # FPM adds resources/apparmor-profile after afterPack. Regenerate the
+        # complete directory manifest only after every target has finished;
+        # the already sealed .deb remains unchanged.
+        subprocess.run([node, str(ROOT / "scripts/linux-release.cjs"), "finalize",
+                        str(output / "linux-unpacked"), version, args.arch], cwd=ROOT, check=True)
         # The independent managed/offline updater remains available beside the .deb.
         with tarfile.open(output / f"WriterDesk-{version}-linux-x64.tar.gz", "w:gz", format=tarfile.USTAR_FORMAT, compresslevel=6) as archive:
             archive.add(output / "linux-unpacked", arcname="WriterDesk")
-    for artifact in write_checksums(output):
+    artifacts = write_checksums(output)
+    if args.platform == "linux":
+        # Validate the actual compressed artifact, including its checksum, and
+        # exercise the shipped installer against isolated installation paths.
+        subprocess.run([node, str(ROOT / "scripts/linux-release.cjs"), "verify",
+                        str(output / f"WriterDesk-{version}-linux-x64.tar.gz"), version, args.arch,
+                        str(output / "linux-tar-verification.json")], cwd=ROOT, check=True)
+    for artifact in artifacts:
         print(f"Native release: {artifact}")
 
 

@@ -2,9 +2,21 @@
 
 版本按发行与数据兼容范围记录。安装包和校验文件以 [GitHub Releases](https://github.com/asoming/writer-desk/releases) 为准。
 
+## 0.6.1 — 修正版候选
+
+本轮原生 CI、实际 TAR 用户安装验收及发布待完成。0.6.0 已发布资产保持不变，修复使用独立版本。
+
+### 打包修复与检查
+
+- 修正 Linux 最终发行清单的生成时机，将 DEB 目标后加的 `resources/apparmor-profile` 纳入完整文件集合，避免 TAR 用户安装器因漏项拒绝正常包。
+- 加强最终目录与清单一致性检查，并增加临时安装根中的真实 TAR 包内安装脚本、托管安装及固定入口校验。桌面保存 / 重开继续由同轮 DEB 原生包和冻结服务检查覆盖。
+- 八项写作功能、长章输入回顶修复、作品格式和十万字示例内容与 0.6.0 保持一致；没有修改真实用户书库或替换正在使用的旧 App。
+
+验证完成状态见 [0.6.1 验收记录](docs/acceptance-v0.6.1.md)。
+
 ## 0.6.0 — 2026-10-15
 
-Linux x64、Windows x64、macOS arm64 / x64 原生构建与实际安装包验收均已通过，作为测试版发行。安装包与 SHA256 校验见 [0.6.0](https://github.com/asoming/writer-desk/releases/tag/v0.6.0)。
+Linux DEB、Windows EXE、macOS arm64 / x64 DMG 通过对应原生检查并以测试版发行。发布后补做 Linux TAR 用户安装检查，发现最终清单漏收 DEB 后加的 `resources/apparmor-profile`，安装器在复制前拒绝该 TAR 包。该包不用于安装或离线升级，修复转入 0.6.1；已发布资产不覆盖。原安装包与 SHA256 校验保留在 [0.6.0](https://github.com/asoming/writer-desk/releases/tag/v0.6.0)。
 
 ### 新增
 

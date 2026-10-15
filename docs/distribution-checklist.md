@@ -1,15 +1,15 @@
-# 0.6.0 跨平台发行
+# 0.6.1 跨平台发行
 
 安装包由同一份源码，在对应操作系统与处理器架构上构建。每个安装包附带 SHA256 校验文件；源码和产物保存在 GitHub 仓库，不包含个人作品库、AI 密钥或本机导入的写作 Skill。
 
 | 系统 | 安装包 | 要求 |
 | --- | --- | --- |
-| Linux | `WriterDesk-0.6.0-linux-amd64.deb` | Ubuntu 22.04+ / 兼容 Debian 系统，amd64 |
-| Windows | `WriterDesk-0.6.0-windows-x64.exe` | Windows 10 / 11，64 位 |
-| Mac，Apple 芯片 | `WriterDesk-0.6.0-mac-arm64.dmg` | macOS 13+，M 系列芯片 |
-| Mac，Intel | `WriterDesk-0.6.0-mac-x64.dmg` | macOS 13+，Intel 芯片 |
+| Linux | `WriterDesk-0.6.1-linux-amd64.deb` | Ubuntu 22.04+ / 兼容 Debian 系统，amd64 |
+| Windows | `WriterDesk-0.6.1-windows-x64.exe` | Windows 10 / 11，64 位 |
+| Mac，Apple 芯片 | `WriterDesk-0.6.1-mac-arm64.dmg` | macOS 13+，M 系列芯片 |
+| Mac，Intel | `WriterDesk-0.6.1-mac-x64.dmg` | macOS 13+，Intel 芯片 |
 
-Linux 仍提供 `WriterDesk-0.6.0-linux-x64.tar.gz`，供既有用户使用本机离线升级器。
+Linux 仍提供 `WriterDesk-0.6.1-linux-x64.tar.gz`，供既有用户使用本机离线升级器。
 
 Windows 安装向导可选择安装位置，安装后创建桌面与开始菜单入口；卸载保留作品数据。Mac 打开 DMG 后，将 App 拖到 Applications，再从 Applications 启动，升级时先保存退出旧版。Mac 的最低系统要求依据 [Electron 44 支持范围](https://www.electronjs.org/blog/electron-44-0)。
 

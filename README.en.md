@@ -27,7 +27,7 @@ Writing, saving and backups work offline. AI assistance is optional. The interfa
 
 [Download](https://github.com/asoming/writer-desk/releases/tag/v0.6.0) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
 
-> Current preview: **0.6.0**. Linux, Windows and both Mac architectures passed native installer verification. [Downloads and checksums](https://github.com/asoming/writer-desk/releases/tag/v0.6.0). Windows publisher signing and Apple notarization are not configured.
+> Current source: **0.6.1**, adding a complete Linux offline-install gate. The 0.6.0 DEB, EXE and DMG passed native startup checks; do not use the 0.6.0 TAR package for upgrades while the correction builds. Windows publisher signing and Apple notarization are not configured.
 
 ## Features
 
@@ -83,7 +83,7 @@ Download an installer from [GitHub Releases](https://github.com/asoming/writer-d
 
 Save your work and quit the older app before upgrading. Install the new package for your platform; personal books stay in a separate user data directory.
 
-A Linux TAR package, [WriterDesk-0.6.0-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.6.0/WriterDesk-0.6.0-linux-x64.tar.gz), remains supported for the existing per-user installation and offline updater. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
+The 0.6.0 Linux TAR package is temporarily unavailable for upgrades due to an integrity-manifest issue. The corrected TAR remains supported for the existing per-user installation and offline updater. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
 
 The release includes SHA256 checksum files and native verification reports. See the [distribution checklist](docs/distribution-checklist.md) for signing and verification details. Mac supports two-finger scrolling, map panning and pinch-to-zoom, and a save-aware swipe back to the bookshelf. Physical trackpad feel still needs hands-on verification.
 
