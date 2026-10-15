@@ -9,7 +9,10 @@ const accessibleTranslations = Array.from(document.querySelectorAll('[data-en-ar
   en: element.dataset.enAria || element.dataset.enAlt,
 }));
 const views = {
-  writing: { src: './assets/comparison.png', version: '0.8.1',
+  home: { src: './assets/home.png', version: '0.8.2',
+    zh: '从首页查看写作进度、日历和最近作品。', en: 'Start with writing progress, your calendar and recent books.',
+    altZh: '写作首页：全库统计、每日目标、写作日历与最近作品', altEn: 'Home dashboard: library activity, daily goal, writing calendar and recent books' },
+  writing: { src: './assets/comparison.png', version: '0.8.2',
     zh: '同一章左右对照，原文标色，修改稿正常保存。', en: 'Compare the same chapter: colored changes in the original, normal editing and saving on the right.',
     altZh: '同章对照修改：左侧原文标色，右侧编辑', altEn: 'Same-chapter comparison: colored original on the left, editable prose on the right' },
   outline: { src: './assets/outline.png', version: '0.3.1',
@@ -30,7 +33,7 @@ const tabs = Array.from(document.querySelectorAll('[data-view]'));
 const imageDialog = document.querySelector('.image-dialog');
 const dialogImage = imageDialog.querySelector('img');
 let language = 'zh';
-let currentView = 'writing';
+let currentView = 'home';
 const starLinks = Array.from(document.querySelectorAll('[data-star-link]'));
 const starCounts = Array.from(document.querySelectorAll('[data-star-count]'));
 const STAR_CACHE_KEY = 'writer-desk-site-stars-v1';
