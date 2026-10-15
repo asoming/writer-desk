@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.0">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.1">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.0"><img src="https://img.shields.io/badge/release-v0.8.0%20preview-6366f1" alt="Release v0.8.0 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.1"><img src="https://img.shields.io/badge/release-v0.8.1%20preview-6366f1" alt="Release v0.8.1 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -27,11 +27,11 @@
 
 *A local-first writing studio for novels and short stories, with outlines, character maps and optional AI assistance.*
 
-[下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.8.0) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
+[下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.8.1) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
 
-> 当前测试版：**0.8.0**。安装包与 SHA256 校验见[发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.0)，各平台验收状态见[0.8.0 验收记录](docs/acceptance-0.8.0.md)。Windows 安装包未签名；macOS 使用临时签名，尚未进行 Apple 公证。
+> 当前测试版：**0.8.1**。安装包与 SHA256 校验见[发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.1)，各平台验收状态见[0.8.1 验收记录](docs/acceptance-0.8.1.md)。Windows 安装包未签名；macOS 使用临时签名，尚未进行 Apple 公证。
 
-0.8.0 新增章节整理、双稿分屏、素材库、外部备份、多套 AI 服务、自定义排版、联网更新、手机写作与自建协作。
+0.8.1 将双稿分屏改为同章对照修改，并修复更新接口限流问题。章节整理、素材库、外部备份、多套 AI 服务、自定义排版和自建手机同步继续可用。
 
 ## 功能
 
@@ -40,7 +40,7 @@
 | 书架 | 长篇、短篇分别管理；封面与书名编辑；十款封面模板、图片上传、随机书名；打开每本书的独立文件夹 |
 | 大纲 | 全书、分卷、章节、情节与设定分层；主题分类与搜索；连续阅读；按大纲生成卷章目录 |
 | 人物脉络 | 人物档案、别名、分卷变化与关系；主题分图、阵营分组、关系筛选；与正文双向跳转 |
-| 写作 | 长篇卷章、短篇连续正文；自动保存、拖动排序、批量移章、拆分合并、双稿分屏、全书查找替换、专注模式、可调分栏 |
+| 写作 | 长篇卷章、短篇连续正文；自动保存、拖动排序、批量移章、拆分合并、同章对照修改、全书查找替换、专注模式、可调分栏 |
 | 稿件导入 | DOCX / TXT / Markdown 本地预览，调整卷章名、识别策略及编码；确认创建独立书籍，短篇连续正文 |
 | 校对与批注 | 离线规则校对、每书词典；段落批注与命名书签，定位原文、标记解决及重新关联 |
 | 创作工具 | 伏笔状态与未回收筛选；自定义故事时间线；每日目标、写作日历与 7 / 30 天趋势 |
@@ -53,7 +53,7 @@
 
 大纲、人物与正文的关联定位到**章节**，改名和排序后仍保留。姓名匹配与同章提及使用本地规则，供作者核对；人物关系可手动编写，AI 提取结果需确认后采用。
 
-## 0.8.0 新功能
+## 功能入口
 
 | 功能 | 入口与行为 |
 | --- | --- |
@@ -61,13 +61,13 @@
 | 卷章整理 | 写作工具 → 卷章整理；拖动排序、勾选章节后批量移动到其他卷 |
 | 拆分与合并 | 写作工具 → 拆分当前章；合并在卷章整理 → 合并选中。按光标或选区拆分，保留完整原文和关联记录；短篇仍是一篇正文 |
 | 跨书搜索 | 顶栏搜索图标；查找活动作品的正文、大纲、人物、资料与素材摘录，打开原记录 |
-| 双稿分屏 | 写作工具 → 双稿分屏；独立选择和编辑两章、修改章名、调整边界，各自保留滚动与原生撤销 |
+| 对照修改 | 写作工具 → 对照修改；同一章左侧只读原文标色显示删改及新增位置，右侧编辑并自动保存。原文基准保留到关闭，长短篇均可用 |
 | 素材库 | 写作工具 → 素材库；保存图片、PDF、文字及手动填写的网页摘录，关联章节与资料 |
 | 增强本地校对 | 校对与批注 → 本地校对；新增冗余表达、语句搭配及指代不明提醒，由作者判断 |
 | 多套 AI 服务 | 设置 → AI 服务；保存独立地址、密钥与模型，在对话输入框旁切换服务 |
 | AI 用量记录 | AI 服务 → AI 用量记录；按作品查看服务实际返回的 Token、耗时与按自填单价计算的费用，未知值显示不可用 |
 | 自定义排版模板 | 逐书导出与备份 → 排版导出；设置纸张、页边距、字体、行距和章标题，预览后导出 Word / EPUB / PDF |
-| 联网更新 | 设置 → 安装与升级 → 联网更新；检查、下载、取消和校验对应平台的安装包，保存退出后安装，可选择预览版 |
+| 联网更新 | 设置 → 安装与升级 → 联网更新；检查、下载、取消和校验对应平台的安装包，保存退出后安装，可选择预览版；接口限流时自动使用固定官网更新索引 |
 | 手机写作 | 手机打开自建服务地址，长篇按章、短篇连续编辑；先保存到本机，再同步到服务 |
 | 自建协作 | 设置 → 同步与协作 → 打开同步设置；本机 / 局域网启动服务，邀请可编辑或只读成员，保留冲突原稿供处理；详见[自建说明](docs/self-host-sync.md) |
 
@@ -98,9 +98,9 @@ Word 仅导入文字、表格文字与标题结构；旧 `.doc`、图片、Word 
 
 ## 界面预览
 
-![0.8.0 双稿分屏：独立编辑、卷章目录与可调分栏](docs/split-v0.8.0.png)
+![0.8.1 同章对照修改：左侧原文标色，右侧正常编辑](docs/compare-v0.8.1.png)
 
-上图为 0.8.0 实际界面，使用隔离的十万字示例作品。
+上图为 0.8.1 实际界面，使用隔离的十万字示例作品，展示“薄竹片 → 薄纸片”和新增文字的位置。
 
 <details>
 <summary>0.8.0 手机写作</summary>
@@ -135,22 +135,22 @@ Word 仅导入文字、表格文字与标题结构；旧 `.doc`、图片、Word 
 
 ## 下载与安装
 
-从 [GitHub 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.0) 下载对应安装包。安装包可用状态与各平台检查结果见发行页和[本轮验收记录](docs/acceptance-0.8.0.md)。桌面安装包已包含运行环境，使用时无需另外安装 Python 或 Node.js。
+从 [GitHub 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.1) 下载对应安装包。安装包可用状态与各平台检查结果见发行页和[本轮验收记录](docs/acceptance-0.8.1.md)。桌面安装包已包含运行环境，使用时无需另外安装 Python 或 Node.js。
 
-| 平台 | 系统要求 | 0.8.0 安装包 |
+| 平台 | 系统要求 | 0.8.1 安装包 |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ 或兼容 Debian 桌面环境，glibc 2.35+ | [WriterDesk-0.8.0-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11，64 位 | [WriterDesk-0.8.0-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-windows-x64.exe) |
-| Mac · Apple 芯片 | macOS 13+，M 系列芯片 | [WriterDesk-0.8.0-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-mac-arm64.dmg) |
-| Mac · Intel | macOS 13+，Intel 处理器 | [WriterDesk-0.8.0-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ 或兼容 Debian 桌面环境，glibc 2.35+ | [WriterDesk-0.8.1-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.1/WriterDesk-0.8.1-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11，64 位 | [WriterDesk-0.8.1-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.1/WriterDesk-0.8.1-windows-x64.exe) |
+| Mac · Apple 芯片 | macOS 13+，M 系列芯片 | [WriterDesk-0.8.1-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.1/WriterDesk-0.8.1-mac-arm64.dmg) |
+| Mac · Intel | macOS 13+，Intel 处理器 | [WriterDesk-0.8.1-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.1/WriterDesk-0.8.1-mac-x64.dmg) |
 
-- **Linux：**在下载目录运行 `sudo apt install ./WriterDesk-0.8.0-linux-amd64.deb`，随后从应用菜单打开「作家工作台」。
+- **Linux：**在下载目录运行 `sudo apt install ./WriterDesk-0.8.1-linux-amd64.deb`，随后从应用菜单打开「作家工作台」。
 - **Windows：**运行 EXE，按安装向导选择目录；安装后创建桌面与开始菜单入口。
 - **macOS：**打开 DMG，将 App 拖入 Applications，再从 Applications 启动。
 
 升级前先保存并退出旧版。使用系统安装包的用户，通过相应平台的新版安装包升级；作品保留在独立的用户数据目录。
 
-Linux 另提供便携压缩包 [WriterDesk-0.8.0-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.0/WriterDesk-0.8.0-linux-x64.tar.gz)，保留既有用户安装与离线升级方式。0.8.0 保留 0.6.1 对 0.6.0 TAR 文件清单漏项的修复；历史问题与校验记录见 [0.6.1 验收](docs/acceptance-v0.6.1.md)。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
+Linux 另提供便携压缩包 [WriterDesk-0.8.1-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.1/WriterDesk-0.8.1-linux-x64.tar.gz)，保留既有用户安装与离线升级方式。本版保留 0.6.1 对 0.6.0 TAR 文件清单漏项的修复；历史问题与校验记录见 [0.6.1 验收](docs/acceptance-v0.6.1.md)。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
 
 发行页列出各文件的 SHA256 校验文件、汇总清单与平台检查结果。平台签名状态、原生验收范围及 Mac 实机检查项见 [跨平台发行说明](docs/distribution-checklist.md)。Mac 支持双指滚动、人物图平移与捏合缩放，以及保存后返回书架的手势；实体触控板手感仍需实机验收。
 
@@ -311,6 +311,7 @@ writer-desk/
 - [桌面构建说明](desktop/BUILD.md)：开发环境、平台构建、升级与数据迁移。
 - [跨平台发行说明](docs/distribution-checklist.md)：系统要求、签名状态和 Mac 验收边界。
 - [官网维护](docs/website.md)：本地预览、中英文内容与 GitHub Pages 部署。
+- [0.8.1 验收](docs/acceptance-0.8.1.md)：同章对照修改、更新限流修复与真实 AI 流式检查。
 - [0.8.0 验收](docs/acceptance-0.8.0.md)：章节整理、素材、备份、AI 服务、同步及更新的实现与验证边界。
 - [自建同步与手机写作](docs/self-host-sync.md)：局域网、HTTPS、手机离线及成员权限。
 - [0.7.0 功能验收](docs/acceptance-v0.7.0.md)：稿件导入、本地校对、批注与书签的示例和测试范围。

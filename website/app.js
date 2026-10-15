@@ -9,9 +9,9 @@ const accessibleTranslations = Array.from(document.querySelectorAll('[data-en-ar
   en: element.dataset.enAria || element.dataset.enAlt,
 }));
 const views = {
-  writing: { src: './assets/writing.png', version: '0.6.0',
-    zh: '长篇按卷章写作，短篇是一篇连续正文。', en: 'Volumes and chapters for novels; one continuous manuscript for short stories.',
-    altZh: '长篇写作：卷章目录、正文编辑与 AI 对话栏', altEn: 'Novel writing with volumes, chapters, a manuscript and the AI chat panel' },
+  writing: { src: './assets/comparison.png', version: '0.8.1',
+    zh: '同一章左右对照，原文标色，修改稿正常保存。', en: 'Compare the same chapter: colored changes in the original, normal editing and saving on the right.',
+    altZh: '同章对照修改：左侧原文标色，右侧编辑', altEn: 'Same-chapter comparison: colored original on the left, editable prose on the right' },
   outline: { src: './assets/outline.png', version: '0.3.1',
     zh: '连续阅读完整大纲，点击目录定位，关联正文章节。', en: 'Read the outline continuously, navigate by text and link it to chapters.',
     altZh: '连续大纲阅读与分类目录', altEn: 'Continuous outline reading with a categorized table of contents' },
