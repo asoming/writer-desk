@@ -139,8 +139,7 @@ async function exercise(assembly, folderName, systemRoot, powershell, mutate) {
       pathWithoutPowerShell: true, unicodeSpaceAndApostrophePath: true,
       ...(mutate ? { secondHashRejectsMutation: true, changedFixtureNeverExecuted: true } : { verifiedFixtureOnlyExecutedAfterExit: true }) };
   } catch (error) {
-    // The production helper deliberately closes its streams after startup.
-    // Capture diagnostics in this isolated fixture before that can happen.
+    // Capture only bounded diagnostics from this isolated fixture.
     if (helper) {
       try { await bounded(helper.finished, 2000, 'Helper failure diagnostics timed out'); } catch { }
     }
@@ -231,7 +230,7 @@ launch({...${JSON.stringify(options)},pid:process.pid},(command,args,options)=>{
       ownerExitedNormallyWithCodeZero: true, fixtureExecutedOnlyAfterActualOwnerExit: true,
       helperExitedAfterFixture: true };
   } catch (error) {
-    results.ownerFailure = { helperPid: helperPid || null, ownerExitCode: owner?.exitCode ?? null,
+    results.ownerFailure = { helperPid: helperPid || null, helperAlive: helperPid ? processExists(helperPid) : false, ownerExitCode: owner?.exitCode ?? null,
       ownerSignal: owner?.signalCode ?? null, diagnostics };
     throw error;
   } finally {
