@@ -4,23 +4,25 @@
 
 ## Source and release status
 
-当前已发布测试版为 [0.7.0](https://github.com/asoming/writer-desk/releases/tag/v0.7.0)，新增书架稿件导入和写作工具栏「校对与批注」，包括离线规则校对、段落批注与书签。冻结服务、Electron 和四平台原生安装包验收已通过。新功能操作与截图见[使用指南](../docs/user-guide-zh.md)，完整检查与安装记录见[0.7.0 验收](../docs/acceptance-v0.7.0.md)。
+当前已发布测试版为 [0.8.7](https://github.com/asoming/writer-desk/releases/tag/v0.8.7)。日常升级优先使用「设置 → 更新 → 检查更新」，联网更新默认展开，「安装包更新」折叠为备用。使用方法见[使用指南](../docs/user-guide-zh.md)，本轮检查见[0.8.7 验收](../docs/acceptance-0.8.7.md)。此前稿件导入与校对检查仍见[0.7.0 验收](../docs/acceptance-v0.7.0.md)。
 
 ## Run a Linux release
 
-Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。系统安装使用 `sudo apt install ./WriterDesk-0.7.0-linux-amd64.deb`；`apt` 会安装依赖，在 `/opt/Writer's Desk` 放置程序、注册应用菜单，作品仍使用下文的原有数据目录。也可解压 `WriterDesk-0.7.0-linux-x64.tar.gz` 后直接运行目录里的 `writer-desk`，或执行 `bash install-linux.sh` 注册当前用户的固定安装入口。安装脚本使用包内 Electron 的 Node 运行时，不需要系统 Python 或 Node。
+Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。系统安装使用 `sudo apt install ./WriterDesk-0.8.7-linux-amd64.deb`；`apt` 会安装依赖，在 `/opt/Writer's Desk` 放置程序、注册应用菜单，作品仍使用下文的原有数据目录。也可解压 `WriterDesk-0.8.7-linux-x64.tar.gz` 后直接运行目录里的 `writer-desk`，或执行 `bash install-linux.sh` 注册当前用户的固定安装入口。安装脚本使用包内 Electron 的 Node 运行时，不需要系统 Python 或 Node。
 
-以前通过 `.tar.gz` 安装时，`~/.local/share/applications/writer-desk.desktop` 会优先于 `.deb` 的系统菜单入口，导致图标继续打开旧版。迁移到 `.deb` 时，先保存并退出旧版，确认直接运行 `/opt/Writer's Desk/writer-desk` 能打开新版，再将旧用户入口改名为 `writer-desk.desktop.backup`；设置了 `XDG_DATA_HOME` 时使用其 `applications/` 目录。保留旧 `versions/` 目录和作品目录。系统安装脚本不会遍历或修改用户 home；不要混用两套升级入口。后续系统版重新安装新版 `.deb`，用户安装版继续用下述离线 `.tar.gz` 升级。
+以前通过 `.tar.gz` 安装时，`~/.local/share/applications/writer-desk.desktop` 会优先于 `.deb` 的系统菜单入口，导致图标继续打开旧版。迁移到 `.deb` 时，先保存并退出旧版，确认直接运行 `/opt/Writer's Desk/writer-desk` 能打开新版，再将旧用户入口改名为 `writer-desk.desktop.backup`；设置了 `XDG_DATA_HOME` 时使用其 `applications/` 目录。保留旧 `versions/` 目录和作品目录。系统安装脚本不会遍历或修改用户 home；不要混用两套升级入口。日常升级优先使用「设置 → 更新 → 检查更新」；联网不可用时，系统版使用新版 `.deb`，托管用户安装使用下述离线 `.tar.gz` 备用方式。
 
 默认安装目录为 `~/.local/share/writer-desk/app`，遵循 `XDG_DATA_HOME`。各版放在 `versions/<版本号>`，`current` 原子链接指向已启用版本，固定启动器为 `launch-writer-desk`。菜单入口默认显示“作家工作台”，英语环境显示“Writer's Desk”，可用中英文名称或写作关键词搜索。安装完成后可移走原解压目录；旧版安装路径与快捷方式记录在 `active.json`，旧版本目录保留。安装过程不会关闭正在运行的旧版，请保存并退出后从菜单重新打开。
 
-## Offline installation and upgrades
+## Updates and offline packages
 
-在“设置 → 安装与升级 → 安装升级包”选择可信来源的 `WriterDesk-<版本号>-linux-x64.tar.gz`。同一目录必须有同名 `.sha256` 校验文件，例如 `WriterDesk-0.7.0-linux-x64.sha256`，其内容包含完整压缩包文件名与 SHA256。也支持 `.tar.gz.sha256` 后缀。安装器检查压缩包校验、发行清单、文件散列、架构和版本，拒绝路径穿越、链接、特殊文件以及未列入清单的文件。每个版本的发行目录包含自动生成的 `release-manifest.json`；清单不包含自身的散列。
+日常升级优先打开「设置 → 更新 → 检查更新」。联网更新默认显示，按界面完成检查、下载、校验与保存后安装。0.8.7 为测试版，检查此版本需启用「接收预览版」；升级保留原有选择，不会自动开启。离线升级或联网更新不可用时，再展开「安装包更新」，从固定发行页下载对应安装包。
+
+在“设置 → 更新 → 安装包更新 → 选择安装包”选择可信来源的 `WriterDesk-<版本号>-linux-x64.tar.gz`。同一目录必须有同名 `.sha256` 校验文件，例如 `WriterDesk-0.8.7-linux-x64.sha256`，其内容包含完整压缩包文件名与 SHA256。也支持 `.tar.gz.sha256` 后缀。安装器检查压缩包校验、发行清单、文件散列、架构和版本，拒绝路径穿越、链接、特殊文件以及未列入清单的文件。每个版本的发行目录包含自动生成的 `release-manifest.json`；清单不包含自身的散列。
 
 准备完成只记录 `pending.json`，保持当前版本。点击“重启完成升级”后，程序先确认正文已保存、复验准备好的文件、优雅停止本机服务，再启动新版本。新版本的服务和窗口成功载入后才更新 `current` 与菜单入口；启动失败保留原入口。保存或校验失败会留在原窗口。安装器和设置入口均拒绝降级或用不同文件覆盖同一版本。
 
-也可解压新版后运行其 `bash install-linux.sh` 完成离线升级；此操作在验证复制成功后立即启用新入口，正在运行的窗口继续使用原版，保存退出后重新打开即可。升级始终复用原用户数据目录，不搬移作品库。SHA256 与文件清单用于完整性校验，并非发布者数字签名，应从可信渠道取得升级包。升级流程仅支持 Linux，无网络下载或私有 GitHub 凭据依赖。
+也可解压新版后运行其 `bash install-linux.sh` 完成离线升级；此操作在验证复制成功后立即启用新入口，正在运行的窗口继续使用原版，保存退出后重新打开即可。升级始终复用原用户数据目录，不搬移作品库。SHA256 与文件清单用于完整性校验，并非发布者数字签名，应从可信渠道取得升级包。上述离线 TAR 流程仅支持 Linux；日常联网更新支持 Linux、Windows 与 macOS，不需私有 GitHub 凭据。
 
 程序始终启用 Chromium 沙箱。有些 Linux 发行版限制非特权 user namespace，此时请管理员按本机发行版的 Electron/Chromium 沙箱策略配置系统。不要用 `--no-sandbox` 规避。
 
@@ -57,7 +59,7 @@ npm run build:mac -- --arch x64
 
 Windows 请在 Windows x64 本机用 `.venv-build\Scripts\python.exe` 设置 `WRITER_DESK_BUILD_PYTHON`。macOS 请分别在 Apple Silicon 和 Intel Mac 构建；Node、Python、Electron 和保存服务必须使用同一原生架构。`before-pack.cjs` 检查服务的版本、操作系统及 CPU，拒绝把 Linux 服务误装进 Windows/macOS 包。PyInstaller 不是跨操作系统编译器。
 
-Windows 包支持 Windows 10+ x64，提供可选择目录的当前用户 NSIS 安装器、桌面和开始菜单入口；卸载不主动删除 AppData 作品库。macOS 包支持 macOS 13+，按 arm64 与 x64 分开发行，拖入 Applications 后启动；使用原生窗口按钮、Retina 图标，触控板行为见验收记录。当前 Windows 包无发布者证书，macOS 包仅 ad-hoc 签名，无 Developer ID 和 Apple 公证；这批是未签名测试发行版，首次运行可能遇到系统安全提示。正式公开分发需要补齐证书及公证，不要关闭系统安全保护来绕过检查。网络自动下载更新和商店发布尚未配置。
+Windows 包支持 Windows 10+ x64，提供可选择目录的当前用户 NSIS 安装器、桌面和开始菜单入口；卸载不主动删除 AppData 作品库。macOS 包支持 macOS 13+，按 arm64 与 x64 分开发行，拖入 Applications 后启动；使用原生窗口按钮、Retina 图标，触控板行为见验收记录。当前 Windows 包无发布者证书，macOS 包仅 ad-hoc 签名，无 Developer ID 和 Apple 公证；这批是未签名测试发行版，首次运行可能遇到系统安全提示。正式公开分发需要补齐证书及公证，不要关闭系统安全保护来绕过检查。联网更新已提供检查、下载与校验；自动下载默认关闭，商店发布尚未配置。
 
 手动工作流 `.github/workflows/native-packages.yml` 使用 Ubuntu 22.04 x64、Windows Server 2022 x64、macOS 15 arm64 和 macOS 15 Intel 的原生 runner。触发输入须与 `package.json` 版本完全相同。四个任务先跑存储回归，构建后再跑冻结服务的文件夹、备份、图片、章节历史和删除流程；随后从真正的 `.deb`、`.exe`、`.dmg` 提取/安装 App，检查本机保存、重启持久化、101,506 字示例和 Electron 窗口载入。验证都使用临时作品库；Windows NSIS 验证限定在一次性的 GitHub Actions runner。真实触控板手感、Gatekeeper 下载体验和真实 Windows 桌面仍需人工验收。
 

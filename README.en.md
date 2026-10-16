@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/?lang=en">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.6">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.7">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.6"><img src="https://img.shields.io/badge/release-v0.8.6%20preview-6366f1" alt="Release v0.8.6 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.7"><img src="https://img.shields.io/badge/release-v0.8.7%20preview-6366f1" alt="Release v0.8.7 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -25,11 +25,11 @@ Writer's Desk is a desktop writing app for novels and short stories. Each book h
 
 Writing, saving and backups work offline. AI assistance is optional. The interface supports Chinese and English, light and dark themes, and a warm eye-comfort mode.
 
-[Download](https://github.com/asoming/writer-desk/releases/tag/v0.8.6) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
+[Download](https://github.com/asoming/writer-desk/releases/tag/v0.8.7) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
 
-> Current preview: **0.8.6**. Packages and SHA256 checksums are listed on the [release page](https://github.com/asoming/writer-desk/releases/tag/v0.8.6); verification status is tracked in the [0.8.6 record](docs/acceptance-0.8.6.md). Windows installers are unsigned; macOS uses ad-hoc signing and is not notarized.
+> Current preview: **0.8.7**. Packages and SHA256 checksums are listed on the [release page](https://github.com/asoming/writer-desk/releases/tag/v0.8.7); verification status is tracked in the [0.8.7 record](docs/acceptance-0.8.7.md). Windows installers are unsigned; macOS uses ad-hoc signing and is not notarized.
 
-Version 0.8.6 updates the Windows Online updates → Save and open installer handoff. It waits for the update helper to be ready before the old app exits, then rechecks and opens the downloaded installer. Short codes distinguish saving, missing-file, permission and startup failures. Intact downloads can be retried; missing packages can be downloaded again.
+Version 0.8.7 makes online updates the primary entry in Settings → Updates, expanded by default with a prominent Check for updates button. Installer updates are collapsed as a fallback, with a fixed release-page download link on every platform. The Windows helper fixes from 0.8.6 remain in place.
 
 ## Features
 
@@ -117,7 +117,7 @@ Captured from the actual 0.7.0 interface using an isolated copy of the full samp
 | Multiple AI services | **Settings → AI service**; save separate endpoints, credentials and models, then switch service profiles beside the chat composer. |
 | AI usage | **AI service → AI usage**; inspect actual provider token usage, request time and costs calculated from your configured prices. Unknown usage or prices remain unavailable. |
 | Export templates | Each book’s **Export and backup → Formatted export**; edit paper, margins, fonts, spacing and heading styles, preview, and reuse templates for Word, EPUB and PDF. |
-| In-app updates | **Settings → Installation and updates → Online updates**; check, download, cancel and verify the package for your platform. Save and quit before installation; preview releases are optional. Rate-limited checks automatically use the fixed website update feed. |
+| In-app updates | **Settings → Updates → Check for updates**; online updates is expanded by default. Check, download, cancel and verify the platform package, then save before installation. **Update with an installer** is collapsed as a fallback. Rate-limited checks use the fixed website update feed. |
 | Mobile writing | Open your self-hosted service on a phone; novels use chapters, short stories remain continuous. Writing saves locally before synchronization. |
 | Self-hosted collaboration | **Settings → Sync & collaboration → Open sync settings**; start a local or LAN service, invite editors or viewers, and retain conflicting drafts for review. See the [self-hosting guide](docs/self-host-sync.md). |
 
@@ -149,26 +149,28 @@ DOCX imports text, table text and heading structure. Legacy `.doc`, images, Word
 
 Home aggregates active books. The calendar covers 90 days; streak and lifetime writing days use the full history, with the computer's local date. It counts positive manuscript growth after successful saves; imports and full or selected-paragraph restores do not count. Counts include punctuation and exclude whitespace. Typing and autosave now retain the scroll position in long chapters. See the [user guide](docs/user-guide-zh.md) and [0.6.0 verification record](docs/acceptance-v0.6.0.md).
 
-## Download and install
+## Updates and installation
 
-Download an installer from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.8.6). Check the release assets and [verification record](docs/acceptance-0.8.6.md) for package availability and completed platform checks. Desktop packages include the runtime; end users do not need Python or Node.js.
+For routine upgrades, open **Settings → Updates → Check for updates**. Online updates is visible by default; follow the steps to check, download, verify and save before installation. Version 0.8.7 is a preview release, so enable **Include preview releases** to find it. Upgrading preserves your preference and does not enable it automatically. For offline upgrades or unavailable online updates, expand **Update with an installer** and use the fixed release-page link.
 
-| Platform | Requirements | 0.8.6 installer |
+For a first installation, download the appropriate package from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.8.7). Check the [verification record](docs/acceptance-0.8.7.md) for completed platform checks. Desktop packages include the runtime; end users do not need Python or Node.js.
+
+| Platform | Requirements | 0.8.7 installer |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.8.6-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.6/WriterDesk-0.8.6-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.8.6-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.6/WriterDesk-0.8.6-windows-x64.exe) |
-| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.8.6-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.6/WriterDesk-0.8.6-mac-arm64.dmg) |
-| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.8.6-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.6/WriterDesk-0.8.6-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.8.7-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.8.7-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-windows-x64.exe) |
+| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.8.7-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-mac-arm64.dmg) |
+| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.8.7-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-mac-x64.dmg) |
 
-- **Linux:** run `sudo apt install ./WriterDesk-0.8.6-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
+- **Linux:** run `sudo apt install ./WriterDesk-0.8.7-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
 - **Windows:** run the EXE and follow the installer. It creates desktop and Start menu shortcuts.
 - **macOS:** open the DMG, drag the app to Applications, then launch it from Applications.
 
-Save your work and quit the older app before upgrading. Install the new package for your platform; personal books stay in a separate user data directory.
+After the online download is verified, follow the app's save-and-install steps. If you use a fallback installer, save your work and quit the old app normally first. Personal books stay in a separate user data directory.
 
-If an older Windows version fails at **Save and open installer**, save your work and quit, then run this release's EXE manually once. Future in-app updates use the updated implementation.
+Only if the built-in helper in Windows 0.8.5 or earlier has already failed at **Save and open installer**, save your work, quit normally and run this release's EXE manually once. Continue using in-app online updates afterward.
 
-The Linux [WriterDesk-0.8.6-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.6/WriterDesk-0.8.6-linux-x64.tar.gz) supports the existing per-user installation and offline updater. This release retains the 0.6.1 fix for the incomplete 0.6.0 TAR manifest; see the [0.6.1 verification record](docs/acceptance-v0.6.1.md) for the historical issue. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
+The Linux [WriterDesk-0.8.7-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-linux-x64.tar.gz) supports the existing per-user installation and offline updater. This release retains the 0.6.1 fix for the incomplete 0.6.0 TAR manifest; see the [0.6.1 verification record](docs/acceptance-v0.6.1.md) for the historical issue. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
 
 The release page lists SHA256 checksum files and platform verification results. See the [distribution checklist](docs/distribution-checklist.md) for signing and verification details. Mac supports two-finger scrolling, map panning and pinch-to-zoom, and a save-aware swipe back to the bookshelf. Physical trackpad feel still needs hands-on verification.
 
@@ -303,6 +305,7 @@ The app uses Electron, a vanilla JavaScript interface and a Python saving servic
 - [Chinese quick start](docs/quickstart-zh.md): first use after installation.
 - [0.6.1 packaging verification](docs/acceptance-v0.6.1.md): actual TAR installation, stable launcher and native CI.
 - [0.6.0 verification record](docs/acceptance-v0.6.0.md): completed checks and remaining limits.
+- [0.8.7 verification](docs/acceptance-0.8.7.md): primary online updates, collapsed fallback installers and the fixed cross-platform release-page link.
 - [0.8.6 verification](docs/acceptance-0.8.6.md): Windows helper readiness and exit handoff, installer rechecking, stage-specific errors and retry behavior.
 - [0.8.5 verification](docs/acceptance-0.8.5.md): article-style Skill dialogs, automatically saved switches, the menu and prompt-preserving Try now.
 - [0.8.4 verification](docs/acceptance-0.8.4.md): portable built-in rules, custom Skill management, AI generation and saving chat replies as Skills.
