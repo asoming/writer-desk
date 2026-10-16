@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/?lang=en">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.2">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.3">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.2"><img src="https://img.shields.io/badge/release-v0.8.2%20preview-6366f1" alt="Release v0.8.2 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.3"><img src="https://img.shields.io/badge/release-v0.8.3%20preview-6366f1" alt="Release v0.8.3 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -25,11 +25,11 @@ Writer's Desk is a desktop writing app for novels and short stories. Each book h
 
 Writing, saving and backups work offline. AI assistance is optional. The interface supports Chinese and English, light and dark themes, and a warm eye-comfort mode.
 
-[Download](https://github.com/asoming/writer-desk/releases/tag/v0.8.2) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
+[Download](https://github.com/asoming/writer-desk/releases/tag/v0.8.3) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
 
-> Current preview: **0.8.2**. Packages and SHA256 checksums are listed on the [release page](https://github.com/asoming/writer-desk/releases/tag/v0.8.2); verification status is tracked in the [0.8.2 record](docs/acceptance-0.8.2.md). Windows installers are unsigned; macOS uses ad-hoc signing and is not notarized.
+> Current preview: **0.8.3**. Packages and SHA256 checksums are listed on the [release page](https://github.com/asoming/writer-desk/releases/tag/v0.8.3); verification status is tracked in the [0.8.3 record](docs/acceptance-0.8.3.md). Windows installers are unsigned; macOS uses ad-hoc signing and is not notarized.
 
-Version 0.8.2 adds a default home dashboard with library-wide writing activity, aligns same-chapter comparison and simplifies action toolbars. Chapter organization, materials, external backups, AI profiles, export templates and self-hosted mobile collaboration remain available.
+Version 0.8.3 adds main relationships, all relationships and a character-development matrix. Same-chapter comparison now keeps its original and edited drafts independently, retaining both after closing, reopening or restarting. The home dashboard, chapter organization, materials, backups and self-hosted mobile collaboration remain available.
 
 ## Features
 
@@ -38,7 +38,7 @@ Version 0.8.2 adds a default home dashboard with library-wide writing activity, 
 | Home | Library activity, daily goal, streak, calendar, 7 / 30-day trend and recent books; shown on every launch. |
 | Bookshelf | Manage novels and short stories separately; edit titles and covers; choose from ten cover templates or upload an image; generate a random title; open each book's folder. |
 | Outlines | Organize book, volume, chapter, scene and setting notes; use topic categories and search; read a continuous outline; create a volume and chapter directory from the outline. |
-| Character maps | Maintain profiles, aliases, development across volumes and relationships; arrange themed maps and groups; filter relationships; jump between notes and chapters. |
+| Character maps | Choose members for main relationships; browse all relationships, groups, filters and themed maps; edit character development by volume and follow manuscript links; maintain profiles and aliases. |
 | Writing | Novel chapters or one continuous short-story manuscript; autosave, drag sorting, batch moves, split and merge, same-chapter comparison, whole-book find and replace, focus mode and resizable panels. |
 | Manuscript import | Preview local DOCX, TXT and Markdown files, adjust titles, splitting strategy and encoding, then create a separate book; short stories remain continuous. |
 | Proofreading and annotations | Offline rules and per-book dictionaries; paragraph annotations and named bookmarks, with precise jumps, resolution status and manual relinking. |
@@ -54,11 +54,22 @@ Links between outlines, characters and prose target **chapters** and remain inta
 
 ## Preview
 
+![Writer's Desk 0.8.3: main relationships with character roles, goals and connections](docs/character-main-v0.8.3.png)
+
+![Writer's Desk 0.8.3: character development by volume, with editable cards and manuscript links](docs/character-growth-v0.8.3.png)
+
+Actual 0.8.3 interface using an isolated copy of the 101,506-character sample novel.
+
+<details>
+<summary>0.8.2 home and earlier comparison layout</summary>
+
 ![Writer's Desk 0.8.2: home dashboard with writing activity and recent books](docs/home-v0.8.2.png)
 
-![Writer's Desk 0.8.2: read-only original with colored changes beside the editable manuscript](docs/compare-v0.8.2.png)
+![Writer's Desk 0.8.2: original text beside the editable manuscript](docs/compare-v0.8.2.png)
 
-Actual 0.8.2 interface using an isolated copy of the 101,506-character sample novel.
+These historical screenshots show the 0.8.2 layout. Version 0.8.3 stores comparison drafts independently; exit and adoption behavior is described below.
+
+</details>
 
 <details>
 <summary>0.8.0 mobile writing</summary>
@@ -99,7 +110,8 @@ Captured from the actual 0.7.0 interface using an isolated copy of the full samp
 | Chapter organization | **Writing tools → Organize volumes and chapters**; drag to reorder and move selected chapters between volumes. |
 | Split and merge | **Writing tools → Split this chapter**, or **Organize volumes and chapters → Merge selected**; split at the caret or selection, or merge consecutive chapters. Original prose and linked records are preserved. Short stories remain a single manuscript. |
 | Global search | Top-bar search icon; find prose, outlines, characters, notes and material excerpts across active books, then open the matching record. |
-| Compare and edit | **Compare and edit** icon in the writing toolbar; the left pane preserves the same chapter’s original text with colored changes and insertion markers, while the right pane edits and autosaves normally. The panes start equally wide and aligned; the exit icon replaces chapter-order controls while comparing. Closing resets the comparison baseline. Available for novels and short stories. |
+| Character development | **Character maps → Character development**; view characters against volumes, click a card to edit its complete text, or follow character and chapter links. Short stories use goals, flaws and outcomes without invented volumes. |
+| Compare and edit | The writing-toolbar icon opens the same chapter’s original and edited drafts. Autosave and `Ctrl / Command + S` save the independent local pair. Clicking the icon again exits without applying edits; the X offers **Save changes**, **Exit without saving**, or **Cancel**. Reopening or restarting retains both drafts; explicit adoption also keeps the original and edited pair. |
 | Materials library | **Writing tools → Asset library**; store images, PDFs, text and author-written web excerpts, linked to chapters or notes. |
 | Enhanced proofreading | **Proofreading and annotations → Local proofreading**; additional deterministic redundancy, grammar-pattern and ambiguous-reference suggestions for manual review. |
 | Multiple AI services | **Settings → AI service**; save separate endpoints, credentials and models, then switch service profiles beside the chat composer. |
@@ -108,6 +120,8 @@ Captured from the actual 0.7.0 interface using an isolated copy of the full samp
 | In-app updates | **Settings → Installation and updates → Online updates**; check, download, cancel and verify the package for your platform. Save and quit before installation; preview releases are optional. Rate-limited checks automatically use the fixed website update feed. |
 | Mobile writing | Open your self-hosted service on a phone; novels use chapters, short stories remain continuous. Writing saves locally before synchronization. |
 | Self-hosted collaboration | **Settings → Sync & collaboration → Open sync settings**; start a local or LAN service, invite editors or viewers, and retain conflicting drafts for review. See the [self-hosting guide](docs/self-host-sync.md). |
+
+Comparison drafts stay local and are excluded from per-book exports, automatic backups, book history and synchronization. Explicit **Save changes** updates the canonical manuscript, its history and normal exports; annotations and bookmarks are reanchored, and writing activity follows the normal saved-manuscript rules. If the canonical text changed elsewhere, adoption requires renewed confirmation.
 
 Mobile PWA installation and offline startup require trusted HTTPS and a completed first cache; ordinary LAN HTTP supports online writing. Collaboration uses periodic synchronization and three-way merges, without live shared cursors. Offline disks and unavailable devices retain pending cleanup; permanent deletion cannot remotely erase an offline or revoked device. Enhanced proofreading does not provide complete semantic analysis or automatic grammar rewriting. macOS updates open a verified DMG with installation guidance.
 
@@ -137,22 +151,22 @@ Home aggregates active books. The calendar covers 90 days; streak and lifetime w
 
 ## Download and install
 
-Download an installer from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.8.2). Check the release assets and [verification record](docs/acceptance-0.8.2.md) for package availability and completed platform checks. Desktop packages include the runtime; end users do not need Python or Node.js.
+Download an installer from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.8.3). Check the release assets and [verification record](docs/acceptance-0.8.3.md) for package availability and completed platform checks. Desktop packages include the runtime; end users do not need Python or Node.js.
 
-| Platform | Requirements | 0.8.2 installer |
+| Platform | Requirements | 0.8.3 installer |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.8.2-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.2/WriterDesk-0.8.2-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.8.2-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.2/WriterDesk-0.8.2-windows-x64.exe) |
-| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.8.2-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.2/WriterDesk-0.8.2-mac-arm64.dmg) |
-| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.8.2-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.2/WriterDesk-0.8.2-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.8.3-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.3/WriterDesk-0.8.3-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.8.3-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.3/WriterDesk-0.8.3-windows-x64.exe) |
+| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.8.3-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.3/WriterDesk-0.8.3-mac-arm64.dmg) |
+| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.8.3-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.3/WriterDesk-0.8.3-mac-x64.dmg) |
 
-- **Linux:** run `sudo apt install ./WriterDesk-0.8.2-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
+- **Linux:** run `sudo apt install ./WriterDesk-0.8.3-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
 - **Windows:** run the EXE and follow the installer. It creates desktop and Start menu shortcuts.
 - **macOS:** open the DMG, drag the app to Applications, then launch it from Applications.
 
 Save your work and quit the older app before upgrading. Install the new package for your platform; personal books stay in a separate user data directory.
 
-The Linux [WriterDesk-0.8.2-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.2/WriterDesk-0.8.2-linux-x64.tar.gz) supports the existing per-user installation and offline updater. This release retains the 0.6.1 fix for the incomplete 0.6.0 TAR manifest; see the [0.6.1 verification record](docs/acceptance-v0.6.1.md) for the historical issue. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
+The Linux [WriterDesk-0.8.3-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.3/WriterDesk-0.8.3-linux-x64.tar.gz) supports the existing per-user installation and offline updater. This release retains the 0.6.1 fix for the incomplete 0.6.0 TAR manifest; see the [0.6.1 verification record](docs/acceptance-v0.6.1.md) for the historical issue. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
 
 The release page lists SHA256 checksum files and platform verification results. See the [distribution checklist](docs/distribution-checklist.md) for signing and verification details. Mac supports two-finger scrolling, map panning and pinch-to-zoom, and a save-aware swipe back to the bookshelf. Physical trackpad feel still needs hands-on verification.
 
@@ -196,7 +210,7 @@ The desktop app stores books in SQLite under the system user data directory, sep
 - **History:** automatic snapshots are enabled by default, created after successful saves at five-minute intervals, with up to twenty per book. These settings can be changed. Preview a snapshot before restoring; the app retains the current version.
 - **Deletion:** recycled books are retained for thirty days and cleaned up when due. Deleted chapter history records the deletion time and offers restore or permanent deletion. Permanent deletion clears relevant app-managed local, history, external-backup and synchronization copies. Unavailable destinations keep pending cleanup records; offline or revoked devices cannot be erased remotely. Exports you made yourself and system backups remain outside its scope.
 
-Image and PDF materials travel with full v4 JSON; manuscript and formatted exports do not contain the entire materials library. Keep important full-book JSON backups on another disk. Activity records remain in the local database; full JSON retains the legacy per-book goal but not activity history; the new home goal is stored separately in local settings. AI conversations, chat images, API keys and local Skills are not included in book JSON exports. Personal databases and local configuration are excluded from source distributions. Detailed recovery and deletion behavior is documented in the [Chinese user guide](docs/user-guide-zh.md).
+Image and PDF materials travel with full v4 JSON; manuscript and formatted exports do not contain the entire materials library. Keep important full-book JSON backups on another disk. Activity records remain in the local database; full JSON retains the legacy per-book goal but not activity history; the new home goal is stored separately in local settings. Independent comparison drafts remain local and are excluded from per-book JSON, manuscript exports, app-managed automatic backups and synchronization. Explicitly adopted prose follows normal manuscript storage rules. AI conversations, chat images, API keys and local Skills are not included in book JSON exports. Personal databases and local configuration are excluded from source distributions. Detailed recovery and deletion behavior is documented in the [Chinese user guide](docs/user-guide-zh.md).
 
 ## Optional AI assistance
 
@@ -270,6 +284,7 @@ The app uses Electron, a vanilla JavaScript interface and a Python saving servic
 - [Chinese quick start](docs/quickstart-zh.md): first use after installation.
 - [0.6.1 packaging verification](docs/acceptance-v0.6.1.md): actual TAR installation, stable launcher and native CI.
 - [0.6.0 verification record](docs/acceptance-v0.6.0.md): completed checks and remaining limits.
+- [0.8.3 verification](docs/acceptance-0.8.3.md): main and total relationships, character-development matrix, and durable comparison drafts with explicit adoption.
 - [0.8.2 verification](docs/acceptance-0.8.2.md): default homepage, library statistics, aligned comparison and icon layout checks.
 - [0.8.0 verification](docs/acceptance-0.8.0.md): editing, materials, backups, AI services, synchronization and update boundaries.
 - [Self-hosted sync and mobile writing](docs/self-host-sync.md): LAN, HTTPS, mobile offline access and permissions.
