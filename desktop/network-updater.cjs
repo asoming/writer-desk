@@ -94,7 +94,16 @@ function errorMessage(error,language='zh'){
     'network-unsafe-cache':['更新缓存目录包含异常链接，已停止操作。','The update cache contains an unexpected link. Operation stopped.'],
     'network-no-update':['请先检查并下载新版本。','Check for and download an update first.'],
     'network-downgrade':['此版本不高于当前安装版本，已取消更新。','This release is not newer than the installed version. Update canceled.'],
-    'network-invalid-settings':['更新设置不正确。','Invalid update settings.']
+    'network-invalid-settings':['更新设置不正确。','Invalid update settings.'],
+    "network-save-failed":["保存尚未完成，请先返回写作保存后重试。", "Saving has not completed. Save your writing and try again."],
+    "network-invalid-installer":["安装文件路径不正确，请重新下载更新。", "The installer path is invalid. Download the update again."],
+    "network-installer-missing":["找不到 Windows 安装助手，请手动下载安装包。", "The Windows update helper was not found. Download the installer manually."],
+    "network-installer-blocked":["系统阻止启动安装助手，请手动下载安装包。", "The system blocked the update helper. Download the installer manually."],
+    "network-installer-start-failed":["无法启动安装助手，请重试或手动下载安装包。", "Could not start the update helper. Try again or download the installer manually."],
+    "network-installer-timeout":["安装助手未响应，请重试或手动下载安装包。", "The update helper did not respond. Try again or download the installer manually."],
+    "network-installer-failed":["无法打开安装器，请手动下载安装包。", "Could not open the installer. Download it manually."],
+    "network-package-missing":["已下载的安装包不存在，请重新下载。", "The downloaded installer is missing. Download it again."],
+    "network-storage-permission":["无法读取更新文件，请检查目录权限。", "Could not read the update files. Check folder permissions."]
   };
   return(errors[error?.code]||['无法完成更新，请检查网络、磁盘空间和目录权限。','Could not finish the update. Check the network, disk space and folder permissions.'])[language==='en'?1:0];
 }
@@ -111,10 +120,16 @@ function createNetworkUpdater(options){
   async function verifyReceipt(value){
     if(!value||value.format!=='writer-desk-network-download'||value.platform!==platform||value.arch!==arch||value.installKind!==installKind||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/.test(value.sha256)||!Number.isSafeInteger(value.size)||value.size<1||value.size>MAX_ASSET)fail('network-invalid-receipt');
     versionParts(value.version);if(compareVersions(value.version,minimumVersion())<=0)fail('network-downgrade');
+    try {
     const file=location(value);safeDirectory(fs,path.dirname(file));const stat=safeFile(fs,file,MAX_ASSET);
     if(stat.size!==value.size||await hashFile(fs,file)!==value.sha256)fail('network-hash-mismatch');
     const sidecar=path.join(path.dirname(file),sidecarName(value.filename));safeFile(fs,sidecar,MAX_CHECKSUM);
     if(checksumValue(fs.readFileSync(sidecar),value.filename)!==value.sha256)fail('network-hash-mismatch');return file;
+    } catch(error) {
+      if(error.code==='ENOENT')fail('network-package-missing');
+      if(['EACCES','EPERM'].includes(error.code))fail('network-storage-permission');
+      throw error;
+    }
   }
   async function load(){
     if(loadPromise)return loadPromise;
@@ -201,7 +216,7 @@ function createNetworkUpdater(options){
       try{const file=await verifyReceipt(receipt);if(installKind==='managed'){
         if(!options.updater?.stageArchive)fail('network-unsupported');const result=await options.updater.stageArchive(file,{...options.updateOptions?.(),currentVersion:minimumVersion(),arch});notify({phase:'staged',pendingVersion:receipt.version});return{mode:'managed',version:receipt.version,...result};
       }notify({phase:'downloaded'});return{mode:installKind,file,version:receipt.version,sha256:receipt.sha256};}
-      catch(error){if(['network-hash-mismatch','network-invalid-receipt','network-downgrade'].includes(error.code))receipt=null;notify({phase:'error',errorCode:error.code||'network-failed'});throw error;}finally{busy=false;}
+      catch(error){if(['network-hash-mismatch','network-invalid-receipt','network-downgrade','network-package-missing'].includes(error.code))receipt=null;notify({phase:'error',errorCode:error.code||'network-failed'});throw error;}finally{busy=false;}
     }
   });
 }

@@ -50,26 +50,35 @@ function networkService() {
 }
 async function installNetworkUpdate() {
   if (updateBusy || closing || allowQuit) throw Object.assign(new Error(), { code: 'network-busy' });
-  if (!await waitForSave()) throw Object.assign(new Error(), { code: 'network-save-failed' });
   updateBusy = true;
-  let result;
-  try { result = await networkService().prepareInstall(); }
-  finally { updateBusy = false; }
-  if (result.mode === 'managed') return restartAfterUpdate();
-  if (result.mode === 'nsis') {
-    // The verified installer is launched only in the main process, after the
-    // renderer has committed its latest draft. No renderer path is accepted.
-    await updateInstaller.launch({ file: result.file, sha256: result.sha256, pid: process.pid }); allowQuit = true;
-    if (window && !window.isDestroyed()) window.destroy();
-    await stopService(); app.quit();
+  let helper = null;
+  try {
+    if (!await waitForSave()) throw Object.assign(new Error(), { code: 'network-save-failed' });
+    const result = await networkService().prepareInstall();
+    if (result.mode === 'managed') {
+      // Transfer the lock synchronously; restartAfterUpdate takes it before awaiting.
+      updateBusy = false;
+      return await restartAfterUpdate();
+    }
+    if (result.mode === 'nsis') {
+      helper = await updateInstaller.launch({ file: result.file, sha256: result.sha256, pid: process.pid });
+      // The writer may have changed while hashing or starting the helper.
+      if (!await waitForSave()) throw Object.assign(new Error(), { code: 'network-save-failed' });
+      allowQuit = true;
+      if (window && !window.isDestroyed()) window.destroy();
+      await stopService(); app.quit();
+      return { installerOpened: true };
+    }
+    const error = await shell.openPath(result.file);
+    if (error) throw Object.assign(new Error(), { code: 'network-installer-failed' });
+    if (result.mode === 'dmg') await dialog.showMessageBox(window, { type: 'info', title: title(),
+      message: text('安装文件已校验并打开', 'Verified installer opened'),
+      detail: text('退出作家工作台后，将新版本拖入 Applications 替换旧版，再重新打开。系统可能要求确认打开未公证的应用。', 'Quit Writer’s Desk, drag the new app into Applications to replace the previous version, then reopen it. macOS may require confirmation for this unnotarized app.') });
     return { installerOpened: true };
+  } finally {
+    if (!allowQuit) helper?.cancel?.();
+    updateBusy = false;
   }
-  const error = await shell.openPath(result.file);
-  if (error) throw Object.assign(new Error(), { code: 'network-installer-failed' });
-  if (result.mode === 'dmg') await dialog.showMessageBox(window, { type: 'info', title: title(),
-    message: text('安装文件已校验并打开', 'Verified installer opened'),
-    detail: text('退出作家工作台后，将新版本拖入 Applications 替换旧版，再重新打开。系统可能要求确认打开未公证的应用。', 'Quit Writer’s Desk, drag the new app into Applications to replace the previous version, then reopen it. macOS may require confirmation for this unnotarized app.') });
-  return { installerOpened: true };
 }
 function updateFailure(error) { return { error: updater.errorMessage(error, language), code: typeof error?.code === 'string' && error.code.startsWith('update-') ? error.code : 'update-failed' }; }
 async function installUpdate() {
@@ -415,13 +424,21 @@ ipcMain.on('writer:save-result', (event, result) => {
 function waitForSave() {
   if (!window || window.isDestroyed()) return Promise.resolve(true);
   if (!saveReady) return Promise.resolve(false);
-  return new Promise(resolve => {
-    const token = randomBytes(16).toString('hex');
-    const timer = setTimeout(() => finish(false), 15000);
-    function finish(value) { clearTimeout(timer); closeRequest = null; resolve(value); }
-    closeRequest = { token, resolve: finish };
-    window.webContents.send('writer:before-close', token);
-  });
+  if (closeRequest) return closeRequest.promise;
+  const token = randomBytes(16).toString('hex');
+  let complete;
+  const promise = new Promise(resolve => { complete = resolve; });
+  const request = { token, promise, resolve: finish };
+  let finished = false;
+  const timer = setTimeout(() => finish(false), 15000);
+  function finish(value) {
+    if (finished) return; finished = true; clearTimeout(timer);
+    if (closeRequest === request) closeRequest = null;
+    complete(value);
+  }
+  closeRequest = request;
+  window.webContents.send('writer:before-close', token);
+  return promise;
 }
 async function requestClose() {
   if (closing || allowQuit || updateBusy) return;

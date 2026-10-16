@@ -124,3 +124,18 @@ test('fallback packages retain mandatory sidecar, byte checksum, receipt and no-
     }finally{h.close();}
   }
 });
+
+test('a removed Windows installer invalidates the receipt and allows downloading it again',async()=>{
+  const h=setup({platform:'win32',arch:'x64',installKind:'nsis'});
+  try{await h.updater.check();await h.updater.download();fs.unlinkSync(path.join(h.directory,'0.8.0',h.item.name));
+    await assert.rejects(h.updater.prepareInstall(),error=>error.code==='network-package-missing');
+    const state=await h.updater.info();assert.equal(state.phase,'error');assert.equal(state.errorCode,'network-package-missing');assert.equal(state.downloadedVersion,'');assert.equal(state.candidate.version,'0.8.0');
+    await h.updater.download();assert.equal((await h.updater.prepareInstall()).mode,'nsis');
+  }finally{h.close();}
+});
+test('installer save, startup, missing-package and permission failures have actionable messages',()=>{
+  const {errorMessage}=require('../desktop/network-updater.cjs');
+  for(const code of ['network-save-failed','network-invalid-installer','network-installer-missing','network-installer-blocked','network-installer-start-failed','network-installer-timeout','network-installer-failed','network-package-missing','network-storage-permission']){
+    assert.doesNotMatch(errorMessage({code}),/检查网络、磁盘空间/);assert.doesNotMatch(errorMessage({code},'en'),/network, disk space/);
+  }
+});
