@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/?lang=en">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.4">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.5">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.4"><img src="https://img.shields.io/badge/release-v0.8.4%20preview-6366f1" alt="Release v0.8.4 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.5"><img src="https://img.shields.io/badge/release-v0.8.5%20preview-6366f1" alt="Release v0.8.5 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -25,11 +25,11 @@ Writer's Desk is a desktop writing app for novels and short stories. Each book h
 
 Writing, saving and backups work offline. AI assistance is optional. The interface supports Chinese and English, light and dark themes, and a warm eye-comfort mode.
 
-[Download](https://github.com/asoming/writer-desk/releases/tag/v0.8.4) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
+[Download](https://github.com/asoming/writer-desk/releases/tag/v0.8.5) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
 
-> Current preview: **0.8.4**. Packages and SHA256 checksums are listed on the [release page](https://github.com/asoming/writer-desk/releases/tag/v0.8.4); verification status is tracked in the [0.8.4 record](docs/acceptance-0.8.4.md). Windows installers are unsigned; macOS uses ad-hoc signing and is not notarized.
+> Current preview: **0.8.5**. Packages and SHA256 checksums are listed on the [release page](https://github.com/asoming/writer-desk/releases/tag/v0.8.5); verification status is tracked in the [0.8.5 record](docs/acceptance-0.8.5.md). Windows installers are unsigned; macOS uses ad-hoc signing and is not notarized.
 
-Version 0.8.4 includes portable built-in writing rules. Create, edit, import and export custom Skills, generate a rule with AI, or save a chat reply as a Skill. Character relationship maps, development across volumes and independently saved comparison drafts remain available.
+Version 0.8.5 opens Skills in a readable article-style dialog. Toggle switches save default selections automatically; the menu offers editing, copying, export and references. Try now opens the current book's conversation without replacing its prompt or sending a request. Bundled and custom writing rules remain portable.
 
 ## Features
 
@@ -151,22 +151,22 @@ Home aggregates active books. The calendar covers 90 days; streak and lifetime w
 
 ## Download and install
 
-Download an installer from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.8.4). Check the release assets and [verification record](docs/acceptance-0.8.4.md) for package availability and completed platform checks. Desktop packages include the runtime; end users do not need Python or Node.js.
+Download an installer from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.8.5). Check the release assets and [verification record](docs/acceptance-0.8.5.md) for package availability and completed platform checks. Desktop packages include the runtime; end users do not need Python or Node.js.
 
-| Platform | Requirements | 0.8.4 installer |
+| Platform | Requirements | 0.8.5 installer |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.8.4-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.8.4-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-windows-x64.exe) |
-| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.8.4-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-mac-arm64.dmg) |
-| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.8.4-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.8.5-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.8.5-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-windows-x64.exe) |
+| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.8.5-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-mac-arm64.dmg) |
+| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.8.5-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-mac-x64.dmg) |
 
-- **Linux:** run `sudo apt install ./WriterDesk-0.8.4-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
+- **Linux:** run `sudo apt install ./WriterDesk-0.8.5-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
 - **Windows:** run the EXE and follow the installer. It creates desktop and Start menu shortcuts.
 - **macOS:** open the DMG, drag the app to Applications, then launch it from Applications.
 
 Save your work and quit the older app before upgrading. Install the new package for your platform; personal books stay in a separate user data directory.
 
-The Linux [WriterDesk-0.8.4-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-linux-x64.tar.gz) supports the existing per-user installation and offline updater. This release retains the 0.6.1 fix for the incomplete 0.6.0 TAR manifest; see the [0.6.1 verification record](docs/acceptance-v0.6.1.md) for the historical issue. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
+The Linux [WriterDesk-0.8.5-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-linux-x64.tar.gz) supports the existing per-user installation and offline updater. This release retains the 0.6.1 fix for the incomplete 0.6.0 TAR manifest; see the [0.6.1 verification record](docs/acceptance-v0.6.1.md) for the historical issue. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
 
 The release page lists SHA256 checksum files and platform verification results. See the [distribution checklist](docs/distribution-checklist.md) for signing and verification details. Mac supports two-finger scrolling, map panning and pinch-to-zoom, and a save-aware swipe back to the bookshelf. Physical trackpad feel still needs hands-on verification.
 
@@ -222,13 +222,24 @@ You can keep several service profiles and switch them in chat. Usage records sto
 
 Book context and attached images are sent only when you submit a request. Ordinary writing, saving and local mention indexing do not need AI. Context size is validated by the model service by default; the app does not impose a fixed character cap or silently truncate your material. API keys are stored in separate local configuration.
 
-![Writer's Desk 0.8.4: bundled and custom writing Skills](docs/skills-manager-v0.8.4.png)
+![Writer's Desk 0.8.5: article-style Skill dialog with toggle and menu](docs/skills-viewer-v0.8.5.png)
 
 **Settings → Writing Skills** manages bundled and custom writing rules. The installers include original rules authored for this project for Chinese fiction, novel planning and natural Chinese prose. They retain the `chinese-novelist`, `novelskill` and `human-writing` IDs for compatibility with existing selections. These bundled rules work on another computer without Codex; configure your AI service URL, key and model separately on that computer.
 
-Create, view, edit and delete custom Skills; import Markdown or an app-exported `.writer-skill.json` package; export an individual Skill to move it to another computer. File imports and AI-generated rules open as editable previews and enter the library only after you save them. A completed AI reply can also be opened with **Save as Skill**, edited and saved. Select rules and save the default selection, or choose them temporarily in the chat materials panel, to include them in AI requests.
+Create, view, edit and delete custom Skills; import Markdown or an app-exported `.writer-skill.json` package; export an individual Skill to move it to another computer. File imports and AI-generated rules open as editable previews and enter the library only after you save them. A completed AI reply can also be opened with **Save as Skill**, edited and saved. Toggle default rules on or off; rule selections and the default writing task save automatically, with the previous choice restored if saving fails. Chat materials can override the selection for a request. Rules accompany only requests you explicitly send.
+
+**View Skill** opens an article-style dialog. Follow reference links in the text or use the menu to browse reference files. **Try now** selects this Skill in the current book's AI conversation while preserving its prompt and task; it does not send a request. Select a book from the bookshelf first if none is open. In the desktop app, the menu can also show the bundled folder or local copy in the file manager.
 
 The existing local Codex import remains available. Imported personal copies and local edits take priority over bundled rules with the same ID; restoring a bundled Skill removes only its local override. Downloaded personal Skill files are excluded from the source and installers. The app reads Markdown rules and references without executing scripts or automatically changing your manuscript. See the [Writing Skills guide](docs/user-guide-zh.md#写作-skill) for the full workflow.
+
+<details>
+<summary>0.8.4 writing Skill manager</summary>
+
+![Writer's Desk 0.8.4: bundled and custom writing Skills](docs/skills-manager-v0.8.4.png)
+
+Historical 0.8.4 manager screenshot. Version 0.8.5 uses an article-style detail dialog and automatically saved toggle switches.
+
+</details>
 
 ## Run from source
 
@@ -290,6 +301,7 @@ The app uses Electron, a vanilla JavaScript interface and a Python saving servic
 - [Chinese quick start](docs/quickstart-zh.md): first use after installation.
 - [0.6.1 packaging verification](docs/acceptance-v0.6.1.md): actual TAR installation, stable launcher and native CI.
 - [0.6.0 verification record](docs/acceptance-v0.6.0.md): completed checks and remaining limits.
+- [0.8.5 verification](docs/acceptance-0.8.5.md): article-style Skill dialogs, automatically saved switches, the menu and prompt-preserving Try now.
 - [0.8.4 verification](docs/acceptance-0.8.4.md): portable built-in rules, custom Skill management, AI generation and saving chat replies as Skills.
 - [0.8.3 verification](docs/acceptance-0.8.3.md): main and total relationships, character-development matrix, and durable comparison drafts with explicit adoption.
 - [0.8.2 verification](docs/acceptance-0.8.2.md): default homepage, library statistics, aligned comparison and icon layout checks.

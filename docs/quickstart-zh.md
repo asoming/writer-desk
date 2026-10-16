@@ -1,21 +1,21 @@
-# 快速上手 · 作家工作台 0.8.4
+# 快速上手 · 作家工作台 0.8.5
 
 作家工作台是本地小说写作 App。长篇按卷章组织，短篇直接编辑一篇连续正文。写作、保存、备份、本地策划、稿件导入与规则校对无需联网；AI 按需配置。
 
 [使用指南](user-guide-zh.md) · [下载](https://github.com/asoming/writer-desk/releases) · [0.7.0 功能验收](acceptance-v0.7.0.md) · [0.6.1 打包验收](acceptance-v0.6.1.md)
 
-本文适用于 0.8.4 测试版，内置写作规则可跨电脑使用，并支持管理自定义 Skill 与 AI 生成规则。各平台安装包与验收状态见[本轮验收](acceptance-0.8.4.md)及发行页。
+本文适用于 0.8.5 测试版，Skill 采用文章式详情弹窗和自动保存滑动开关；「立即试用」保留当前提示词进入作品对话，不自动发送。内置规则仍可跨电脑使用。各平台安装包与验收状态见[本轮验收](acceptance-0.8.5.md)及发行页。
 
 ## 安装与启动
 
-从 [0.8.4 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.4)下载对应文件与 SHA256 校验清单，安装包可用状态以发行页为准。
+从 [0.8.5 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.5)下载对应文件与 SHA256 校验清单，安装包可用状态以发行页为准。
 
-| 系统 | 0.8.4 安装包 | 安装方式 |
+| 系统 | 0.8.5 安装包 | 安装方式 |
 | --- | --- | --- |
-| Ubuntu 22.04+ / 兼容 Debian 桌面，x64 | `WriterDesk-0.8.4-linux-amd64.deb` | 使用系统软件安装器，或 `sudo apt install ./WriterDesk-0.8.4-linux-amd64.deb` |
-| Windows 10 / 11，x64 | `WriterDesk-0.8.4-windows-x64.exe` | 运行安装向导 |
-| macOS 13+，Apple 芯片 | `WriterDesk-0.8.4-mac-arm64.dmg` | 将 App 拖入 Applications |
-| macOS 13+，Intel | `WriterDesk-0.8.4-mac-x64.dmg` | 将 App 拖入 Applications |
+| Ubuntu 22.04+ / 兼容 Debian 桌面，x64 | `WriterDesk-0.8.5-linux-amd64.deb` | 使用系统软件安装器，或 `sudo apt install ./WriterDesk-0.8.5-linux-amd64.deb` |
+| Windows 10 / 11，x64 | `WriterDesk-0.8.5-windows-x64.exe` | 运行安装向导 |
+| macOS 13+，Apple 芯片 | `WriterDesk-0.8.5-mac-arm64.dmg` | 将 App 拖入 Applications |
+| macOS 13+，Intel | `WriterDesk-0.8.5-mac-x64.dmg` | 将 App 拖入 Applications |
 
 桌面包包含运行环境，无需另外安装 Python 或 Node.js。升级前保存并正常退出旧版，安装后从固定应用入口打开，在「设置 → 关于」确认版本。个人作品保存在用户数据目录，独立于安装目录。
 

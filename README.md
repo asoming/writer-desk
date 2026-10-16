@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.4">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.5">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.4"><img src="https://img.shields.io/badge/release-v0.8.4%20preview-6366f1" alt="Release v0.8.4 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.5"><img src="https://img.shields.io/badge/release-v0.8.5%20preview-6366f1" alt="Release v0.8.5 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -27,11 +27,11 @@
 
 *A local-first writing studio for novels and short stories, with outlines, character maps and optional AI assistance.*
 
-[下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.8.4) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
+[下载安装](https://github.com/asoming/writer-desk/releases/tag/v0.8.5) · [快速上手](docs/quickstart-zh.md) · [使用指南](docs/user-guide-zh.md) · [构建说明](desktop/BUILD.md) · [MIT 许可证](LICENSE)
 
-> 当前测试版：**0.8.4**。安装包与 SHA256 校验见[发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.4)，各平台验收状态见[0.8.4 验收记录](docs/acceptance-0.8.4.md)。Windows 安装包未签名；macOS 使用临时签名，尚未进行 Apple 公证。
+> 当前测试版：**0.8.5**。安装包与 SHA256 校验见[发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.5)，各平台验收状态见[0.8.5 验收记录](docs/acceptance-0.8.5.md)。Windows 安装包未签名；macOS 使用临时签名，尚未进行 Apple 公证。
 
-0.8.4 内置写作规则随安装包提供，换电脑无需 Codex；可新建、编辑、导入和导出自定义 Skill，也可让 AI 生成规则或将对话回复存为 Skill。主脉络、总脉络、人物成长轨迹与独立对照稿继续可用。
+0.8.5 将 Skill 查看改为文章式详情弹窗，滑动开关自动保存默认选择。更多菜单可编辑、复制、导出及查看参考文件；「立即试用」保留当前提示词进入作品对话，点击发送才请求 AI。内置与自定义规则继续支持跨电脑使用。
 
 ## 功能
 
@@ -153,22 +153,22 @@ Word 仅导入文字、表格文字与标题结构；旧 `.doc`、图片、Word 
 
 ## 下载与安装
 
-从 [GitHub 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.4) 下载对应安装包。安装包可用状态与各平台检查结果见发行页和[本轮验收记录](docs/acceptance-0.8.4.md)。桌面安装包已包含运行环境，使用时无需另外安装 Python 或 Node.js。
+从 [GitHub 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.5) 下载对应安装包。安装包可用状态与各平台检查结果见发行页和[本轮验收记录](docs/acceptance-0.8.5.md)。桌面安装包已包含运行环境，使用时无需另外安装 Python 或 Node.js。
 
-| 平台 | 系统要求 | 0.8.4 安装包 |
+| 平台 | 系统要求 | 0.8.5 安装包 |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ 或兼容 Debian 桌面环境，glibc 2.35+ | [WriterDesk-0.8.4-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11，64 位 | [WriterDesk-0.8.4-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-windows-x64.exe) |
-| Mac · Apple 芯片 | macOS 13+，M 系列芯片 | [WriterDesk-0.8.4-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-mac-arm64.dmg) |
-| Mac · Intel | macOS 13+，Intel 处理器 | [WriterDesk-0.8.4-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ 或兼容 Debian 桌面环境，glibc 2.35+ | [WriterDesk-0.8.5-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11，64 位 | [WriterDesk-0.8.5-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-windows-x64.exe) |
+| Mac · Apple 芯片 | macOS 13+，M 系列芯片 | [WriterDesk-0.8.5-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-mac-arm64.dmg) |
+| Mac · Intel | macOS 13+，Intel 处理器 | [WriterDesk-0.8.5-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-mac-x64.dmg) |
 
-- **Linux：**在下载目录运行 `sudo apt install ./WriterDesk-0.8.4-linux-amd64.deb`，随后从应用菜单打开「作家工作台」。
+- **Linux：**在下载目录运行 `sudo apt install ./WriterDesk-0.8.5-linux-amd64.deb`，随后从应用菜单打开「作家工作台」。
 - **Windows：**运行 EXE，按安装向导选择目录；安装后创建桌面与开始菜单入口。
 - **macOS：**打开 DMG，将 App 拖入 Applications，再从 Applications 启动。
 
 升级前先保存并退出旧版。使用系统安装包的用户，通过相应平台的新版安装包升级；作品保留在独立的用户数据目录。
 
-Linux 另提供便携压缩包 [WriterDesk-0.8.4-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.4/WriterDesk-0.8.4-linux-x64.tar.gz)，保留既有用户安装与离线升级方式。本版保留 0.6.1 对 0.6.0 TAR 文件清单漏项的修复；历史问题与校验记录见 [0.6.1 验收](docs/acceptance-v0.6.1.md)。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
+Linux 另提供便携压缩包 [WriterDesk-0.8.5-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.5/WriterDesk-0.8.5-linux-x64.tar.gz)，保留既有用户安装与离线升级方式。本版保留 0.6.1 对 0.6.0 TAR 文件清单漏项的修复；历史问题与校验记录见 [0.6.1 验收](docs/acceptance-v0.6.1.md)。旧压缩包的用户菜单入口可能优先打开旧版；迁移到 DEB 前请阅读 [安装与旧图标迁移](desktop/BUILD.md#run-a-linux-release)，避免混用升级入口。
 
 发行页列出各文件的 SHA256 校验文件、汇总清单与平台检查结果。平台签名状态、原生验收范围及 Mac 实机检查项见 [跨平台发行说明](docs/distribution-checklist.md)。Mac 支持双指滚动、人物图平移与捏合缩放，以及保存后返回书架的手势；实体触控板手感仍需实机验收。
 
@@ -224,13 +224,24 @@ Linux 另提供便携压缩包 [WriterDesk-0.8.4-linux-x64.tar.gz](https://githu
 
 作品资料和图片仅在发送请求时交给所配置的服务；正常写作、保存与本地提及索引无需 AI。上下文默认由模型服务校验，App 不设固定字符上限或自动截断资料。密钥保存在本机独立配置中。
 
-![0.8.4 写作 Skill：内置与自定义规则管理](docs/skills-manager-v0.8.4.png)
+![0.8.5 写作 Skill：文章式详情弹窗、滑动开关与更多菜单](docs/skills-viewer-v0.8.5.png)
 
 「设置 → 写作 Skill」管理内置与自定义写作规则。安装包自带本项目原创的中文小说创作、小说项目规划和自然中文表达规则，沿用 `chinese-novelist`、`novelskill`、`human-writing` 三个 ID，兼容已有选择。换电脑后可直接选择内置规则，无需安装 Codex；AI 服务地址、密钥和模型仍需在新电脑独立配置。
 
-可新增、查看、编辑、删除自定义 Skill，导入 Markdown 或 App 导出的 `.writer-skill.json` 技能包，再单独导出到其他电脑。导入和 AI 生成先进入编辑预览，确认保存后才加入技能库；已完成的 AI 回复也可通过「存为 Skill」继续编辑保存。勾选规则并保存默认选择，或在对话资料区临时选择后，规则才随请求交给 AI。
+可新增、查看、编辑、删除自定义 Skill，导入 Markdown 或 App 导出的 `.writer-skill.json` 技能包，再单独导出到其他电脑。导入和 AI 生成先进入编辑预览，确认保存后才加入技能库；已完成的 AI 回复也可通过「存为 Skill」继续编辑保存。默认规则使用滑动开关，规则与默认写作任务调整后自动保存，失败会恢复原选择；对话资料区可临时改选，规则只随显式发送的请求交给 AI。
+
+点击「查看 Skill」按文章阅读规则，参考文件在更多菜单或正文链接中打开。「立即试用」选中此 Skill 并打开当前作品的 AI 对话，保留已写提示词和对话任务，不自动发送；尚未选择作品时先从书架打开一本书。桌面版的更多菜单还可在文件管理器中显示内置目录或本机副本。
 
 原有本机 Codex Skill 导入继续保留：个人导入副本及本机修改优先于同 ID 的内置规则，恢复内置版只移除本机覆盖。个人下载的 Skill 原文不进入源码或安装包。程序只读取 Markdown 规则和参考，不执行脚本、不自动修改书稿。完整操作见 [写作 Skill 使用说明](docs/user-guide-zh.md#写作-skill)。
+
+<details>
+<summary>0.8.4 写作 Skill 管理界面</summary>
+
+![0.8.4 写作 Skill：内置与自定义规则管理](docs/skills-manager-v0.8.4.png)
+
+历史截图记录 0.8.4 的管理界面；0.8.5 使用文章式详情弹窗和自动保存滑动开关。
+
+</details>
 
 ## 从源码运行
 
@@ -337,6 +348,7 @@ writer-desk/
 - [桌面构建说明](desktop/BUILD.md)：开发环境、平台构建、升级与数据迁移。
 - [跨平台发行说明](docs/distribution-checklist.md)：系统要求、签名状态和 Mac 验收边界。
 - [官网维护](docs/website.md)：本地预览、中英文内容与 GitHub Pages 部署。
+- [0.8.5 验收](docs/acceptance-0.8.5.md)：文章式 Skill 弹窗、自动保存开关、更多菜单与保留提示词的立即试用。
 - [0.8.4 验收](docs/acceptance-0.8.4.md)：内置规则跨电脑可用、自定义 Skill 管理、AI 生成与对话存为 Skill。
 - [0.8.3 验收](docs/acceptance-0.8.3.md)：主脉络、总脉络、人物成长矩阵及独立对照稿保存与采用。
 - [0.8.2 验收](docs/acceptance-0.8.2.md)：默认首页、全库统计、对照布局与图标整理。
