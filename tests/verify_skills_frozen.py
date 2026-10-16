@@ -172,7 +172,9 @@ def verify(executable=None):
                 for skill_id in BUILTINS:
                     located = request("/api/skills/" + skill_id + "/folder")
                     assert located == {"id": skill_id, "folder": str(bundle / skill_id), "origin": "builtin"}
-                    assert (Path(located["folder"]) / "SKILL.md").read_text("utf-8") == details[skill_id]["content"]
+                    # Compare bytes decoded exactly as the service does; read_text would
+                    # normalize Windows checkout CRLF and hide or invent a mismatch.
+                    assert (Path(located["folder"]) / "SKILL.md").read_bytes().decode("utf-8") == details[skill_id]["content"]
                 request("/api/skills/human-writing/folder", expected=403, token=False)
                 for invalid in ("unknown", "..%2Fprivate", "%2Ftmp%2Fprivate", "custom-invalid"):
                     request("/api/skills/" + invalid + "/folder", expected=400)
