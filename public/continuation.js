@@ -8,9 +8,14 @@ function updateContinuationSettings(info={}){
   if(typeof info.updateSupported==='boolean')updateSettingsState.updateSupported=info.updateSupported;
   const supported=typeof window.WriterDesktop?.installUpdate==='function'&&updateSettingsState.updateSupported;
   section.hidden=!supported;
+  const fallback=$('settings-update-fallback');
+  const networkSupported=typeof window.WriterDesktop?.networkInfo==='function'&&typeof window.WriterDesktop?.networkCheck==='function';
+  if(fallback)fallback.hidden=!supported&&!networkSupported;
   for(const key of ['pendingVersion','installedVersion','installPath'])if(typeof info[key]==='string')updateSettingsState[key]=info[key];
   const pending=updateSettingsState.pendingVersion;
   $('settings-update-status').textContent=pending?T('版本 {0} 已就绪，重启后生效。',pending):T('当前版本 {0}',updateSettingsState.installedVersion||appSettingsState.version||'—');
+  $('settings-update-status').hidden=!pending;
+  if(fallback&&supported&&pending)fallback.open=true;
   $('settings-restart-update').hidden=!pending;
   $('settings-install-update').disabled=updateSettingsState.busy;
   $('settings-restart-update').disabled=updateSettingsState.busy;
@@ -22,7 +27,7 @@ async function buildContinuationSettings(){
     const host=$(id);if(!host||!build)return;host.replaceChildren();
     try{await build(host);if(id==='settings-protection'&&typeof appendExternalBackupSettings==='function')await appendExternalBackupSettings(host);}catch(error){host.append(el('p','subtle',error.message||T('无法读取设置。')));}
   }));
-  if(typeof appendNetworkUpdateSettings==='function'){const host=$('settings-page-updates');if(!host.querySelector('.network-update-settings'))await appendNetworkUpdateSettings(host);}
+  if(typeof appendNetworkUpdateSettings==='function'){const host=$('settings-network-updates');if(host&&!host.querySelector('.network-update-settings'))await appendNetworkUpdateSettings(host);}
   updateContinuationSettings();
 }
 

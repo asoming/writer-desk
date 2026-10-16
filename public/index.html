@@ -97,7 +97,7 @@
         <button id="settings-tab-skills" type="button" role="tab" data-settings-page-target="skills" aria-controls="settings-page-skills" aria-selected="false" tabindex="-1"><span data-icon="book" aria-hidden="true"></span><span>写作 Skill</span></button>
         <button id="settings-tab-protection" type="button" role="tab" data-settings-page-target="protection" aria-controls="settings-page-protection" aria-selected="false" tabindex="-1"><span data-icon="shield" aria-hidden="true"></span><span>保存</span></button>
         <button id="settings-tab-sync" type="button" role="tab" data-settings-page-target="sync" aria-controls="settings-page-sync" aria-selected="false" tabindex="-1"><span data-icon="links" aria-hidden="true"></span><span>同步与协作</span></button><button id="settings-tab-shortcuts" type="button" role="tab" data-settings-page-target="shortcuts" aria-controls="settings-page-shortcuts" aria-selected="false" tabindex="-1"><span data-icon="keyboard" aria-hidden="true"></span><span>快捷操作</span></button>
-        <button id="settings-tab-updates" type="button" role="tab" data-settings-page-target="updates" aria-controls="settings-page-updates" aria-selected="false" tabindex="-1" hidden><span data-icon="download" aria-hidden="true"></span><span>安装与升级</span></button>
+        <button id="settings-tab-updates" type="button" role="tab" data-settings-page-target="updates" aria-controls="settings-page-updates" aria-selected="false" tabindex="-1" hidden><span data-icon="download" aria-hidden="true"></span><span>更新</span></button>
         <button id="settings-tab-about" type="button" role="tab" data-settings-page-target="about" aria-controls="settings-page-about" aria-selected="false" tabindex="-1"><span data-icon="info" aria-hidden="true"></span><span>关于</span></button>
       </nav>
       <span class="settings-sidebar-brand">作家工作台</span>
@@ -122,7 +122,13 @@
           </div></section>
         </section>
         <section id="settings-page-updates" class="settings-page" role="tabpanel" aria-labelledby="settings-tab-updates" data-settings-page="updates" hidden>
-          <h2>安装与升级</h2><section class="settings-section settings-card" id="settings-updates" data-desktop-only hidden><div class="settings-update-content"><p class="subtle" id="settings-update-status"></p><div class="settings-row"><button class="secondary-button" id="settings-install-update">安装升级包</button><button class="primary-button" id="settings-restart-update" hidden>重启完成升级</button></div><p class="subtle">选择下载的 Linux 升级包，校验文件需放在同一文件夹。</p></div></section>
+          <h2>更新</h2>
+          <div id="settings-network-updates"></div>
+          <details id="settings-update-fallback" class="settings-card settings-update-fallback" data-desktop-only hidden>
+            <summary>安装包更新</summary>
+            <section id="settings-updates" data-desktop-only hidden><div class="settings-update-content"><p class="subtle" id="settings-update-status" hidden></p><div class="settings-row"><button class="secondary-button" id="settings-install-update">选择安装包</button><button class="primary-button" id="settings-restart-update" hidden>重启完成升级</button></div><p class="subtle">Linux TAR · 校验文件需放在同一文件夹。</p></div></section>
+            <a class="text-button settings-package-download" href="https://github.com/asoming/writer-desk/releases" target="_blank" rel="noopener noreferrer">下载安装包</a>
+          </details>
         </section>
         <section id="settings-page-about" class="settings-page" role="tabpanel" aria-labelledby="settings-tab-about" data-settings-page="about" hidden>
           <h2>关于</h2><section class="settings-section settings-card settings-product"><strong>作家工作台</strong><span>Writer's Desk</span><span class="settings-version" id="settings-version" data-desktop-only hidden></span></section>

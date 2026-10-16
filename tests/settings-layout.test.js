@@ -59,3 +59,35 @@ test('Windows and Mac network updates remain reachable when Linux archive update
   assert.equal(h.get('settings-tab-updates').hidden,true);
   assert.equal(h.get('settings-page-general').hidden,false);
 });
+
+
+function reachable(node){
+  for(let parent=node;parent;parent=parent.parentElement){if(parent.hidden)return false;if(parent.tagName==='DETAILS'&&!parent.open){const summary=parent.children.find(item=>item.tagName==='SUMMARY');if(!summary?.contains(node))return false;}}
+  return true;
+}
+function attachUpdates(h,{network=true,local=true,pendingVersion=''}={}){
+  const calls=[],settings={autoCheck:false,autoDownload:false,includePrerelease:false};let notify,subscriptions=0;
+  h.updateCalls=calls;h.updateState={phase:'idle',currentVersion:'0.8.6',installKind:local?'managed':'nsis',settings};h.localInfo={version:'0.8.6',dataPath:'/isolated/data',updateSupported:local,installedVersion:'0.8.6',pendingVersion};h.native.getAppSettings=async()=>({...h.localInfo});
+  h.native.installUpdate=async()=>{calls.push('local-install');return{canceled:true};};h.native.restartAfterUpdate=async()=>{calls.push('local-restart');return{restarting:true};};
+  if(network){Object.assign(h.native,{networkInfo:async()=>{calls.push('network-info');return structuredClone(h.updateState);},networkCheck:async()=>{calls.push('network-check');return structuredClone(h.updateState);},networkDownload:async()=>{calls.push('network-download');return structuredClone(h.updateState);},networkInstall:async()=>{calls.push('network-install');return{installerOpened:true};},networkSettings:async value=>{calls.push('network-settings');h.updateState.settings=value;return structuredClone(h.updateState);},onNetworkUpdate:callback=>{subscriptions++;notify=callback;return()=>{};}});}
+  for(const file of ['public/continuation.js','public/network-updater.js'])vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),h.context,{filename:file});
+  h.run('bindContinuationEvents()');h.notifyUpdate=value=>{h.updateState={...h.updateState,...value};notify?.(structuredClone(h.updateState));};h.updateSubscriptions=()=>subscriptions;
+}
+
+test('network updates are the first reachable action and the package fallback follows platform capabilities',async()=>{
+  for(const capability of [{network:true,local:true},{network:true,local:false},{network:false,local:true},{network:false,local:false}]){
+    const h=harness();attachUpdates(h,capability);await h.run("showAppSettings('updates')");await tick();const page=h.get('settings-page-updates'),fallback=h.get('settings-update-fallback'),local=h.get('settings-install-update'),network=page.querySelector('.network-update-settings'),link=fallback.querySelector('a');
+    assert.equal(h.get('settings-tab-updates').hidden,!capability.network&&!capability.local);assert.equal(fallback.hidden,!capability.network&&!capability.local);assert.equal(fallback.open,false,'The alternative package route starts collapsed');assert.equal(h.get('settings-updates').hidden,!capability.local);assert.equal(!!network,capability.network);assert.equal(reachable(local),false);assert.equal(reachable(link),false);assert.equal(link.getAttribute('href'),'https://github.com/asoming/writer-desk/releases');
+    if(capability.network){const first=page.querySelectorAll('button').filter(reachable)[0];assert.equal(first.textContent,'检查更新');assert.equal(first.disabled,false);assert.ok(!fallback.contains(first));assert.deepEqual(h.updateCalls,['network-info']);}
+    if(capability.network||capability.local){fallback.open=true;assert.equal(reachable(link),true);assert.equal(reachable(local),capability.local);}
+    assert.ok(!h.updateCalls.some(call=>/install|restart|download/.test(call)),'Merely opening settings or the backup route cannot install anything');
+  }
+});
+
+test('a pending local package exposes its restart action while retaining the existing successful-save gate',async()=>{
+  const h=harness();attachUpdates(h,{network:false,local:true,pendingVersion:'0.8.7'});let saved=false;h.context.requireSaved=async()=>{h.updateCalls.push('save');return saved;};await h.run("showAppSettings('updates')");await tick();const fallback=h.get('settings-update-fallback'),restart=h.get('settings-restart-update');assert.equal(fallback.open,true);assert.equal(reachable(restart),true);assert.equal(h.get('settings-update-status').hidden,false);assert.match(h.get('settings-update-status').textContent,/0\.8\.7/);await restart.emit('click');assert.deepEqual(h.updateCalls,['save']);saved=true;await restart.emit('click');assert.deepEqual(h.updateCalls,['save','save','local-restart']);assert.equal(h.state.dirty,false);assert.equal(h.state.revision,7);
+});
+
+test('category switching and reopening preserve network preferences, progress and the downloaded installer without remounting',async()=>{
+  const h=harness(),before=JSON.stringify(h.book);attachUpdates(h);await h.run("showAppSettings('updates')");await tick();const host=h.get('settings-network-updates'),panel=host.querySelector('.network-update-settings'),preference=panel.querySelectorAll('input').find(input=>input.getAttribute('aria-label')==='接收预览版');preference.checked=true;await preference.emit('change');const candidate={version:'0.8.7',size:100,notes:'fixture release'};h.notifyUpdate({phase:'downloading',candidate,received:40,total:100});const progress=panel.querySelector('progress');assert.equal(progress.hidden,false);assert.equal(progress.value,40);h.run("selectSettingsPage('general')");h.notifyUpdate({phase:'downloaded',downloadedVersion:'0.8.7',received:100,total:100});assert.equal(h.get('settings-page-general').hidden,false,'A background update must not steal the selected settings page');h.run('closeAppSettings()');await h.run("showAppSettings('updates')");await tick();assert.equal(host.querySelector('.network-update-settings'),panel);assert.equal(panel.querySelectorAll('input').find(input=>input.getAttribute('aria-label')==='接收预览版'),preference);assert.equal(preference.checked,true);const install=panel.querySelectorAll('button').find(button=>button.textContent==='保存并重启更新');assert.equal(reachable(install),true);assert.equal(install.disabled,false);assert.equal(h.get('settings-update-fallback').open,false);assert.equal(h.updateSubscriptions(),1);assert.deepEqual(h.updateCalls,['network-info','network-settings']);assert.equal(JSON.stringify(h.book),before);assert.equal(h.state.revision,7);assert.equal(h.state.dirty,false);
+});

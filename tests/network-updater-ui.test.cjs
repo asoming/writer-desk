@@ -78,3 +78,8 @@ test('native cancellation remains a cancellation status instead of being reclass
 test('a cancelled or empty native install result never claims the installer opened and exposes no path API',async()=>{
   const h=setup(structuredClone(downloadedWindows));h.append();await h.initialize();for(const result of [{cancelled:true},{}]){h.context.window.WriterDesktop.networkInstall=async()=>result;await h.find('保存并打开安装器').listeners.click();assert.ok(!h.find('已打开安装器，请按系统提示完成安装。'));assert.ok(h.find('版本 0.8.0 已下载并校验。'));}assert.deepEqual(Object.keys(h.context.window.WriterNetworkUpdates),['initialize','append']);
 });
+
+
+test('checking for network updates is directly reachable without opening a disclosure',async()=>{
+  const h=setup(),section=h.append();await h.initialize();const check=h.find('检查更新');assert.ok(check);for(let node=check;node;node=node.parent){assert.equal(node.hidden,false);assert.ok(node.tagName!=='DETAILS'||node.open,'A closed disclosure must not hide the primary update action');}assert.equal(section['aria-label'],'联网更新');assert.equal(check.disabled,false);assert.equal(h.find('下载更新').hidden,true);assert.equal(h.find('保存并重启更新').hidden,true);assert.deepEqual(h.calls,[],'Opening the primary update panel must not download or install');
+});
