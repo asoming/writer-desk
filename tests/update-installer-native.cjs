@@ -89,12 +89,28 @@ async function exercise(assembly, folderName, systemRoot, powershell, mutate) {
   fs.copyFileSync(assembly, file);
   const expected = digest(file), fakeParent = await parent();
   let helper, launchedCommand;
+  const diagnostics = { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), bytes: 0, truncated: false };
+  function capture(channel, chunk) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    const remaining = Math.max(0, 4096 - diagnostics.bytes);
+    if (bytes.length > remaining) diagnostics.truncated = true;
+    if (!remaining) return;
+    const selected = bytes.subarray(0, remaining);
+    diagnostics[channel] = Buffer.concat([diagnostics[channel], selected]);
+    diagnostics.bytes += selected.length;
+  }
   try {
     const ready = await launch({ file, sha256: expected, pid: fakeParent.pid }, (command, args, options) => {
       launchedCommand = command;
       // System32 excludes the WindowsPowerShell subdirectory. The absolute
       // helper command must still start when PowerShell cannot be found in PATH.
       helper = tracked(command, args, { ...options, env: { ...process.env, PATH: path.join(systemRoot, 'System32') } });
+      diagnostics.stdio = options.stdio;
+      diagnostics.detached = options.detached;
+      helper.stdout?.on('data', chunk => capture('stdout', chunk));
+      helper.stderr?.on('data', chunk => capture('stderr', chunk));
+      helper.once('exit', (code, signal) => { diagnostics.exitCode = code; diagnostics.signal = signal; });
+      helper.once('error', error => { diagnostics.spawnErrorCode = error.code || ''; });
       return helper;
     }, { systemRoot, timeoutMs: 15000 });
     assert.equal(ready.helperStarted, true);
@@ -121,6 +137,20 @@ async function exercise(assembly, folderName, systemRoot, powershell, mutate) {
     return { readyBeforeParentExit: true, parentExitRequired: true, absoluteSystemPowerShell: true,
       pathWithoutPowerShell: true, unicodeSpaceAndApostrophePath: true,
       ...(mutate ? { secondHashRejectsMutation: true, changedFixtureNeverExecuted: true } : { verifiedFixtureOnlyExecutedAfterExit: true }) };
+  } catch (error) {
+    // The production helper deliberately closes its streams after startup.
+    // Capture diagnostics in this isolated fixture before that can happen.
+    if (helper) {
+      try { await bounded(helper.finished, 2000, 'Helper failure diagnostics timed out'); } catch { }
+    }
+    results.helperFailure = {
+      scenario: mutate ? 'reverification' : 'readyAndWait', command: launchedCommand || '',
+      stdout: diagnostics.stdout.toString('utf8'), stderr: diagnostics.stderr.toString('utf8'),
+      capturedBytes: diagnostics.bytes, truncated: diagnostics.truncated,
+      exitCode: diagnostics.exitCode ?? helper?.exitCode ?? null, signal: diagnostics.signal ?? helper?.signalCode ?? null,
+      spawnErrorCode: diagnostics.spawnErrorCode || '', stdio: diagnostics.stdio, detached: diagnostics.detached,
+    };
+    throw error;
   } finally {
     await stop(fakeParent);
     await stop(helper);

@@ -1,0 +1,32 @@
+name: Windows update helper probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: writer-desk-windows-helper-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helper:
+    name: Windows headless fixture
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run disposable update helper acceptance
+        run: node tests/update-installer-native.cjs --report artifacts/update-installer-native.json
+      - name: Upload fixture diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-update-helper-probe
+          if-no-files-found: error
+          retention-days: 7
+          path: artifacts/update-installer-native.json
