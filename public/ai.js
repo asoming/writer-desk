@@ -17,7 +17,7 @@ function writingSkillList(value){
   }
   return skills;
 }
-function writingSkillOriginName(skill){return T(!skill.imported?'未导入':skill.origin==='builtin'?'内置':skill.builtin===false?'自定义':skill.origin==='local'?'本机副本':'已导入');}
+function writingSkillOriginName(skill){return T(!(skill.usable===true||skill.imported===true)?'未导入':skill.origin==='builtin'?'内置':skill.builtin===false?'自定义':skill.origin==='local'?'本机副本':'已导入');}
 function writingSkillModeName(mode,book=state.book){return book?.kind==='short'&&mode==='chapter'?T('正文创作'):T(writingSkillModes[mode]||(mode==='custom'?'自定义':mode));}
 function writingSkillModeSelect(id){const select=el('select','text-field');select.id=id;Object.keys(writingSkillModes).forEach(value=>{const option=el('option',null,writingSkillModeName(value));option.value=value;select.append(option);});select.value='auto';return select;}
 
@@ -85,7 +85,38 @@ function writingSkillsChanged(){if(typeof refreshAIChatSettings==='function')Pro
 function writingSkillDraft(value){
   return{name:typeof value?.name==='string'?value.name:'',description:typeof value?.description==='string'?value.description:'',content:typeof value?.content==='string'?value.content:'',files:Array.isArray(value?.files)?value.files.filter(file=>file&&typeof file.path==='string'&&typeof file.content==='string'&&file.path!=='SKILL.md').map(file=>({path:file.path,content:file.content})):[]};
 }
+let writingSkillViewer=null;
+function closeWritingSkillViewer(options){writingSkillViewer?.close(options);}
+function openWritingSkillViewer(value={},options={}){
+  closeWritingSkillViewer({restoreFocus:false});
+  const opener=options.opener||document.activeElement,dialog=el('dialog','writing-skill-view-dialog'),header=el('header','writing-skill-view-header'),headingGroup=el('div','writing-skill-view-heading'),heading=el('h2',null,(value.id?writingSkillName(value.id):value.name)||T('写作 Skill')),description=el('p','writing-skill-view-description'),origin=el('span','writing-skill-view-origin'),body=el('div','writing-skill-view-body'),navigation=el('nav','writing-skill-view-files'),documentView=el('section','writing-skill-view-document'),filename=el('h3','writing-skill-view-path'),rules=el('pre','writing-skill-view-content'),status=el('p','writing-skill-view-status',T('正在读取 Skill 内容…'));
+  let closed=false,observer=null,files=[];
+  const controller={dialog,close};writingSkillViewer=controller;dialog.id='writing-skill-view-dialog';dialog.setAttribute('aria-labelledby','writing-skill-view-title');dialog.setAttribute('aria-busy','true');heading.id='writing-skill-view-title';documentView.id='writing-skill-view-document';navigation.setAttribute('aria-label',T('Skill 文件'));status.setAttribute('role','status');rules.tabIndex=0;description.textContent=value.description||'';description.hidden=!description.textContent;origin.textContent=writingSkillOriginName(value);headingGroup.append(heading,description,origin);
+  const dismiss=writingSkillIcon('关闭','close',()=>close());dismiss.autofocus=true;header.append(headingGroup,dismiss);documentView.append(filename,rules);navigation.hidden=documentView.hidden=true;body.append(status,navigation,documentView);dialog.append(header,body);document.body.append(dialog);
+  function otherModalOpen(){return Array.from(document.querySelectorAll?.('dialog[open]')||[]).some(other=>other!==dialog&&other!==options.host);}
+  function current(){return !closed&&dialog.open&&dialog.isConnected!==false&&writingSkillViewer===controller&&(!options.current||options.current())&&!otherModalOpen();}
+  function close({restoreFocus=true}={}){
+    if(closed)return;closed=true;observer?.disconnect();options.host?.removeEventListener?.('close',hostClosed);if(writingSkillViewer===controller)writingSkillViewer=null;dialog.close();dialog.remove();
+    if(restoreFocus&&(!options.current||options.current())&&opener?.isConnected!==false)opener?.focus?.({preventScroll:true});
+    if(typeof resumeAIChatCandidates==='function')resumeAIChatCandidates();
+  }
+  function hostClosed(){close({restoreFocus:false});}
+  function selectFile(path){const file=files.find(entry=>entry.path===path);if(!file||!current())return;filename.textContent=file.path;rules.textContent=file.content;rules.scrollTop=0;documentView.scrollTop=0;for(const button of navigation.children)button.setAttribute('aria-current',String(button.dataset.skillFile===path));}
+  dialog.addEventListener('cancel',event=>{event.preventDefault();close();});dialog.addEventListener('close',()=>close());options.host?.addEventListener('close',hostClosed);dialog.showModal();dismiss.focus();
+  if(typeof MutationObserver==='function'){observer=new MutationObserver(()=>{if(!current())close({restoreFocus:false});});observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['open','hidden']});}
+  dialog.loaded=(async()=>{
+    try{
+      const detail=options.load?await options.load():value;if(!current()){close({restoreFocus:false});return;}
+      if(typeof detail?.content!=='string')throw Error(T('无法读取 Skill。'));
+      const metadata={...value,...detail},title=detail.name&&detail.name!==detail.id?detail.name:writingSkillCatalog.get(value.id)?.name||value.name||detail.name||'写作 Skill';heading.textContent=metadata.builtin===false?title:T(title);description.textContent=detail.description||'';description.hidden=!description.textContent;origin.textContent=writingSkillOriginName(metadata);
+      const seen=new Set();files=[{path:'SKILL.md',content:detail.content},...(Array.isArray(detail.files)?detail.files:[])].filter(file=>{if(!file||typeof file.path!=='string'||typeof file.content!=='string'||seen.has(file.path))return false;seen.add(file.path);return true;});
+      for(const file of files){const button=action(file.path,'writing-skill-view-file',()=>selectFile(file.path));button.dataset.skillFile=file.path;button.setAttribute('aria-controls',documentView.id);navigation.append(button);}status.hidden=true;navigation.hidden=files.length<2;documentView.hidden=false;selectFile('SKILL.md');
+    }catch(error){if(current()){status.textContent=T(error.message||'无法读取 Skill。');status.setAttribute('role','alert');}else close({restoreFocus:false});}
+    finally{if(!closed)dialog.setAttribute('aria-busy','false');}
+  })();return dialog;
+}
 function openWritingSkillEditor(value={},options={}){
+  closeWritingSkillViewer({restoreFocus:false});
   const draft=writingSkillDraft(value),existing=options.skill||null,dialog=el('dialog','writing-skill-editor'),header=el('header','writing-skill-editor-header'),body=el('div','writing-skill-editor-body'),footer=el('footer','writing-skill-editor-footer'),status=el('p','writing-skill-editor-status');
   dialog.id='writing-skill-editor';dialog.setAttribute('aria-labelledby','writing-skill-editor-title');const heading=el('h2',null,T(existing?'编辑 Skill':'新增 Skill'));heading.id='writing-skill-editor-title';header.append(heading,writingSkillIcon('关闭','close',close));status.setAttribute('role','status');
   const name=el('input','text-field'),description=el('input','text-field'),rules=el('textarea','text-field');name.id='writing-skill-name';name.maxLength=200;name.value=draft.name;description.id='writing-skill-description';description.maxLength=2000;description.value=draft.description;rules.id='writing-skill-content';rules.maxLength=262144;rules.value=draft.content;rules.spellcheck=false;rules.placeholder=T('写下 AI 应遵循的写作规则…');
@@ -109,16 +140,17 @@ function openWritingSkillEditor(value={},options={}){
   controls();dialog.showModal();promptSize=window.WriterTextareaAutosize?.attach(prompt,{container:dialog});(name.value?rules:name).focus();return dialog;
 }
 function confirmWritingSkillChange(skill,perform){
+  closeWritingSkillViewer({restoreFocus:false});
   const reset=skill.builtin===true,dialog=el('dialog','writing-skill-confirm'),heading=el('h2',null,T(reset?'恢复内置 Skill？':'删除 Skill？')),buttons=el('div','dialog-actions'),status=el('p','subtle');let pending=false;
   dialog.id='writing-skill-confirm';dialog.setAttribute('aria-labelledby','writing-skill-confirm-title');heading.id='writing-skill-confirm-title';dialog.append(heading,el('p','subtle',T(reset?'本机修改将被移除，恢复软件内置规则。':'此 Skill 将从本机和默认选择中移除。')),status,buttons);const cancel=action(T('取消'),'secondary-button',close),confirm=action(T(reset?'恢复':'删除'),'primary-button',async()=>{if(pending)return;pending=true;cancel.disabled=confirm.disabled=true;try{await perform();pending=false;close();}catch(error){status.textContent=T(error.message);}finally{pending=false;cancel.disabled=confirm.disabled=false;}});buttons.append(cancel,confirm);dialog.addEventListener('cancel',event=>{event.preventDefault();close();});function close(){if(pending)return;dialog.close();dialog.remove();}document.body.append(dialog);dialog.showModal();return dialog;
 }
 function appendWritingSkillSettings(content){
-  const section=el('details','ai-settings writing-skill-settings'),body=el('div','ai-settings-body'),status=el('p','subtle writing-skill-status'),list=el('div','writing-skill-list'),viewer=el('section','writing-skill-viewer'),mode=writingSkillModeSelect('writing-skill-default-mode'),toolbar=el('div','writing-skill-toolbar');
-  section.append(el('summary',null,T('写作 Skill')),body);content.append(section);viewer.hidden=true;status.setAttribute('role','status');body.append(toolbar,status,list);addField(body,T('默认写作任务'),mode);
+  const section=el('details','ai-settings writing-skill-settings'),body=el('div','ai-settings-body'),status=el('p','subtle writing-skill-status'),list=el('div','writing-skill-list'),mode=writingSkillModeSelect('writing-skill-default-mode'),toolbar=el('div','writing-skill-toolbar');
+  section.append(el('summary',null,T('写作 Skill')),body);content.append(section);status.setAttribute('role','status');body.append(toolbar,status,list);addField(body,T('默认写作任务'),mode);
   let skills=[],selection=new Set(),pending=false,ready=false,detailSeq=0,listSeq=0;
   const current=()=>content.contains(section),fileInput=el('input');fileInput.type='file';fileInput.accept='.md,.json';fileInput.hidden=true;fileInput.id='writing-skill-import-file';
   const add=writingSkillIcon('新增 Skill','add',()=>openEditor({})),importFile=writingSkillIcon('导入 Skill 文件','upload',()=>fileInput.click()),refresh=writingSkillIcon('刷新 Skill','reset',load),save=writingSkillIcon('保存默认选择','save',persist);add.id='writing-skill-add';importFile.id='writing-skill-import';save.id='writing-skill-save-defaults';toolbar.append(el('span','writing-skill-toolbar-label',T('写作规则')),add,importFile,refresh,save,fileInput);
-  const local=el('details','writing-skill-local-import'),localBody=el('div','writing-skill-local-import-body'),importLocal=action(T('导入本机写作 Skill'),'text-button',importSkills);local.append(el('summary',null,T('本机 Codex Skill')),localBody);localBody.append(importLocal);body.append(local,viewer);fileInput.addEventListener('change',importSelectedFile);
+  const local=el('details','writing-skill-local-import'),localBody=el('div','writing-skill-local-import-body'),importLocal=action(T('导入本机写作 Skill'),'text-button',importSkills);local.append(el('summary',null,T('本机 Codex Skill')),localBody);localBody.append(importLocal);body.append(local);fileInput.addEventListener('change',importSelectedFile);
   function controls(){mode.disabled=pending||!ready;save.disabled=pending||!ready;refresh.disabled=importLocal.disabled=add.disabled=importFile.disabled=pending;}
   function fill(value){if(!current())return;skills=writingSkillList(value);selection=new Set((value.defaults?.skillIds||[]).filter(id=>skills.some(skill=>skill.id===id&&skill.imported)));mode.value=Object.hasOwn(writingSkillModes,value.defaults?.skillMode)?value.defaults.skillMode:'auto';ready=true;render();}
   function editorAllowed(){const host=content.closest?.('#settings-dialog'),page=content.closest?.('[data-settings-page]');return current()&&(!host||host.open)&&(!page||!page.hidden)&&!document.body.querySelector('.writing-skill-editor[open],.writing-skill-confirm[open]');}
@@ -128,20 +160,24 @@ function appendWritingSkillSettings(content){
     list.replaceChildren();for(const skill of skills){
       const row=el('div','writing-skill-row'),label=el('label','checkbox-row'),box=el('input'),copy=el('span','writing-skill-copy'),tools=el('div','writing-skill-row-tools');row.dataset.skillId=skill.id;box.type='checkbox';box.id='writing-skill-default-'+skill.id;box.checked=selection.has(skill.id);box.disabled=pending||!skill.imported;box.addEventListener('change',()=>{if(pending)return;box.checked?selection.add(skill.id):selection.delete(skill.id);});
       const name=el('strong',null,writingSkillName(skill.id)),origin=el('small','writing-skill-state',writingSkillOriginName(skill));copy.append(name,origin);if(skill.description){const description=el('small','writing-skill-description',skill.description);description.title=skill.description;copy.append(description);}label.append(box,copy);
-      for(const [text,icon,callback]of [['查看 Skill','view',()=>showDetail(skill,false)],['编辑 Skill','edit',()=>showDetail(skill,true)],['导出 Skill','download',()=>exportSkill(skill)]]){const button=writingSkillIcon(text,icon,callback);button.disabled=pending||!skill.imported;tools.append(button);}
+      for(const [text,icon,callback]of [['查看 Skill','view',event=>showDetail(skill,false,event?.currentTarget)],['编辑 Skill','edit',()=>showDetail(skill,true)],['导出 Skill','download',()=>exportSkill(skill)]]){const button=writingSkillIcon(text,icon,callback);button.disabled=pending||!skill.imported;tools.append(button);}
       if(skill.builtin!==true||skill.origin!=='builtin'){const remove=writingSkillIcon(skill.builtin?'恢复内置 Skill':'删除 Skill',skill.builtin?'reset':'remove',()=>confirmWritingSkillChange(skill,()=>removeSkill(skill)));remove.disabled=pending;tools.append(remove);}row.append(label,tools);list.append(row);
     }controls();
   }
-  async function showDetail(skill,edit){
-    const sequence=++detailSeq;viewer.hidden=false;viewer.replaceChildren(el('p','subtle',T('正在读取 Skill 内容…')));
-    try{const detail=await api('/api/skills/'+encodeURIComponent(skill.id));if(sequence!==detailSeq||!current())return;if(edit){viewer.hidden=true;openEditor(detail,{...skill,...detail});return;}viewer.replaceChildren(el('h4',null,writingSkillName(skill.id)));if(detail.description)viewer.append(el('p','subtle',detail.description));for(const file of [{path:'SKILL.md',content:detail.content},...(detail.files||[]).filter(file=>file.path!=='SKILL.md')]){const article=el('article','writing-skill-file');article.append(el('h5',null,file.path),el('pre',null,file.content));viewer.append(article);}}
-    catch(error){if(sequence===detailSeq&&current())viewer.replaceChildren(el('p','subtle',T(error.message)));}
+  async function showDetail(skill,edit,opener){
+    if(pending||!editorAllowed())return;
+    if(!edit){
+      ++detailSeq;const host=content.closest?.('#settings-dialog'),viewer=openWritingSkillViewer(skill,{opener,host,current:()=>{const page=content.closest?.('[data-settings-page]');return current()&&(!host||host.open)&&(!page||!page.hidden);},load:()=>api('/api/skills/'+encodeURIComponent(skill.id))});return viewer.loaded;
+    }
+    closeWritingSkillViewer({restoreFocus:false});const sequence=++detailSeq;
+    try{const detail=await api('/api/skills/'+encodeURIComponent(skill.id));if(sequence!==detailSeq||!current())return;openEditor(detail,{...skill,...detail});}
+    catch(error){if(sequence===detailSeq&&current())status.textContent=T(error.message);}
   }
   async function exportSkill(skill){if(pending)return;pending=true;render();try{const value=await api('/api/skills/'+encodeURIComponent(skill.id)+'/export');if(!current())return;const filename=(skill.name||skill.id).replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,80)+'.writer-skill.json';download(filename,JSON.stringify(value,null,2)+'\n','application/json;charset=utf-8');status.textContent='';}catch(error){if(current())status.textContent=T(error.message);}finally{pending=false;if(current())render();}}
-  async function removeSkill(skill){pending=true;++detailSeq;viewer.hidden=true;render();try{const value=await api('/api/skills/'+encodeURIComponent(skill.id),'DELETE',skill.revision?{revision:skill.revision}:{});if(current()){fill(value);status.textContent='';}writingSkillsChanged();}finally{pending=false;if(current())render();}}
+  async function removeSkill(skill){pending=true;++detailSeq;closeWritingSkillViewer({restoreFocus:false});render();try{const value=await api('/api/skills/'+encodeURIComponent(skill.id),'DELETE',skill.revision?{revision:skill.revision}:{});if(current()){fill(value);status.textContent='';}writingSkillsChanged();}finally{pending=false;if(current())render();}}
   async function importSelectedFile(){const file=fileInput.files?.[0];fileInput.value='';if(!file||pending)return;pending=true;controls();status.textContent='';try{if(file.size>8*1024*1024)throw Error(T('Skill 文件过大。'));const value=await api('/api/skills/import-file','POST',{fileName:file.name,content:await file.text(),preview:true});if(!current())return;if(!value.draft)throw Error(T('无法读取 Skill 文件。'));openEditor(value.draft);}catch(error){if(current())status.textContent=T(error.message);}finally{pending=false;if(current())controls();}}
   async function load(){if(pending)return;pending=true;const sequence=++listSeq;controls();status.textContent=T('正在读取写作 Skill…');try{const value=await api('/api/skills');if(sequence===listSeq&&current()){fill(value);status.textContent='';}}catch(error){if(sequence===listSeq&&current())status.textContent=T(error.message);}finally{pending=false;if(current())render();}}
-  async function importSkills(){if(pending)return;pending=true;++listSeq;++detailSeq;viewer.hidden=true;render();status.textContent=T('正在导入本机写作 Skill…');try{const fresh=await api('/api/skills');if(!current())return;const ids=writingSkillList(fresh).filter(skill=>skill.available).map(skill=>skill.id),value=ids.length?await api('/api/skills/import','POST',{skillIds:ids}):fresh;if(!current())return;fill(value);status.textContent=ids.length?T('本机写作 Skill 已导入。原文件未修改。'):T('未找到可导入的本机写作 Skill。内置 Skill 仍可使用。');writingSkillsChanged();}catch(error){if(current())status.textContent=T(error.message);}finally{pending=false;if(current())render();}}
+  async function importSkills(){if(pending)return;pending=true;++listSeq;++detailSeq;closeWritingSkillViewer({restoreFocus:false});render();status.textContent=T('正在导入本机写作 Skill…');try{const fresh=await api('/api/skills');if(!current())return;const ids=writingSkillList(fresh).filter(skill=>skill.available).map(skill=>skill.id),value=ids.length?await api('/api/skills/import','POST',{skillIds:ids}):fresh;if(!current())return;fill(value);status.textContent=ids.length?T('本机写作 Skill 已导入。原文件未修改。'):T('未找到可导入的本机写作 Skill。内置 Skill 仍可使用。');writingSkillsChanged();}catch(error){if(current())status.textContent=T(error.message);}finally{pending=false;if(current())render();}}
   async function persist(){if(pending||!ready)return;pending=true;++listSeq;render();try{const value=await api('/api/skills/settings','PUT',{skillIds:skills.filter(skill=>selection.has(skill.id)&&skill.imported).map(skill=>skill.id),skillMode:mode.value});if(!current())return;fill(value);status.textContent=T('默认选择已保存。');writingSkillsChanged();}catch(error){if(current())status.textContent=T(error.message);}finally{pending=false;if(current())render();}}
   // An explicit refresh/import may supersede the initial scan.
   controls();const initialSeq=++listSeq;api('/api/skills').then(value=>{if(initialSeq===listSeq&&current()){fill(value);status.textContent='';}}).catch(error=>{if(initialSeq===listSeq&&current())status.textContent=T(error.message);});return section;

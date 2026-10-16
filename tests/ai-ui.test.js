@@ -10,12 +10,13 @@ class Element{
   replaceChildren(...children){this.children=[];this.append(...children);}
   remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);}
   addEventListener(type,listener){this.listeners[type]=listener;}
+  removeEventListener(type,listener){if(this.listeners[type]===listener)delete this.listeners[type];}
   setAttribute(key,value){this[key]=String(value);}
   get options(){return this.children;}
   contains(target){return this===target||this.children.some(child=>child.contains(target));}
-  querySelectorAll(selector){const tags=selector.split(',').map(tag=>tag.toUpperCase());return descendants(this).filter(node=>tags.includes(node.tagName));}
-  querySelector(selector){return selector==='.writing-skill-editor[open],.writing-skill-confirm[open]'?find(this,node=>node.open&&['writing-skill-editor','writing-skill-confirm'].includes(node.className)):null;}
-  focus(){} select(){this.selected=true;} scrollIntoView(){} close(){this.open=false;} showModal(){this.open=true;}
+  querySelectorAll(selector){if(selector==='dialog[open]')return descendants(this).filter(node=>node.tagName==='DIALOG'&&node.open);const tags=selector.split(',').map(tag=>tag.toUpperCase());return descendants(this).filter(node=>tags.includes(node.tagName));}
+  querySelector(selector){const classes=selector.split(',').map(value=>value.match(/^\.([\w-]+)\[open\]$/)?.[1]).filter(Boolean);return find(this,node=>node.open&&classes.includes(node.className))||null;}
+  focus(){this.focused=true;} select(){this.selected=true;} scrollIntoView(){} close(){this.open=false;} showModal(){this.open=true;}
 }
 function descendants(node){return node.children.flatMap(child=>[child,...descendants(child)]);}
 function find(node,predicate){return [node,...descendants(node)].find(predicate);}
@@ -23,11 +24,13 @@ function button(h,text){const result=find(h.get('dialog-body'),node=>node.tagNam
 function field(h,id){const result=find(h.get('dialog-body'),node=>node.id===id);assert.ok(result,'Missing field '+id);return result;}
 function harness(){
   const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
-  const storage={getItem:()=>null,setItem(){},removeItem(){},length:0};
-  const context=vm.createContext({document:{body:new Element('body'),getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),addEventListener(){},querySelector:()=>new Element()},crypto:{randomUUID},sessionStorage:storage,clientStorage:storage,structuredClone,setTimeout:()=>0,clearTimeout(){},requestAnimationFrame:fn=>fn(),addEventListener(){},T:(text,...args)=>Array.isArray(text)?text.reduce((out,part,i)=>out+part+(args[i]??''),''):String(text).replace(/\{(\d+)\}/g,(_,i)=>args[i]??'')});context.window=context;
+  const storage={getItem:()=>null,setItem(){},removeItem(){},length:0},observers=[];
+  class TestMutationObserver{constructor(callback){this.callback=callback;this.connected=false;observers.push(this);}observe(){this.connected=true;}disconnect(){this.connected=false;}}
+  const context=vm.createContext({MutationObserver:TestMutationObserver,document:{body:new Element('body'),getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),addEventListener(){},querySelector:()=>new Element(),querySelectorAll:selector=>context.document.body.querySelectorAll(selector)},crypto:{randomUUID},sessionStorage:storage,clientStorage:storage,structuredClone,setTimeout:()=>0,clearTimeout(){},requestAnimationFrame:fn=>fn(),addEventListener(){},T:(text,...args)=>Array.isArray(text)?text.reduce((out,part,i)=>out+part+(args[i]??''),''):String(text).replace(/\{(\d+)\}/g,(_,i)=>args[i]??'')});context.window=context;
   for(const file of ['public/app.js','public/workspace.js','public/ai.js']){let source=fs.readFileSync(path.join(root,file),'utf8');if(file.endsWith('workspace.js'))source=source.replace(/\ninitialize\(\);\s*$/,'\n');vm.runInContext(source,context,{filename:file});}
   const run=source=>vm.runInContext(source,context),state=run('state');state.book=structuredClone(sample);state.kind='long';state.view='write';state.chapterId=sample.chapters[0].id;
   const h={get,run,state,context,calls:[],saves:[],copied:[],renderCount:0,settings:{enabled:true,endpoint:'http://127.0.0.1:9999/v1/chat/completions',model:'stub-model',imageModel:'',hasKey:false,contextMode:'auto',maxContextChars:250000,timeoutSeconds:60}};
+  h.observe=()=>observers.filter(observer=>observer.connected).forEach(observer=>observer.callback());
   context.navigator={clipboard:{writeText:async text=>h.copied.push(text)}};
   h.skills={skills:['chinese-novelist','novelskill','human-writing'].map(id=>({id,name:id,available:true,imported:false,referenceCount:1})),defaults:{skillIds:[],skillMode:'auto'}};
   h.preview=data=>({bookId:state.book.id,action:data.action,chapterIds:data.chapterIds,contextChars:2000+data.instruction.length+data.skillIds.length*300,contextMode:h.settings.contextMode,maxContextChars:h.settings.contextMode==='manual'?h.settings.maxContextChars:null,overLimit:h.settings.contextMode==='manual'&&!!h.overLimit,counts:{chapters:data.chapterIds.length,outlines:3,people:32,relationships:35},selectedSkillIds:data.skillIds,skillMode:data.skillMode,skillChars:data.skillIds.length*300,skills:data.skillIds.map(id=>({id,name:id,mode:data.skillMode==='auto'?'chapter':data.skillMode,files:['SKILL.md','references/chapter.md']}))});
@@ -203,22 +206,45 @@ test('writing skill settings import local copies, save explicit defaults and kee
   await find(section,node=>node.title==='保存默认选择').listeners.click();
   assert.deepEqual(h.skills.defaults,{skillIds:['chinese-novelist'],skillMode:'polish'});
   await find(section,node=>node.tagName==='BUTTON'&&node.title==='查看 Skill').listeners.click();
-  const viewer=find(section,node=>node.className==='writing-skill-viewer'),documents=descendants(viewer).filter(node=>node.tagName==='PRE');
-  assert.equal(documents.length,2);assert.match(documents[0].textContent,/<img src=x/);assert.match(documents[1].textContent,/连续阅读参考内容/);
-  assert.ok(!find(viewer,node=>node.tagName==='IMG'));assert.equal(JSON.stringify(h.state.book),snapshot);assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
+  const viewer=find(h.context.document.body,node=>node.className==='writing-skill-view-dialog'),documents=descendants(viewer).filter(node=>node.tagName==='PRE');
+  assert.equal(viewer.open,true);assert.equal(documents.length,1);assert.match(documents[0].textContent,/<img src=x/);assert.ok(!find(section,node=>node.className==='writing-skill-viewer'));assert.ok(!find(viewer,node=>['INPUT','TEXTAREA','IMG','SCRIPT'].includes(node.tagName)));
+  await find(viewer,node=>node.dataset.skillFile==='references/chapter.md').listeners.click();assert.match(documents[0].textContent,/连续阅读参考内容/);assert.equal(find(viewer,node=>node.dataset.skillFile==='references/chapter.md')['aria-current'],'true');
+  await find(viewer,node=>node.title==='关闭').listeners.click();assert.ok(!find(h.context.document.body,node=>node.className==='writing-skill-view-dialog'));assert.equal(JSON.stringify(h.state.book),snapshot);assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
   check('chinese-novelist').checked=false;check('chinese-novelist').listeners.change();await find(section,node=>node.title==='保存默认选择').listeners.click();
   assert.deepEqual(h.skills.defaults.skillIds,[],'explicit no-skill preference is saved');
 });
 
-test('skill details discard out-of-order responses and results after the manager closes',async()=>{
-  const h=harness(),container=new Element();h.context.container=container;h.skills.skills.forEach(skill=>skill.imported=true);
-  h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));
-  const section=container.children[0],views=descendants(section).filter(node=>node.tagName==='BUTTON'&&node.title==='查看 Skill'),responses=[];
-  h.skillDetail=id=>new Promise(resolve=>responses.push({id,resolve}));const first=views[0].listeners.click(),second=views[1].listeners.click();
+test('the Skill viewer opens immediately and newer selections replace a loading window without stale content',async()=>{
+  const h=harness(),container=new Element();h.context.container=container;h.skills.skills.forEach(skill=>skill.imported=true);h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));
+  const views=descendants(container).filter(node=>node.title==='查看 Skill'),responses=[];h.skillDetail=id=>new Promise(resolve=>responses.push({id,resolve}));
+  const first=views[0].listeners.click(),firstViewer=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');assert.equal(firstViewer.open,true);assert.equal(firstViewer['aria-busy'],'true');assert.ok(find(firstViewer,node=>node.textContent==='正在读取 Skill 内容…'));
+  const second=views[1].listeners.click(),viewer=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');assert.notEqual(viewer,firstViewer);assert.equal(firstViewer.open,false);assert.equal(descendants(h.context.document.body).filter(node=>node.id==='writing-skill-view-dialog').length,1);
   responses[1].resolve({content:'new selection',files:[]});await second;responses[0].resolve({content:'stale selection',files:[]});await first;
-  assert.ok(find(section,node=>node.textContent==='new selection'));assert.ok(!find(section,node=>node.textContent==='stale selection'));
-  const third=views[2].listeners.click();container.replaceChildren();responses[2].resolve({content:'different book late text',files:[]});await third;
-  assert.ok(!find(section,node=>node.textContent==='different book late text'));
+  assert.ok(find(viewer,node=>node.textContent==='new selection'));assert.ok(!find(viewer,node=>node.textContent==='stale selection'));assert.equal(viewer['aria-busy'],'false');
+  const third=views[2].listeners.click();container.replaceChildren();h.observe();assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-view-dialog'));responses[2].resolve({content:'different book late text',files:[]});await third;assert.ok(!find(h.context.document.body,node=>node.textContent==='different book late text'));
+});
+
+test('Skill viewer close and Escape restore focus without saving and late errors cannot reopen it',async()=>{
+  const h=harness(),container=new Element();h.context.document.body.append(container);h.context.container=container;h.skills.skills.forEach(skill=>skill.imported=true);h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));const view=find(container,node=>node.title==='查看 Skill'),snapshot=JSON.stringify(h.state.book);container.scrollTop=182;
+  let finish;h.skillDetail=()=>new Promise((resolve,reject)=>finish={resolve,reject});const pending=view.listeners.click({currentTarget:view}),viewer=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');await find(viewer,node=>node.title==='关闭').listeners.click();assert.equal(view.focused,true);assert.equal(container.scrollTop,182);finish.reject(Error('late failed read'));await pending;assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-view-dialog'));
+  h.skillDetail=()=>({content:'只读正文',files:[]});await view.listeners.click({currentTarget:view});const next=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');let prevented=false;next.listeners.cancel({preventDefault(){prevented=true;}});assert.equal(prevented,true);assert.equal(next.open,false);assert.equal(view.focused,true);assert.equal(JSON.stringify(h.state.book),snapshot);assert.ok(!h.calls.some(call=>call.method!=='GET'));
+});
+
+test('Skill viewer errors stay in the window and switching settings or opening an editor invalidates late detail',async()=>{
+  const h=harness(),container=new Element(),settings=new Element('dialog'),page=new Element();settings.open=true;page.hidden=false;h.context.document.body.append(settings);container.closest=selector=>selector==='#settings-dialog'?settings:selector==='[data-settings-page]'?page:null;h.context.container=container;h.skills.skills.forEach(skill=>skill.imported=true);h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));const view=find(container,node=>node.title==='查看 Skill');h.skillDetail=()=>Promise.reject(Error('read unavailable'));await view.listeners.click();let viewer=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');assert.ok(viewer.open);assert.ok(find(viewer,node=>node.textContent==='read unavailable'&&node.role==='alert'));assert.equal(viewer['aria-busy'],'false');await find(viewer,node=>node.title==='关闭').listeners.click();
+  let finish;h.skillDetail=()=>new Promise(resolve=>finish=resolve);let pending=view.listeners.click();page.hidden=true;h.observe();finish({content:'hidden settings late content',files:[]});await pending;assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-view-dialog'));
+  page.hidden=false;pending=view.listeners.click();await find(container,node=>node.id==='writing-skill-add').listeners.click();const editor=find(h.context.document.body,node=>node.id==='writing-skill-editor');assert.ok(editor.open);finish({content:'wrong document',files:[]});await pending;assert.equal(find(editor,node=>node.id==='writing-skill-content').value,'');assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-view-dialog'));await find(editor,node=>node.textContent==='取消').listeners.click();
+  pending=view.listeners.click();settings.open=false;settings.listeners.close();finish({content:'closed settings late content',files:[]});await pending;assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-view-dialog'));
+});
+
+test('built-in Skill details retain the built-in origin and another modal cancels a pending view',async()=>{
+  const h=harness(),container=new Element();h.context.container=container;h.skills.skills[0]={id:'chinese-novelist',name:'中文小说创作',builtin:true,usable:true,imported:false,origin:'builtin'};h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));const view=find(container,node=>node.title==='查看 Skill');h.skillDetail=()=>({...h.skills.skills[0],content:'内置规则',files:[{path:'references/one.md',content:'参考一'},{path:'references/two.md',content:'参考二'}]});await view.listeners.click();let viewer=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');assert.ok(find(viewer,node=>node.className==='writing-skill-view-origin'&&node.textContent==='内置'));assert.equal(descendants(viewer).filter(node=>node.tagName==='PRE').length,1);await find(viewer,node=>node.title==='关闭').listeners.click();
+  let finish;h.skillDetail=()=>new Promise(resolve=>finish=resolve);const pending=view.listeners.click(),other=new Element('dialog');other.open=true;h.context.document.body.append(other);h.observe();finish({content:'late document behind another modal',files:[]});await pending;assert.equal(other.open,true);assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-view-dialog'));assert.ok(!find(h.context.document.body,node=>node.textContent==='late document behind another modal'));
+});
+
+test('loaded Skill names translate built-in labels while preserving custom author names',async()=>{
+  const h=harness(),translate=h.context.T;h.context.T=(text,...args)=>text==='中文小说创作'?'Chinese Fiction':translate(text,...args);h.context.builtin={id:'chinese-novelist',name:'中文小说创作',builtin:true,usable:true,imported:false,origin:'builtin',content:'内置规则',files:[]};h.run('openWritingSkillViewer(builtin)');let viewer=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');await viewer.loaded;assert.equal(find(viewer,node=>node.id==='writing-skill-view-title').textContent,'Chinese Fiction');await find(viewer,node=>node.title==='关闭').listeners.click();
+  h.context.custom={id:'custom-author',name:'中文小说创作',builtin:false,usable:true,imported:true,origin:'local',content:'作者自定规则',files:[]};h.run('openWritingSkillViewer(custom)');viewer=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');await viewer.loaded;assert.equal(find(viewer,node=>node.id==='writing-skill-view-title').textContent,'中文小说创作');await find(viewer,node=>node.title==='关闭').listeners.click();
 });
 
 test('AI inherits imported skill defaults, previews names/references/counts and sends only the current explicit choice',async()=>{

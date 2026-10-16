@@ -4,6 +4,9 @@ const clientStorage=window.WriterDesktop?.storage||window.localStorage;
 let uiLanguage='zh';
 try{uiLanguage=clientStorage.getItem('writer-desk.language')==='en'?'en':'zh';}catch{}
 const englishMessages={
+  // Skill reading dialog, 0.8.5.
+  "Skill 文件": "Skill files",
+  "无法读取 Skill。": "Could not read this Skill.",
   // Portable and custom writing Skills, 0.8.4.
   "本机副本": "Local copy",
   "新增 Skill": "Add Skill",

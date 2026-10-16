@@ -11,3 +11,26 @@
 @media(max-width:540px){.writing-skill-row-tools{flex-wrap:wrap;justify-content:flex-end;max-width:62px}.writing-skill-row-tools .skill-icon-button{width:28px;height:28px}.writing-skill-editor{width:calc(100vw - 20px);max-height:94dvh}.writing-skill-editor-header{padding:13px 15px}.writing-skill-editor-body{padding:3px 15px 16px}.writing-skill-editor-footer{padding:12px 13px;gap:7px;flex-wrap:wrap}.writing-skill-editor-status{flex-basis:calc(100% - 46px)}.writing-skill-editor-footer>.secondary-button{margin-left:auto}.writing-skill-editor #writing-skill-content{min-height:220px}}
 
 .writing-skill-settings .writing-skill-row>.checkbox-row{padding:0;border:0;min-height:0}
+
+/* Keep Skill reading separate from the settings form. */
+.writing-skill-view-dialog{width:min(940px,calc(100vw - 48px));max-width:940px;height:min(740px,calc(100dvh - 64px));max-height:calc(100dvh - 32px);padding:0;overflow:hidden;border:1px solid var(--theme-line,#e3e9f2);border-radius:16px;background:var(--theme-surface,#fff);color:var(--theme-ink,#23344b);box-shadow:0 24px 90px #18314933}
+.writing-skill-view-dialog[open]{display:flex;flex-direction:column}
+.writing-skill-view-dialog::backdrop{background:#182a4555;backdrop-filter:blur(3px)}
+.writing-skill-view-header{display:flex;align-items:flex-start;gap:20px;padding:24px 26px 20px;border-bottom:1px solid var(--theme-line-soft,#e8edf4);flex:none}
+.writing-skill-view-heading{flex:1;min-width:0}
+.writing-skill-view-heading h2{margin:0;font-size:19px;font-weight:650;line-height:1.5;overflow-wrap:anywhere}
+.writing-skill-view-description{margin:8px 0 10px;font-size:12px;line-height:1.8;color:var(--theme-muted,#708098);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.writing-skill-view-origin{display:inline-block;margin-top:8px;padding:2px 7px;border-radius:5px;background:var(--theme-surface-soft,#f4f6fa);font-size:10px;line-height:1.7;color:var(--theme-muted,#708098)}
+.writing-skill-view-header>.skill-icon-button{margin:-3px -5px 0 0}
+.writing-skill-view-body{display:flex;flex:1;min-height:0;min-width:0;position:relative}
+.writing-skill-view-files{flex:none;width:208px;padding:16px 10px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;border-right:1px solid var(--theme-line-soft,#e8edf4);background:var(--theme-surface-soft,#f7f9fc)}
+.writing-skill-view-file{display:block;width:100%;padding:10px 12px;margin-bottom:3px;border:0;border-radius:7px;background:transparent;color:var(--theme-muted,#708098);font:11px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;text-align:left;overflow-wrap:anywhere;cursor:pointer}
+.writing-skill-view-file:hover{background:var(--theme-hover,#edf1f7);color:var(--theme-ink,#23344b)}
+.writing-skill-view-file[aria-current=true]{background:var(--theme-selected,#edf2ff);color:var(--theme-accent,#4b65da)}
+.writing-skill-view-file:focus-visible,.writing-skill-view-content:focus-visible{outline:2px solid var(--theme-accent,#4b65da);outline-offset:-2px}
+.writing-skill-view-document{flex:1;min-width:0;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:22px 28px 30px}
+.writing-skill-view-path{margin:0 0 20px;font:11px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--theme-faint,#8794a7);overflow-wrap:anywhere}
+.writing-skill-view-content{margin:0;border:0;background:transparent;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2;font:13px/1.95 ui-monospace,SFMono-Regular,Consolas,monospace;color:inherit}
+.writing-skill-view-status{align-self:center;width:100%;margin:0;padding:32px;font-size:12px;line-height:1.8;text-align:center;color:var(--theme-muted,#708098);overflow-wrap:anywhere}
+.writing-skill-view-status[role=alert]{color:var(--theme-danger,#aa6262)}
+@media(max-width:650px){.writing-skill-view-dialog{width:calc(100vw - 24px);height:calc(100dvh - 36px);max-height:calc(100dvh - 24px);border-radius:12px}.writing-skill-view-header{padding:18px 20px 15px}.writing-skill-view-heading h2{font-size:17px}.writing-skill-view-body{flex-direction:column}.writing-skill-view-files{width:100%;max-height:145px;padding:8px 12px;border-right:0;border-bottom:1px solid var(--theme-line-soft,#e8edf4);display:flex;flex-wrap:wrap;gap:3px}.writing-skill-view-file{width:auto;max-width:100%;padding:6px 9px;margin:0;font-size:10px}.writing-skill-view-document{padding:18px 20px 24px}.writing-skill-view-content{font-size:12px}.writing-skill-view-path{margin-bottom:14px}}

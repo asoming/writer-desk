@@ -90,6 +90,8 @@ def main():
     (args.destination / "SHA256SUMS.txt").write_text("\n".join(checksums) + "\n", "ascii")
     (args.destination / "release-notes.md").write_text(f"""作家工作台 · Writer's Desk {version}
 
+查看 Skill 使用独立只读弹窗，点击立即打开，可在窗口内切换主规则和参考文件。叉号或 Esc 关闭后回到原设置位置；窄窗口、夜间与护眼模式均可滚轮阅读。读取失败或迟到响应不会重开已关闭的窗口，查看不调用 AI、不保存规则或修改作品。
+
 内置三套 App 编写的写作规则及参考资料，随安装包提供，在没有 Codex 目录的新电脑上可直接选择使用。本机已导入的个人规则优先保留；AI 服务地址、模型和密钥仍需在新电脑单独配置。
 
 设置中的写作 Skill 支持新建、编辑、导入 Markdown 或可迁移 JSON、导出、删除个人规则和恢复内置规则。可让 AI 生成规则后预览、修改再保存，也可将 AI 对话回复存为 Skill。生成规则不发送书稿，不会自动保存或改写正文；Skill 只作为 AI 文字上下文，不执行脚本。

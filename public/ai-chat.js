@@ -75,7 +75,7 @@ function createAIChatView(panel,book,channel){
   const promptSize=window.WriterTextareaAutosize?.attach(input,{container:root});
   const current=()=>!disposed&&state.book===book&&state.view===channel;
   const visible=()=>current()&&active&&!panel.hidden;
-  const modalOpen=()=>$('dialog')?.open||$('settings-dialog')?.open||document.querySelector?.('.writing-skill-editor[open],.writing-skill-confirm[open]')||window.WriterChatImages?.viewerOpen();
+  const modalOpen=()=>$('dialog')?.open||$('settings-dialog')?.open||document.querySelector?.('.writing-skill-editor[open],.writing-skill-confirm[open],.writing-skill-view-dialog[open]')||window.WriterChatImages?.viewerOpen();
   const imageInput=window.WriterChatImages?.attachComposer({bookId:book.id,input,composer,toolbar:modelGroup,initial:saved.attachments,current:()=>!disposed&&state.book===book,onChange:images=>{saved.attachments=images;persist();if(!pending)schedulePreview();},onBusy:()=>controls(),onError:message=>{status.textContent=T(message);}});
   const draftImages=()=>imageInput?.get()||saved.attachments;
   const hasPrompt=()=>!!input.value.trim()||draftImages().length>0;
