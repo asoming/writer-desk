@@ -421,6 +421,91 @@ class PortableCustomSkillTests(unittest.TestCase):
         self.assertNotIn("secret", unsafe.exception.message)
 
 
+class SkillFolderTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="writer-skill-folder-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve()
+        self.bundled = self.root / "bundled-skills"
+        for skill_id in SKILL_IDS:
+            write(self.bundled / skill_id / "SKILL.md", "# App bundled rule")
+        self.service = SkillsService(self.root / "data", codex_home=self.root / "codex", bundled_dir=self.bundled)
+
+    def test_builtin_folder_is_readonly_on_a_clean_machine(self):
+        for skill_id in SKILL_IDS:
+            self.assertEqual(self.service.folder(skill_id), {"id": skill_id, "folder": str(self.bundled / skill_id), "origin": "builtin"})
+        self.assertFalse(self.service.data_dir.exists())
+        self.assertFalse(self.service.source.exists())
+
+    def test_imported_override_and_custom_use_only_app_copies(self):
+        skill_id = "human-writing"
+        source = self.service.source / skill_id
+        write(source / "SKILL.md", "# Private downloaded rule")
+        self.assertEqual(self.service.folder(skill_id)["origin"], "builtin")
+        self.service.import_skills([skill_id])
+        self.assertEqual(self.service.folder(skill_id), {"id": skill_id, "folder": str(self.service.library / skill_id), "origin": "local"})
+        self.assertEqual((source / "SKILL.md").read_text(), "# Private downloaded rule")
+        custom = self.service.create({"name": "Custom rule", "content": "# Custom writing rule"})["skill"]
+        self.assertEqual(self.service.folder(custom["id"]), {"id": custom["id"], "folder": str(self.service.library / custom["id"]), "origin": "local"})
+        self.service.delete(skill_id, {})
+        self.assertEqual(self.service.folder(skill_id)["origin"], "builtin")
+
+    def test_invalid_unknown_and_source_only_folders_are_not_exposed(self):
+        for skill_id in ("../human-writing", "/tmp/skill", "human-writing/folder", "unknown", "custom-x", None, {}, "human-writing\x00"):
+            with self.subTest(skill_id=skill_id), self.assertRaises(SkillError) as rejected:
+                self.service.folder(skill_id)
+            self.assertEqual(rejected.exception.status, 400)
+        with self.assertRaises(SkillError) as missing:
+            self.service.folder("custom-" + "a" * 32)
+        self.assertEqual(missing.exception.status, 404)
+        shutil.rmtree(self.bundled / "novelskill")
+        write(self.service.source / "novelskill" / "SKILL.md", "# Not imported")
+        with self.assertRaises(SkillError) as unimported:
+            self.service.folder("novelskill")
+        self.assertEqual(unimported.exception.status, 404)
+        self.assertFalse(self.service.data_dir.exists())
+
+    def test_folder_and_ancestor_symlinks_are_rejected_without_source_fallback(self):
+        if os.name == "nt":
+            self.skipTest("Windows symlink creation requires optional privilege; desktop tests also cover junctions")
+        outside = self.root / "outside"
+        write(outside / "SKILL.md", "# Must not expose")
+        self.service.library.mkdir(parents=True)
+        link = self.service.library / "human-writing"
+        link.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(SkillError) as rejected:
+            self.service.folder("human-writing")
+        self.assertNotIn("Must not expose", rejected.exception.message)
+        link.unlink()
+        self.service.library.rmdir()
+        self.service.library.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(SkillError):
+            self.service.folder("human-writing")
+
+    def test_redirected_realpath_is_rejected_before_reading_any_skill_file(self):
+        original = Path.resolve
+        redirected = self.bundled / "human-writing"
+        def resolve(file, strict=False):
+            return self.root / "outside" if file == redirected else original(file, strict=strict)
+        with patch.object(Path, "resolve", resolve), patch("skills._tree", side_effect=AssertionError("Must not read redirected content")):
+            with self.assertRaises(SkillError):
+                self.service.folder("human-writing")
+
+    def test_linked_skill_file_and_missing_builtin_never_return_a_folder(self):
+        (self.bundled / "novelskill" / "SKILL.md").unlink()
+        with self.assertRaises(SkillError) as missing:
+            self.service.folder("novelskill")
+        self.assertEqual(missing.exception.status, 404)
+        if os.name == "nt":
+            return
+        secret = self.root / "private.md"
+        write(secret, "Private content")
+        (self.bundled / "novelskill" / "SKILL.md").symlink_to(secret)
+        with self.assertRaises(SkillError) as rejected:
+            self.service.folder("novelskill")
+        self.assertNotIn("Private content", rejected.exception.message)
+
+
 class InstalledSkillTests(unittest.TestCase):
     def test_installed_three_skills_all_modes_with_read_only_sources(self):
         source = Path.home() / ".codex/skills"

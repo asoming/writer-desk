@@ -1374,6 +1374,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(AIService(DB_PATH.parent).list_models())
             elif path == "/api/skills":
                 self.send_json(SkillsService(DB_PATH.parent).list())
+            elif re.fullmatch(r"/api/skills/[^/]+/folder", path):
+                self.send_json(SkillsService(DB_PATH.parent).folder(path[len("/api/skills/"):-len("/folder")]))
             elif re.fullmatch(r"/api/skills/[^/]+/export", path):
                 self.send_json(SkillsService(DB_PATH.parent).export(path[len("/api/skills/"):-len("/export")]))
             elif path.startswith("/api/skills/"):
@@ -1405,6 +1407,7 @@ class Handler(BaseHTTPRequestHandler):
                          "/workspace.js": "workspace.js", "/i18n.js": "i18n.js", "/style.css": "style.css", "/favicon.svg": "favicon.svg",
                          "/protection.js": "protection.js", "/protection.css": "protection.css",
                          "/continuation.js": "continuation.js", "/ai.js": "ai.js", "/ai.css": "ai.css",
+                         "/skill-markdown.js": "skill-markdown.js",
                          "/ai-chat.js": "ai-chat.js", "/ai-chat.css": "ai-chat.css"}
                 files["/book-covers.js"] = "book-covers.js"
                 files["/gestures.js"] = "gestures.js"

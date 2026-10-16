@@ -78,6 +78,13 @@ contextBridge.exposeInMainWorld('WriterDesktop', {
     if (result?.error) throw Object.assign(new Error(result.error), { code: result.code });
     return result;
   },
+  showSkillInFolder: async (...args) => {
+    const skillId = args[0];
+    if (args.length !== 1 || typeof skillId !== 'string' || !(['chinese-novelist', 'novelskill', 'human-writing'].includes(skillId) || /^custom-[a-f0-9]{32}$/.test(skillId))) throw Object.assign(new Error('Invalid Skill ID'), { code: 'invalid-skill-id' });
+    const result = await nativeRequest('writer:show-skill-in-folder', skillId);
+    if (result.opened === true) return { opened: true };
+    throw Object.assign(new Error('Invalid Skill folder response'), { code: 'invalid-response' });
+  },
   printBookPDF: async options => {
     const result = await nativeRequest('writer:print-book-pdf', options);
     if (result.canceled === true) return { canceled: true };

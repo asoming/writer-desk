@@ -4,6 +4,23 @@ const clientStorage=window.WriterDesktop?.storage||window.localStorage;
 let uiLanguage='zh';
 try{uiLanguage=clientStorage.getItem('writer-desk.language')==='en'?'en':'zh';}catch{}
 const englishMessages={
+  // Skill detail actions and switches, 0.8.5.
+  "启用 Skill": "Enable Skill",
+  "更多": "More",
+  "参考文件": "Reference files",
+  "返回主规则": "Back to main rules",
+  "未找到此参考文件。": "This reference file was not found.",
+  "操作失败，请重试。": "Could not complete the action. Please try again.",
+  "在文件管理器中显示": "Show in file manager",
+  "复制 Markdown": "Copy Markdown",
+  "无法复制，请导出 Skill 文件。": "Could not copy. Export the Skill file instead.",
+  "Markdown 已复制。": "Markdown copied.",
+  "立即试用": "Try now",
+  "先从书架选择作品。": "Select a book from the bookshelf first.",
+  "无法保存默认选择，请重试。": "Could not save the default selection. Please try again.",
+  "请稍候。": "Please wait.",
+  "请先完成当前操作。": "Finish the current action first.",
+  "此 Skill 当前不可用，请刷新后重试。": "This Skill is unavailable. Refresh and try again.",
   // Skill reading dialog, 0.8.5.
   "Skill 文件": "Skill files",
   "无法读取 Skill。": "Could not read this Skill.",

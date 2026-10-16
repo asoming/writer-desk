@@ -11,6 +11,9 @@ class Element{
   querySelectorAll(selector){const tags=selector.split(',').map(tag=>tag.toUpperCase());return descendants(this).filter(node=>tags.includes(node.tagName));}
   contains(target){return this===target||this.children.some(child=>child.contains(target));}
   focus(){this.focused=true;}
+  close(){this.open=false;}
+  showModal(){this.open=true;}
+  remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);}
 }
 const descendants=node=>node.children.flatMap(child=>[child,...descendants(child)]);
 const find=(node,predicate)=>[node,...descendants(node)].find(predicate);
@@ -273,4 +276,32 @@ test('a completed AI reply opens an editable Skill preview without writing or ex
 
 test('pending generation disables save-as-Skill on older replies and no incomplete reply offers it',async()=>{
   const h=harness();let finish;await h.open();await h.prompt('第一轮');await h.send();const save=h.button('存为 Skill');let opened=false;h.context.openWritingSkillEditor=()=>{opened=true;};h.response=()=>new Promise(resolve=>finish=resolve);await h.prompt('第二轮');const request=h.send();await h.tick();assert.equal(save.disabled,true);await save.listeners.click();assert.equal(opened,false);assert.equal(descendants(h.panel()).filter(node=>node.title==='存为 Skill').length,1);finish({bookId:'one',action:'custom',chapterIds:['a'],chat:true,reply:'第二轮完成'});await request;assert.equal(save.disabled,false);
+});
+
+
+test('trying a Skill opens the current writing conversation and preserves its edited task and unsent prompt without sending',async()=>{
+  const h=harness();await h.open();h.field('ai-chat-task').value='outline';h.field('ai-chat-task').listeners.change();await h.prompt('我已经改好的提示词，不要替换');const box=find(h.panel(),node=>node.value==='novelskill'&&node.tagName==='INPUT');assert.equal(box.role,'switch');assert.equal(box['aria-checked'],'true');box.checked=false;box.listeners.change();await h.flush();assert.equal(h.records().skillIds.length,0);const prompt=h.field('ai-chat-prompt').value,snapshot=JSON.stringify(h.state.book);h.get('settings-dialog').open=true;
+  assert.equal(await h.run("tryWritingSkill('novelskill')"),true);assert.equal(h.get('settings-dialog').open,false);assert.equal(h.panel().hidden,false);assert.deepEqual(h.records().skillIds,['novelskill']);assert.equal(h.field('ai-chat-prompt').value,prompt);assert.equal(h.field('ai-chat-task').value,'outline');assert.equal(h.field('ai-chat-prompt').focused,true);assert.equal(find(h.panel(),node=>node.value==='novelskill'&&node.tagName==='INPUT')['aria-checked'],'true');assert.equal(JSON.stringify(h.state.book),snapshot);assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
+});
+
+test('trying a Skill from home uses the existing book and saved writing prompt, and does not choose another work',async()=>{
+  const storage=new Map([['yejian.ai-chat.one.write',JSON.stringify({version:1,action:'custom',prompt:'留在写作栏的草稿',skillIds:[],skillMode:'polish',chapterIds:['a'],turns:[],open:false})]]),h=harness(storage);h.state.view='home';const current=h.state.book,navigated=[];h.context.navigate=async view=>{navigated.push(view);h.state.view=view;return true;};assert.equal(await h.run("tryWritingSkill('novelskill')"),true);assert.deepEqual(navigated,['write']);assert.equal(h.state.book,current);assert.equal(h.field('ai-chat-prompt').value,'留在写作栏的草稿');assert.equal(h.field('ai-chat-task').value,'custom');assert.equal(h.records().skillMode,'polish');assert.deepEqual(h.records().skillIds,['novelskill']);assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
+});
+
+test('trying a Skill without a current book, during composition or after failed save cannot select a hidden work or dismiss settings',async()=>{
+  const h=harness();h.state.book=null;assert.equal(await h.run("tryWritingSkill('novelskill')"),false);assert.deepEqual(h.toasts,['先从书架选择作品。']);assert.equal(h.calls.length,0);
+  const writing=harness();writing.get('settings-dialog').open=true;writing.state.composing=true;assert.equal(await writing.run("tryWritingSkill('novelskill')"),false);assert.equal(writing.get('settings-dialog').open,true);assert.equal(writing.calls.length,0);writing.state.composing=false;writing.saves.push(false);assert.equal(await writing.run("tryWritingSkill('novelskill')"),false);assert.equal(writing.get('settings-dialog').open,true);assert.equal(writing.calls.length,0);
+});
+
+test('trying an unavailable Skill leaves selected rules, prompt and manuscript unchanged without an AI request',async()=>{
+  const h=harness();await h.open();await h.prompt('继续保留这个提示词');const snapshot=JSON.stringify(h.state.book),skills=h.records().skillIds;assert.equal(await h.run("tryWritingSkill('custom-missing')"),false);assert.deepEqual(h.records().skillIds,skills);assert.equal(h.field('ai-chat-prompt').value,'继续保留这个提示词');assert.equal(JSON.stringify(h.state.book),snapshot);assert.ok(h.toasts.includes('此 Skill 当前不可用，请刷新后重试。'));assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
+});
+
+test('try Skill cannot move a pending reply to another task or clear the next prompt',async()=>{
+  const h=harness();await h.open();await h.prompt('先发出的消息');let finish;h.response=request=>new Promise(resolve=>finish=()=>resolve({bookId:'one',action:request.action,chapterIds:request.chapterIds,chat:true,reply:'待返回内容'}));const pending=h.send();await h.tick();await h.prompt('接下来要问的问题');assert.equal(await h.run("tryWritingSkill('novelskill')"),false);assert.equal(h.field('ai-chat-prompt').value,'接下来要问的问题');finish();await pending;assert.equal(h.field('ai-chat-prompt').value,'接下来要问的问题');assert.equal(h.calls.filter(call=>call.url.endsWith('/ai')).length,1);
+});
+
+
+test('a delayed Try now save cannot close a newer Skill window or switch a replaced viewer to writing',async()=>{
+  const h=harness();h.state.view='home';h.get('settings-dialog').open=true;let finish;h.context.requireSaved=()=>new Promise(resolve=>finish=resolve);h.context.first={id:'novelskill',name:'First',content:'First rules',files:[],usable:true};h.context.second={id:'human-writing',name:'Second',content:'Second rules',files:[],usable:true};h.run('openWritingSkillViewer(first)');let viewer=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');await viewer.loaded;const pending=find(viewer,node=>node.className==='writing-skill-view-try').listeners.click();await h.tick();await find(viewer,node=>node.title==='关闭').listeners.click();h.run('openWritingSkillViewer(second)');const newer=find(h.context.document.body,node=>node.id==='writing-skill-view-dialog');await newer.loaded;finish(true);await pending;assert.equal(newer.open,true);assert.equal(h.state.view,'home');assert.equal(h.get('settings-dialog').open,true);assert.equal(h.calls.length,0);
 });

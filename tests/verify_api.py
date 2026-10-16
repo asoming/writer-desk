@@ -82,7 +82,7 @@ with tempfile.TemporaryDirectory(prefix="yejian-verify-") as tmp:
 
         assert request("/")[0] == 200
         assert request("/../../server.py")[0] == 404
-        for asset in ("/app.js", "/style.css", "/story-analysis.js", "/workspace.js"):
+        for asset in ("/app.js", "/style.css", "/story-analysis.js", "/workspace.js", "/skill-markdown.js"):
             if (root / "public" / asset[1:]).exists():
                 assert request(asset)[0] == 200
         passed("static app and safe asset allowlist")

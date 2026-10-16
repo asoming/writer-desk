@@ -352,6 +352,33 @@ class SkillsService:
             return {**self._summary(skill_id, include_source=False), "content": files["SKILL.md"],
                     "files": [{"path": name, "content": content} for name, content in sorted(files.items()) if name != "SKILL.md"]}
 
+    @_local_errors
+    def folder(self, skill_id):
+        """Locate the App copy only; an unimported Codex source is never exposed."""
+        _ids([skill_id])
+        with LOCK:
+            candidates = [(self.library / skill_id, "local")]
+            if skill_id in SKILL_IDS:
+                candidates.append((self.bundled / skill_id, "builtin"))
+            for directory, origin in candidates:
+                try:
+                    directory = _chain(directory)
+                except FileNotFoundError:
+                    continue
+                # Reject junctions before reading files, including on Windows
+                # versions where lstat does not report them as symlinks.
+                current = Path(directory.anchor)
+                for part in directory.parts[1:]:
+                    current /= part
+                    if os.path.normcase(str(current.resolve(strict=True))) != os.path.normcase(str(current)):
+                        raise SkillError("写作技能目录包含不安全的链接或路径。")
+                try:
+                    _tree(directory)
+                except FileNotFoundError:
+                    continue
+                return {"id": skill_id, "folder": str(directory), "origin": origin}
+            raise SkillError("找不到可用的写作技能。", 404)
+
     @staticmethod
     def _labels(data):
         name, description = data.get("name"), data.get("description", "")

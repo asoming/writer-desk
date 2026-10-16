@@ -28,6 +28,15 @@ function aiChatRead(bookId,channel){
   return value;
 }
 
+async function tryWritingSkill(id,options={}){
+  if(!state.book){toast(T('先从书架选择作品。'));return false;}
+  if(state.composing||state.transitioning){toast(T('请先完成当前操作。'));return false;}
+  const book=state.book,current=()=>state.book===book&&(!options.current||options.current());if(!current()||!await requireSaved()||!current())return false;
+  closeWritingSkillViewer({restoreFocus:false});if($('settings-dialog')?.open)$('settings-dialog').close();
+  if(!['outline','write'].includes(state.view)){if(!await navigate('write')||state.book!==book)return false;}
+  syncAIChat();if(!aiChatView||aiChatView.book!==book)return false;
+  return aiChatView.useSkill(id);
+}
 function closeAIChat(){if(aiChatView)aiChatView.close();}
 function suspendAIChatForPurge(bookId){
   if(aiChatView?.book.id===bookId){aiChatView.dispose();aiChatView=null;$('ai-chat-panel').hidden=true;}
@@ -140,7 +149,7 @@ function createAIChatView(panel,book,channel){
   function renderChoices(){
     const chapters=validChapters();saved.chapterIds=book.kind==='short'?chapters.map(chapter=>chapter.id):saved.chapterIds.filter(id=>chapters.some(chapter=>chapter.id===id));materialSummary.textContent=saved.chapterIds.length?(book.kind==='short'?T('资料 · 正文'):T('资料 · {0} 章',saved.chapterIds.length)):T('资料');chapterChoices.replaceChildren();chapterTools.hidden=chapterChoices.hidden=book.kind==='short'||!chapters.length;
     if(book.kind!=='short')chapters.forEach(chapter=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.value=chapter.id;box.checked=saved.chapterIds.includes(chapter.id);box.addEventListener('change',()=>{if(pending)return;saved.manualChapters=true;saved.chapterIds=box.checked?[...new Set([...saved.chapterIds,chapter.id])]:saved.chapterIds.filter(id=>id!==chapter.id);renderChoices();persist();schedulePreview();});row.append(box,el('span',null,chapter.title||T('未命名章节')));chapterChoices.append(row);});
-    skillChoices.replaceChildren();skills.forEach(skill=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.value=skill.id;box.checked=(saved.skillIds||[]).includes(skill.id);box.dataset.available=String(!!skill.imported);box.addEventListener('change',()=>{if(pending)return;saved.skillIds=box.checked?[...new Set([...(saved.skillIds||[]),skill.id])]:saved.skillIds.filter(id=>id!==skill.id);persist();schedulePreview();});row.append(box,el('span',null,writingSkillName(skill.id)),el('small',null,writingSkillOriginName(skill)));skillChoices.append(row);});skillMode.value=saved.skillMode;controls();
+    skillChoices.replaceChildren();skills.forEach(skill=>{const row=el('label','checkbox-row'),box=writingSkillSwitch(null,(saved.skillIds||[]).includes(skill.id));box.value=skill.id;box.dataset.available=String(!!skill.imported);box.addEventListener('change',()=>{if(pending)return;syncWritingSkillSwitch(box);saved.skillIds=box.checked?[...new Set([...(saved.skillIds||[]),skill.id])]:saved.skillIds.filter(id=>id!==skill.id);persist();schedulePreview();});row.append(box,el('span',null,writingSkillName(skill.id)),el('small',null,writingSkillOriginName(skill)));skillChoices.append(row);});skillMode.value=saved.skillMode;controls();
   }
   function chooseChapters(all){if(pending)return;saved.manualChapters=true;saved.chapterIds=all?validChapters().map(chapter=>chapter.id):[];renderChoices();persist();schedulePreview();}
   function chooseTask(value,restore=false){
@@ -230,6 +239,11 @@ function createAIChatView(panel,book,channel){
     close(){saved.open=false;active=false;panel.hidden=true;window.WriterChatImages?.closeViewers();persist();},
     suspend(){cancelPending();persist();active=false;panel.hidden=true;window.WriterChatImages?.closeViewers();},
     dispose(){cancelPending();persist();disposed=true;active=false;++previewSeq;++loadSeq;clearTimeout(previewDelay);clearTimeout(writeDelay);candidates.forEach(renderer=>renderer.dispose());candidates.clear();deferredCandidates.clear();clearImageViews();imageInput?.dispose();promptSize?.dispose();},
+    async useSkill(id){
+      if(!current()||pending)return false;if(!ready)await load();if(!current()||!ready||pending)return false;
+      if(!skills.some(skill=>skill.id===id&&skill.imported)){toast(T('此 Skill 当前不可用，请刷新后重试。'));return false;}
+      saved.skillIds=[...new Set([...(saved.skillIds||[]),id])];renderChoices();persist();controller.open();return true;
+    },
     reload:load,
     resumeCandidates,
     flush:persist,

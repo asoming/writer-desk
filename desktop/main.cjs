@@ -184,6 +184,71 @@ async function openBookFolder(bookId) {
   catch { throw folderError('open-folder-failed', '无法打开系统文件管理器，请检查桌面环境后重试。', 'Could not open the system file manager. Check your desktop environment and try again.'); }
   return { folder, revision: prepared.revision };
 }
+const builtinSkillIds = new Set(['chinese-novelist', 'novelskill', 'human-writing']);
+function validSkillId(value) {
+  return typeof value === 'string' && (builtinSkillIds.has(value) || /^custom-[a-f0-9]{32}$/.test(value));
+}
+function prepareSkillFolder(skillId) {
+  if (!origin || !service || service.exitCode !== null) return Promise.reject(folderError('service-unavailable', '本机保存服务尚未就绪，请稍后重试。', 'The local save service is not ready. Try again shortly.'));
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    const finish = (error, result) => { if (completed) return; completed = true; clearTimeout(timer); error ? reject(error) : resolve(result); };
+    const timer = setTimeout(() => request.destroy(folderError('service-timeout', '读取 Skill 文件夹超时，请重试。', 'Reading the Skill folder timed out. Try again.')), 10000);
+    const invalid = () => folderError('invalid-response', '保存服务返回的 Skill 文件夹信息不正确。', 'The save service returned invalid Skill folder information.');
+    const unavailable = () => folderError('service-unavailable', '无法连接本机保存服务，请稍后重试。', 'Could not connect to the local save service. Try again shortly.');
+    const request = http.request(new URL(`/api/skills/${encodeURIComponent(skillId)}/folder`, origin), {
+      method: 'GET', headers: { 'X-Writer-Desktop': serviceToken, 'X-Writer-Client': '1', Origin: origin }
+    }, response => {
+      let size = 0;
+      const chunks = [];
+      response.on('data', chunk => {
+        size += chunk.length;
+        if (size > 64 * 1024) { finish(invalid()); request.destroy(); return; }
+        chunks.push(chunk);
+      });
+      response.on('error', () => finish(unavailable()));
+      response.on('aborted', () => finish(unavailable()));
+      response.on('end', () => {
+        if (response.statusCode !== 200) {
+          finish(folderError('skill-folder-unavailable', '无法读取这个 Skill 的文件夹，请重新打开后重试。', 'Could not read this Skill folder. Reopen the Skill and try again.'));
+          return;
+        }
+        let body;
+        try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { }
+        if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 3 || body.id !== skillId || !['local', 'builtin'].includes(body.origin)) finish(invalid());
+        else finish(null, body);
+      });
+    });
+    request.on('error', error => finish(error?.code === 'service-timeout' ? error : unavailable()));
+    request.end();
+  });
+}
+function checkedSkillFolder(skillId, folder, source) {
+  const unsafe = () => folderError('unsafe-folder', 'Skill 文件夹位置不正确，或包含符号链接，无法打开。', 'The Skill folder has an invalid location or contains a symbolic link and cannot be opened.');
+  if (!validSkillId(skillId) || typeof folder !== 'string' || folder.includes('\0') || !path.isAbsolute(folder) || !['local', 'builtin'].includes(source) || (source === 'builtin' && !builtinSkillIds.has(skillId))) throw unsafe();
+  const expected = source === 'local' ? path.join(userData, 'data', 'writing-skills', skillId) : app.isPackaged
+    ? path.join(process.resourcesPath, 'backend', '_internal', 'bundled-skills', skillId)
+    : path.resolve(__dirname, '..', 'bundled-skills', skillId);
+  if (path.resolve(folder) !== folder || path.relative(expected, folder) !== '') throw unsafe();
+  let current = path.parse(expected).root;
+  for (const part of expected.slice(current.length).split(path.sep)) {
+    if (!part) continue;
+    current = path.join(current, part);
+    const info = fs.lstatSync(current);
+    if (info.isSymbolicLink() || !info.isDirectory() || path.relative(current, fs.realpathSync(current)) !== '') throw unsafe();
+  }
+  return expected;
+}
+async function showSkillInFolder(skillId) {
+  if (!validSkillId(skillId)) throw folderError('invalid-skill-id', 'Skill 编号不正确，请重新打开后重试。', 'The Skill ID is invalid. Reopen the Skill and try again.');
+  const prepared = await prepareSkillFolder(skillId);
+  let folder;
+  try { folder = checkedSkillFolder(skillId, prepared.folder, prepared.origin); }
+  catch (error) { throw error.code === 'unsafe-folder' ? error : folderError('skill-folder-unavailable', 'Skill 文件夹不存在或无法读取，请重试。', 'The Skill folder is missing or cannot be read. Try again.'); }
+  try { if (await shell.openPath(folder)) throw new Error('File manager rejected the folder'); }
+  catch { throw folderError('open-folder-failed', '无法打开系统文件管理器，请检查桌面环境后重试。', 'Could not open the system file manager. Check your desktop environment and try again.'); }
+  return { opened: true };
+}
 const appActions = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll', 'zoomIn', 'zoomOut', 'resetZoom', 'toggleFullscreen', 'openDataFolder', 'quit', 'minimize', 'toggleMaximize', 'close']);
 const editActions = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']);
 function windowState() {
@@ -270,6 +335,12 @@ ipcMain.handle('writer:app-action', async (event, action) => {
 ipcMain.handle('writer:open-book-folder', async (event, bookId) => {
   if (!trusted(event)) return { error: text('当前窗口无权打开作品文件夹。', 'This window is not authorized to open book folders.'), code: 'untrusted-sender' };
   try { return await openBookFolder(bookId); }
+  catch (error) { return { error: error.message, code: error.code || 'open-folder-failed' }; }
+});
+ipcMain.handle('writer:show-skill-in-folder', async (event, skillId, ...extra) => {
+  if (!trusted(event)) return { error: text('当前窗口无权打开 Skill 文件夹。', 'This window is not authorized to open Skill folders.'), code: 'untrusted-sender' };
+  if (extra.length) return { error: text('Skill 文件夹请求不正确。', 'Invalid Skill folder request.'), code: 'invalid-request' };
+  try { return await showSkillInFolder(skillId); }
   catch (error) { return { error: error.message, code: error.code || 'open-folder-failed' }; }
 });
 ipcMain.handle('writer:print-book-pdf', async (event, options) => {
@@ -419,10 +490,15 @@ function startService() {
     });
   });
 }
+function canWriteClipboard(contents, permission, details) {
+  return !!window && !window.isDestroyed() && contents === window.webContents &&
+    permission === 'clipboard-sanitized-write' && details?.isMainFrame === true &&
+    localURL(details.requestingUrl) && localURL(contents.mainFrame?.url);
+}
 function createWindow() {
   const appSession = session.fromPartition('persist:writer-desk');
-  appSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  appSession.setPermissionCheckHandler(() => false);
+  appSession.setPermissionRequestHandler((contents, permission, callback, details) => callback(canWriteClipboard(contents, permission, details)));
+  appSession.setPermissionCheckHandler((contents, permission, _requestingOrigin, details) => canWriteClipboard(contents, permission, details));
   appSession.webRequest.onBeforeRequest((details, callback) => {
     const local = localURL(details.url) || details.url.startsWith(`blob:${origin}/`) || details.url.startsWith('data:image/');
     callback({ cancel: !local });

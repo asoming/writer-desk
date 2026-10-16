@@ -168,6 +168,17 @@ def verify(executable=None):
                     assert detail["content"].strip()
                     assert isinstance(detail["files"], list)
                 request("/api/skills", expected=403, token=False)
+                bundle = (executable.parent / "_internal" if executable else ROOT) / "bundled-skills"
+                for skill_id in BUILTINS:
+                    located = request("/api/skills/" + skill_id + "/folder")
+                    assert located == {"id": skill_id, "folder": str(bundle / skill_id), "origin": "builtin"}
+                    assert (Path(located["folder"]) / "SKILL.md").read_text("utf-8") == details[skill_id]["content"]
+                request("/api/skills/human-writing/folder", expected=403, token=False)
+                for invalid in ("unknown", "..%2Fprivate", "%2Ftmp%2Fprivate", "custom-invalid"):
+                    request("/api/skills/" + invalid + "/folder", expected=400)
+                request("/api/skills/custom-" + "a" * 32 + "/folder", expected=404)
+                assert not (service.data / "writing-skills").exists(), "Folder lookup must not install any rules"
+                groups.append("authenticated built-in folder lookup and invalid path rejection")
                 groups.append("clean-machine built-ins without Codex")
 
                 shelf = request("/api/books")["books"]
@@ -234,6 +245,9 @@ def verify(executable=None):
                 request("/api/skills/" + custom_id, "DELETE", {"revision": detail["revision"]}, expected=403, token=False)
                 groups.append("custom create, reference selection, defaults and desktop authorization")
 
+                assert request("/api/skills/" + custom_id + "/folder") == {
+                    "id": custom_id, "folder": str(service.data / "writing-skills" / custom_id), "origin": "local"}
+                request("/api/skills/" + custom_id + "/folder", expected=403, token=False)
                 exported = request("/api/skills/" + custom_id + "/export")
                 request("/api/skills/" + custom_id + "/export", expected=403, token=False)
                 assert exported["format"] == "writer-desk-skill" and exported["version"] == 1
@@ -279,6 +293,8 @@ def verify(executable=None):
                 override = builtin_detail["content"] + "\n作者在 App 中保存的专属规则。"
                 request("/api/skills/" + BUILTINS[0], "PUT", mutable_skill(builtin_detail, content=override))
                 local_builtin = request("/api/skills/" + BUILTINS[0])
+                assert request("/api/skills/" + BUILTINS[0] + "/folder") == {
+                    "id": BUILTINS[0], "folder": str(service.data / "writing-skills" / BUILTINS[0]), "origin": "local"}
                 assert local_builtin["content"] == override
                 service.stop()
                 service.start()
@@ -286,6 +302,7 @@ def verify(executable=None):
                 request("/api/skills/" + BUILTINS[0], "DELETE", {"revision": local_builtin["revision"]})
                 assert request("/api/skills/" + BUILTINS[0])["content"] == builtin_detail["content"]
                 assert next(item for item in request("/api/skills")["skills"] if item["id"] == BUILTINS[0])["origin"] == "builtin"
+                assert request("/api/skills/" + BUILTINS[0] + "/folder")["origin"] == "builtin"
                 groups.append("built-in local override survives restart and reset returns bundled rules")
 
                 generation = {"name": "生成的规则", "description": "候选，不自动启用", "content": "# 生成的规则\n先写人物行动，再检查因果。"}
@@ -306,6 +323,7 @@ def verify(executable=None):
                 request("/api/skills/generate", "POST", {"prompt": "新的规则"}, expected=403, token=False)
                 request("/api/skills/" + custom_id, "DELETE", {"revision": changed_detail["revision"]})
                 request("/api/skills/" + custom_id, expected=404)
+                request("/api/skills/" + custom_id + "/folder", expected=404)
                 assert custom_id not in request("/api/skills")["defaults"]["skillIds"]
                 service.stop()
                 service.start()
