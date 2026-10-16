@@ -89,7 +89,7 @@ async function exercise(assembly, folderName, systemRoot, powershell, mutate) {
   const file = path.join(directory, path.basename(assembly)), marker = path.join(directory, 'fixture-ran.txt');
   fs.copyFileSync(assembly, file);
   const expected = digest(file), fakeParent = await parent();
-  let helper, launchedCommand;
+  let helper, launchedCommand, handoff;
   const diagnostics = { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), bytes: 0, truncated: false };
   function capture(channel, chunk) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
@@ -101,7 +101,7 @@ async function exercise(assembly, folderName, systemRoot, powershell, mutate) {
     diagnostics.bytes += selected.length;
   }
   try {
-    const ready = await launch({ file, sha256: expected, pid: fakeParent.pid }, (command, args, options) => {
+    const ready = handoff = await launch({ file, sha256: expected, pid: fakeParent.pid }, (command, args, options) => {
       launchedCommand = command;
       // System32 excludes the WindowsPowerShell subdirectory. The absolute
       // helper command must still start when PowerShell cannot be found in PATH.
@@ -115,6 +115,8 @@ async function exercise(assembly, folderName, systemRoot, powershell, mutate) {
       return helper;
     }, { systemRoot, timeoutMs: 15000 });
     assert.equal(ready.helperStarted, true);
+    assert.ok(Number.isSafeInteger(ready.helperPid) && ready.helperPid > 0);
+    ownedHelperPids.add(ready.helperPid);
     assert.equal(path.win32.normalize(launchedCommand).toLowerCase(), path.win32.normalize(powershell).toLowerCase());
     assert.equal(path.win32.isAbsolute(launchedCommand), true);
     assert.equal(fakeParent.exitCode, null, 'Readiness must precede parent exit');
@@ -152,8 +154,40 @@ async function exercise(assembly, folderName, systemRoot, powershell, mutate) {
     };
     throw error;
   } finally {
+    handoff?.cancel();
     await stop(fakeParent);
     await stop(helper);
+    if (handoff?.helperPid) await stopOwnedHelper(handoff.helperPid);
+  }
+}
+
+async function cancellation(assembly, systemRoot) {
+  const directory = path.join(temporary, "取消样本 Author's Draft");
+  fs.mkdirSync(directory);
+  const file = path.join(directory, path.basename(assembly)), marker = path.join(directory, 'fixture-ran.txt');
+  fs.copyFileSync(assembly, file);
+  const fakeParent = await parent(); let bootstrap, handoff;
+  try {
+    handoff = await launch({ file, sha256: digest(file), pid: fakeParent.pid }, (command, args, options) => {
+      bootstrap = tracked(command, args, { ...options, env: { ...process.env, PATH: path.join(systemRoot, 'System32') } });
+      return bootstrap;
+    }, { systemRoot, timeoutMs: 15000 });
+    ownedHelperPids.add(handoff.helperPid);
+    assert.equal(fakeParent.exitCode, null);
+    assert.equal(processExists(handoff.helperPid), true);
+    assert.equal(fs.existsSync(marker), false);
+    handoff.cancel(); handoff.cancel();
+    await until(() => !processExists(handoff.helperPid), 'Canceled worker did not stop', 5000);
+    await bounded(bootstrap.finished, 5000, 'Canceled bootstrap did not stop');
+    await stop(fakeParent);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(fs.existsSync(marker), false, 'Canceled helper must not execute after later app exit');
+    return { acknowledgedBeforeCancellation: true, independentWorkerStopped: true,
+      bootstrapStopped: true, laterOwnerExitNeverRunsFixture: true, cancellationIdempotent: true };
+  } finally {
+    handoff?.cancel();
+    await stop(fakeParent); await stop(bootstrap);
+    if (handoff?.helperPid) await stopOwnedHelper(handoff.helperPid);
   }
 }
 
@@ -185,12 +219,12 @@ let ready=false;
 process.on('message',message=>{if(ready&&message?.command==='exit')process.exit(0);});
 launch({...${JSON.stringify(options)},pid:process.pid},(command,args,options)=>{
   const helper=spawn(command,args,options);
-  process.send({type:'helper',ownerPid:process.pid,helperPid:helper.pid,command,detached:options.detached});
+  process.send({type:'launcher',ownerPid:process.pid,launcherPid:helper.pid,command,detached:options.detached});
   return helper;
-},{systemRoot:${JSON.stringify(systemRoot)},timeoutMs:15000}).then(()=>{
-  ready=true;process.send({type:'ready',ownerPid:process.pid});
+},{systemRoot:${JSON.stringify(systemRoot)},timeoutMs:15000}).then(handoff=>{
+  ready=true;process.send({type:'ready',ownerPid:process.pid,helperPid:handoff.helperPid});
 }).catch(error=>{process.send({type:'failed',code:error.code||'',message:error.message});process.exit(1);});`;
-  let owner, helperPid, helperInfo, diagnostics = '';
+  let owner, helperPid, launcherPid, helperInfo, diagnostics = '';
   try {
     owner = tracked(process.execPath, ['-e', code], { windowsHide: true,
       env: { ...process.env, PATH: path.join(systemRoot, 'System32') }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
@@ -199,22 +233,25 @@ launch({...${JSON.stringify(options)},pid:process.pid},(command,args,options)=>{
     await bounded(new Promise((resolve, reject) => {
       owner.on('message', message => {
         try {
-          if (message?.type === 'helper') {
+          if (message?.type === 'launcher') {
             assert.equal(message.ownerPid, owner.pid);
-            assert.ok(Number.isSafeInteger(message.helperPid) && message.helperPid > 0);
-            helperPid = message.helperPid; ownedHelperPids.add(helperPid); helperInfo = message;
+            assert.ok(Number.isSafeInteger(message.launcherPid) && message.launcherPid > 0);
+            launcherPid = message.launcherPid; helperInfo = message;
           } else if (message?.type === 'ready') {
-            assert.equal(message.ownerPid, owner.pid); assert.ok(helperPid); resolve();
+            assert.equal(message.ownerPid, owner.pid); assert.ok(launcherPid);
+            assert.ok(Number.isSafeInteger(message.helperPid) && message.helperPid > 0);
+            helperPid = message.helperPid; ownedHelperPids.add(helperPid); resolve();
           } else if (message?.type === 'failed') reject(new Error('Owner helper failed: ' + message.code + ' ' + message.message));
         } catch (error) { reject(error); }
       });
       owner.once('error', reject);
       owner.once('exit', code => reject(new Error('Owner exited before helper readiness: ' + code)));
     }), 20000, 'Real owner did not acknowledge helper readiness');
-    assert.equal(helperInfo.detached, false, 'This acceptance must exercise the production non-detached helper');
+    assert.equal(helperInfo.detached, false, 'The bootstrap must use the production hidden non-detached launch');
     assert.equal(path.win32.normalize(helperInfo.command).toLowerCase(), path.win32.normalize(powershell).toLowerCase());
     assert.equal(owner.exitCode, null);
     assert.equal(processExists(helperPid), true);
+    assert.notEqual(helperPid, launcherPid, 'The independent worker must be a separate process');
     assert.equal(fs.existsSync(marker), false);
     await new Promise(resolve => setTimeout(resolve, 300));
     assert.equal(fs.existsSync(marker), false, 'The owned helper ran before its owner exited');
@@ -225,7 +262,7 @@ launch({...${JSON.stringify(options)},pid:process.pid},(command,args,options)=>{
     assert.equal(fs.readFileSync(marker, 'utf8'), 'fixture-only');
     await until(() => !processExists(helperPid), 'Helper remained after completing the owned fixture', 10000);
     ownedHelperPids.delete(helperPid);
-    return { nonDetachedProductionHelper: true, pathWithoutPowerShell: true,
+    return { hiddenSystemBootstrap: true, independentWorker: true, pathWithoutPowerShell: true,
       unicodeSpaceAndApostrophePath: true, acknowledgedWhileOwnerAlive: true,
       ownerExitedNormallyWithCodeZero: true, fixtureExecutedOnlyAfterActualOwnerExit: true,
       helperExitedAfterFixture: true };
@@ -262,6 +299,7 @@ launch({...${JSON.stringify(options)},pid:process.pid},(command,args,options)=>{
     results.cases.readyAndWait = await exercise(assembly, "有效样本 Author's Draft", systemRoot, powershell, false);
     results.cases.reverification = await exercise(assembly, "改动样本 Author's Draft", systemRoot, powershell, true);
     results.cases.actualOwnerExit = await actualOwnerExit(assembly, systemRoot, powershell);
+    results.cases.cancellation = await cancellation(assembly, systemRoot);
     results.passed = true;
   } catch (error) {
     results.error = error.stack || String(error);

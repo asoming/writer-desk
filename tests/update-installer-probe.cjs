@@ -86,7 +86,7 @@ async function probe(command, configuration, markerFile, budgetMs) {
         if (remaining < 200) { result.cases.push({ variant: configuration.variant, skipped: 'Overall diagnostic time budget exhausted' }); continue; }
         result.cases.push(await probe(command, configuration, path.join(temporary, 'marker-' + index + '.txt'), Math.min(CASE_BUDGET_MS, remaining)));
       }
-      result.successfulConfigurations = result.cases.filter(item => item.fileMarkerSeen && item.expectedExit)
+      result.successfulConfigurations = result.cases.filter(item => item.fileMarkerSeen && item.expectedExit && !item.timeout && !item.spawnErrorCode)
         .map(({ variant, detached, stdin, windowsHide, mode, format, windowStyle, markerSeen }) => ({ variant, detached, stdin, windowsHide, mode, format, windowStyle, stdoutMarkerSeen: markerSeen }));
       result.stdoutMissingDespiteExecution = result.cases.filter(item => item.fileMarkerSeen && !item.markerSeen).map(item => item.variant);
     }
