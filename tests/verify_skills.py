@@ -74,7 +74,7 @@ class SkillMetadataTests(unittest.TestCase):
                 digest = _digest(before)
                 service = SkillsService(Path(directory) / "data", codex_home=home)
                 metadata = next(item for item in service.list()["skills"] if item["id"] == "novelskill")
-                self.assertEqual(metadata["description"], "保留人物的不同声音 检查故事的因果关系")
+                self.assertTrue(metadata["builtin"] and metadata["usable"])
                 service.import_skills(["novelskill"])
                 self.assertEqual(service.detail("novelskill")["content"], content)
                 self.assertEqual(source.read_bytes(), raw)
@@ -85,7 +85,7 @@ class SkillMetadataTests(unittest.TestCase):
                 source.write_bytes(alternate.encode("utf-8"))
                 status = next(item for item in service.list()["skills"] if item["id"] == "novelskill")
                 self.assertTrue(status["sourceChanged"])
-                self.assertEqual(status["description"], metadata["description"])
+                self.assertEqual(status["description"], "保留人物的不同声音 检查故事的因果关系")
                 self.assertEqual(service.detail("novelskill")["content"], content)
                 self.assertNotEqual(_digest(_tree(source.parent)), digest)
 
@@ -123,12 +123,11 @@ class SkillTests(unittest.TestCase):
         result = self.service.list()
         self.assertEqual(result["defaults"], {"skillIds": [], "skillMode": "auto"})
         self.assertTrue(all(item["available"] and not item["imported"] for item in result["skills"]))
-        self.assertEqual(result["skills"][0]["description"], "本机测试写作技能")
+        self.assertTrue(all(item["builtin"] and item["usable"] and item["origin"] == "builtin" for item in result["skills"]))
         self.assertFalse(self.service.data_dir.exists())
         self.assertEqual(Stub.received, [])
-        with self.assertRaises(SkillError) as error:
-            self.service.detail("novelskill")
-        self.assertEqual(error.exception.status, 404)
+        self.assertEqual(self.service.detail("novelskill")["origin"], "builtin")
+        self.assertFalse(self.service.data_dir.exists())
 
     def test_import_detail_refresh_and_mode_specific_recursive_references(self):
         before = _tree(self.home / "skills/chinese-novelist")
@@ -165,8 +164,8 @@ class SkillTests(unittest.TestCase):
         for value in [["unknown"], ["../novelskill"], ["novelskill", "novelskill"], "novelskill", [None]]:
             with self.assertRaises(SkillError):
                 self.service.import_skills(value)
-        with self.assertRaises(SkillError):
-            self.service.save_settings({"skillIds": ["novelskill"], "skillMode": "auto"})
+        self.service.save_settings({"skillIds": ["novelskill"], "skillMode": "auto"})
+        self.assertFalse(self.service.library.exists())
         self.service.import_skills(list(SKILL_IDS))
         self.service.save_settings({"skillIds": ["novelskill"], "skillMode": "continue"})
         self.assertEqual(self.service.selected("draft")[0][0]["mode"], "continue")
@@ -287,7 +286,7 @@ class SkillTests(unittest.TestCase):
                 except urllib.error.HTTPError as error:
                     return error.code, json.load(error)
             self.assertEqual(request("/api/skills")[0], 200)
-            self.assertEqual(request("/api/skills/novelskill")[0], 404)
+            self.assertEqual(request("/api/skills/novelskill")[0], 200)
             self.assertEqual(request("/api/skills/import", "POST", {"skillIds": list(SKILL_IDS)})[0], 200)
             self.assertEqual(request("/api/skills/novelskill")[0], 200)
             self.assertEqual(request("/api/skills/..%2F..%2Fprivate")[0], 400)
@@ -313,6 +312,113 @@ class SkillTests(unittest.TestCase):
                 http.server_close()
                 thread.join()
             app.DB_PATH, app.DESKTOP_TOKEN = previous
+
+
+class PortableCustomSkillTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="writer-custom-skills-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.service = SkillsService(self.root / "data", codex_home=self.root / "absent-codex")
+        self.draft = {"name": "群像对白", "description": "每人有自己的目标", "content": "# 群像对白\n[参考](references/dialogue.md)\n", "files": [{"path": "references/dialogue.md", "content": "核对措辞、潜台词和接话。\n[补充](nested/check.md)"}, {"path": "references/nested/check.md", "content": "依据本轮要求自查。"}]}
+
+    def test_builtins_work_without_codex_or_library_and_local_reset_restores(self):
+        before = {skill_id: _tree(self.service.bundled / skill_id) for skill_id in SKILL_IDS}
+        result = self.service.list()
+        self.assertEqual(len(result["skills"]), 3)
+        self.assertTrue(all(item["builtin"] and item["usable"] and not item["available"] and not item["imported"] for item in result["skills"]))
+        self.assertFalse(self.service.data_dir.exists())
+        original = self.service.detail("novelskill")
+        edited = self.service.update("novelskill", {**self.draft, "revision": original["revision"]})["skill"]
+        self.assertTrue(edited["imported"] and edited["builtin"])
+        self.assertEqual(edited["origin"], "local")
+        selected = self.service.selected("custom", ["novelskill"])[0][0]
+        self.assertIn("references/dialogue.md", [item["path"] for item in selected["files"]])
+        self.service.save_settings({"skillIds": ["novelskill"], "skillMode": "polish"})
+        self.service.delete("novelskill", {"revision": edited["revision"]})
+        self.assertEqual(self.service.detail("novelskill")["content"], original["content"])
+        self.assertEqual(self.service.list()["defaults"]["skillIds"], ["novelskill"])
+        self.assertEqual(before, {skill_id: _tree(self.service.bundled / skill_id) for skill_id in SKILL_IDS})
+
+    def test_custom_roundtrip_restart_references_and_deletion_selection_cleanup(self):
+        created = self.service.create(self.draft)["skill"]
+        skill_id = created["id"]
+        self.service.save_settings({"skillIds": ["novelskill", skill_id], "skillMode": "continue"})
+        restarted = SkillsService(self.service.data_dir, codex_home=self.root / "still-absent")
+        self.assertEqual(restarted.detail(skill_id), created)
+        selected = restarted.selected("draft")[0]
+        self.assertEqual([item["id"] for item in selected], ["novelskill", skill_id])
+        self.assertEqual(len(selected[1]["files"]), 3)
+        package = restarted.export(skill_id)
+        imported = restarted.import_file({"fileName": "对白.writer-skill.json", "content": json.dumps(package, ensure_ascii=False)})["skill"]
+        self.assertNotEqual(imported["id"], skill_id)
+        self.assertEqual(imported["files"], created["files"])
+        self.assertEqual(imported["name"], created["name"])
+        restarted.delete(skill_id, {"revision": created["revision"]})
+        self.assertEqual(restarted.list()["defaults"], {"skillIds": ["novelskill"], "skillMode": "continue"})
+        with self.assertRaises(SkillError) as missing:
+            restarted.detail(skill_id)
+        self.assertEqual(missing.exception.status, 404)
+        self.assertTrue(restarted.detail(imported["id"])["usable"])
+
+    def test_import_preview_is_readonly_and_markdown_metadata_is_preserved(self):
+        raw = "---\nname: 人物口吻\ndescription: 保留各自用词\n---\n# 规则\n根据本轮要求写作。"
+        result = self.service.import_file({"fileName": "SKILL.md", "content": raw, "preview": True})
+        self.assertEqual(result["draft"], {"name": "人物口吻", "description": "保留各自用词", "content": raw, "files": []})
+        self.assertFalse(self.service.data_dir.exists())
+        saved = self.service.create(result["draft"])["skill"]
+        self.assertEqual(saved["content"], raw)
+
+    def test_edit_conflicts_leave_current_rules_and_source_unchanged(self):
+        original = self.service.create(self.draft)["skill"]
+        changed = self.service.update(original["id"], {**self.draft, "content": "# 新规则", "revision": original["revision"]})["skill"]
+        for operation in (lambda: self.service.update(original["id"], {**self.draft, "revision": original["revision"]}), lambda: self.service.delete(original["id"], {"revision": original["revision"]})):
+            with self.assertRaises(SkillError) as conflict:
+                operation()
+            self.assertEqual(conflict.exception.status, 409)
+            self.assertEqual(self.service.detail(original["id"]), changed)
+
+    def test_unsafe_packages_paths_sizes_and_duplicates_never_create_library(self):
+        paths = ["../private.md", "references/../../private.md", "/private.md", "references/../private.md", "references/CON.md", "references/x. /a.md", "references/a.md:secret", "references/x\\a.md", "references/x\x00a.md", "references/code.py"]
+        bad = [{**self.draft, "files": [{"path": path, "content": "规则"}]} for path in paths]
+        bad += [{**self.draft, "files": [{"path": "references/A.md", "content": "a"}, {"path": "references/a.md", "content": "b"}]}, {**self.draft, "content": "[越界](../../private.md)"}, {**self.draft, "content": "a" * (MAX_FILE + 1)}, {**self.draft, "path": "/tmp/private"}]
+        for draft in bad:
+            with self.subTest(draft=str(draft)[:100]), self.assertRaises(SkillError):
+                self.service.create(draft)
+            self.assertFalse(self.service.data_dir.exists())
+        with self.assertRaises(SkillError):
+            self.service.import_file({"fileName": "rules.json", "content": json.dumps({"format": "writer-desk-skill", "version": 1, **self.draft, "scripts": ["run.exe"]})})
+        self.assertFalse(self.service.data_dir.exists())
+
+    def test_custom_nested_flow_references_are_included_in_actual_selection(self):
+        draft = {**self.draft, "files": [{"path": "references/dialogue.md", "content": "[场景](flows/scenes.md)"}, {"path": "references/flows/scenes.md", "content": "此处是必需的场景写作步骤。"}]}
+        created = self.service.create(draft)["skill"]
+        selected = self.service.selected("custom", [created["id"]])[0][0]
+        self.assertIn("references/flows/scenes.md", [item["path"] for item in selected["files"]])
+
+    def test_custom_failed_replace_retains_previous_usable_copy(self):
+        original = self.service.create(self.draft)["skill"]
+        rename = Path.rename
+        def fail_once(file, target):
+            if file.name.startswith(".import-"):
+                raise OSError("simulated storage failure")
+            return rename(file, target)
+        with patch.object(Path, "rename", fail_once), self.assertRaises(SkillError):
+            self.service.update(original["id"], {**self.draft, "content": "# 不应覆盖"})
+        self.assertEqual(self.service.detail(original["id"]), original)
+
+    def test_local_metadata_symlink_is_rejected_without_reading_target(self):
+        if os.name == "nt":
+            self.skipTest("Windows symlink creation requires optional privilege")
+        created = self.service.create(self.draft)["skill"]
+        metadata = self.service.library / created["id"] / "metadata.json"
+        metadata.unlink()
+        secret = self.root / "secret.json"
+        secret.write_text('{"name":"secret","description":"private"}', encoding="utf-8")
+        metadata.symlink_to(secret)
+        with self.assertRaises(SkillError) as unsafe:
+            self.service.detail(created["id"])
+        self.assertNotIn("secret", unsafe.exception.message)
 
 
 class InstalledSkillTests(unittest.TestCase):

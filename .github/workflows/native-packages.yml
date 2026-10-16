@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Package version from package.json (for example 0.8.3)
+        description: Package version from package.json (for example 0.8.4)
         required: true
         type: string
 
@@ -82,6 +82,7 @@ jobs:
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/interface-polish-electron.cjs --report dist/interface-polish-regression.json
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/comparison-drafts-electron.cjs --report dist/comparison-drafts-regression.json
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/character-growth-electron.cjs --report dist/character-growth-regression.json
+          xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/skills-workflow-electron.cjs --report dist/skills-workflow-regression.json
       - name: Real editor typing and IME regression on Windows and macOS
         if: runner.os != 'Linux'
         run: |
@@ -94,6 +95,7 @@ jobs:
           node node_modules/electron/cli.js tests/interface-polish-electron.cjs --report dist/interface-polish-regression.json
           node node_modules/electron/cli.js tests/comparison-drafts-electron.cjs --report dist/comparison-drafts-regression.json
           node node_modules/electron/cli.js tests/character-growth-electron.cjs --report dist/character-growth-regression.json
+          node node_modules/electron/cli.js tests/skills-workflow-electron.cjs --report dist/skills-workflow-regression.json
       - name: Native storage and lifecycle regression tests
         run: python scripts/test-native.py
       - name: Linux desktop and updater contracts
@@ -111,6 +113,8 @@ jobs:
         run: python -c "import pathlib, subprocess, sys; service = pathlib.Path('build/backend') / ('writer-service.exe' if sys.platform == 'win32' else 'writer-service'); subprocess.run([sys.executable, 'tests/verify_home_dashboard.py', '--service', str(service.resolve())], check=True)"
       - name: Frozen comparison drafts, adoption and restart
         run: python -c "import pathlib, subprocess, sys; service = pathlib.Path('build/backend') / ('writer-service.exe' if sys.platform == 'win32' else 'writer-service'); subprocess.run([sys.executable, 'tests/verify_comparison_frozen.py', '--service', str(service.resolve())], check=True)"
+      - name: Frozen Skills on a clean computer
+        run: python -c "import pathlib, subprocess, sys; service = pathlib.Path('build/backend') / ('writer-service.exe' if sys.platform == 'win32' else 'writer-service'); subprocess.run([sys.executable, 'tests/verify_skills_frozen.py', '--service', str(service.resolve())], check=True)"
       - name: Verify actual installer on Linux
         if: runner.os == 'Linux'
         run: xvfb-run -a python scripts/verify-installer.py
@@ -139,6 +143,7 @@ jobs:
             dist/interface-polish-regression.json
             dist/comparison-drafts-regression.json
             dist/character-growth-regression.json
+            dist/skills-workflow-regression.json
             dist/linux-tar-verification.json
       - name: Upload failed native diagnostics
         if: failure()
@@ -160,6 +165,7 @@ jobs:
             dist/interface-polish-regression.json
             dist/comparison-drafts-regression.json
             dist/character-growth-regression.json
+            dist/skills-workflow-regression.json
             dist/expansion-workflow-regression.png
             dist/home-dashboard-regression.png
             dist/interface-polish-regression.png

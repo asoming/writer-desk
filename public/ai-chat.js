@@ -37,6 +37,7 @@ function clearAIChatBookHistory(bookId){
   for(const channel of ['outline','write'])try{clientStorage.removeItem(aiChatStorageKey(bookId,channel));}catch{toast(T('对话未能从本机删除。'));}
 }
 function refreshAIChatSettings(){return aiChatView?.reload();}
+function resumeAIChatCandidates(){aiChatView?.resumeCandidates();}
 function flushAIChat(){aiChatView?.flush();}
 addEventListener('pagehide',flushAIChat);
 addEventListener('beforeunload',flushAIChat);
@@ -65,7 +66,8 @@ function createAIChatView(panel,book,channel){
   Object.entries(aiChatTasks).forEach(([value,label])=>{const option=el('option',null,T(label));option.value=value;task.append(option);});task.value=saved.action;context.append(scope,task);
   const transcript=el('div','ai-chat-transcript');transcript.setAttribute('role','log');transcript.setAttribute('aria-label',T('AI 对话'));transcript.setAttribute('aria-live','polite');
   const footer=el('div','ai-chat-footer'),material=el('details','ai-chat-material'),materialSummary=el('summary'),materialBody=el('div','ai-chat-material-body'),chapterChoices=el('div','ai-chat-chapters'),skillChoices=el('div','ai-chat-skills'),skillMode=writingSkillModeSelect('ai-chat-skill-mode'),materialCount=el('span','ai-chat-material-count');
-  const chapterTools=el('div','ai-chat-material-tools'),selectAll=action(T('全选'),'text-button',()=>chooseChapters(true)),clearChapters=action(T('清空'),'text-button',()=>chooseChapters(false));chapterTools.append(selectAll,clearChapters);materialBody.append(chapterTools,chapterChoices,el('div','ai-chat-skill-label',T('写作 Skill')),skillChoices,skillMode,materialCount);material.append(materialSummary,materialBody);
+  const skillHeading=el('div','ai-chat-skill-heading'),manageSkills=writingSkillIcon('管理 Skill','edit',()=>{if(!pending)showAppSettings('skills');});skillHeading.append(el('div','ai-chat-skill-label',T('写作 Skill')),manageSkills);
+  const chapterTools=el('div','ai-chat-material-tools'),selectAll=action(T('全选'),'text-button',()=>chooseChapters(true)),clearChapters=action(T('清空'),'text-button',()=>chooseChapters(false));chapterTools.append(selectAll,clearChapters);materialBody.append(chapterTools,chapterChoices,skillHeading,skillChoices,skillMode,materialCount);material.append(materialSummary,materialBody);
   const memoryButton=window.WriterStoryMemory?action(T('长篇记忆'),'text-button',()=>{if(!pending&&current())window.WriterStoryMemory.open(book,{onChanged:schedulePreview});}):null;if(memoryButton)materialBody.append(memoryButton);
   const composer=el('div','ai-chat-composer'),input=el('textarea'),send=action('↑','ai-chat-send',()=>run()),composerBar=el('div','ai-chat-composer-bar'),modelGroup=el('div','ai-chat-model-group'),profileChoice=el('select','ai-chat-model ai-chat-profile'),modelChoice=el('select','ai-chat-model'),refreshModels=action('↻','ai-chat-model-refresh',()=>loadModels(true));modelChoice.id='ai-chat-model';modelChoice.setAttribute('aria-label',T('模型'));refreshModels.setAttribute('aria-label',T('刷新模型'));refreshModels.title=T('刷新模型');input.id='ai-chat-prompt';input.rows=3;input.maxLength=10000;input.value=saved.prompt;input.placeholder=T('输入提示词…');input.setAttribute('aria-label',T('提示词'));send.setAttribute('aria-label',T('发送'));send.title=T('发送');profileChoice.id='ai-chat-profile';profileChoice.setAttribute('aria-label',T('服务配置'));modelGroup.append(profileChoice,modelChoice,refreshModels);composerBar.append(modelGroup,send);composer.append(input,composerBar);
   const composerTools=el('div','ai-chat-composer-tools'),reset=action(T('恢复默认提示词'),'text-button',()=>chooseTask(task.value,true)),status=el('p','ai-chat-status'),configure=action(T('打开 AI 设置'),'text-button',()=>showAppSettings('ai'));configure.hidden=true;composerTools.append(reset);footer.append(material,status,configure,composer,composerTools);root.append(header,context,transcript,footer);panel.replaceChildren(root);
@@ -73,7 +75,7 @@ function createAIChatView(panel,book,channel){
   const promptSize=window.WriterTextareaAutosize?.attach(input,{container:root});
   const current=()=>!disposed&&state.book===book&&state.view===channel;
   const visible=()=>current()&&active&&!panel.hidden;
-  const modalOpen=()=>$('dialog')?.open||$('settings-dialog')?.open||window.WriterChatImages?.viewerOpen();
+  const modalOpen=()=>$('dialog')?.open||$('settings-dialog')?.open||document.querySelector?.('.writing-skill-editor[open],.writing-skill-confirm[open]')||window.WriterChatImages?.viewerOpen();
   const imageInput=window.WriterChatImages?.attachComposer({bookId:book.id,input,composer,toolbar:modelGroup,initial:saved.attachments,current:()=>!disposed&&state.book===book,onChange:images=>{saved.attachments=images;persist();if(!pending)schedulePreview();},onBusy:()=>controls(),onError:message=>{status.textContent=T(message);}});
   const draftImages=()=>imageInput?.get()||saved.attachments;
   const hasPrompt=()=>!!input.value.trim()||draftImages().length>0;
@@ -101,7 +103,7 @@ function createAIChatView(panel,book,channel){
   function available(){return ready&&configuration?.enabled&&configuration.endpoint&&configuration.model;}
   function controls(){
     send.disabled=!!pending||!!imageInput?.isBusy()||modelSaving||configurationLoading||!!aiModelChangePending||!available()||!hasPrompt()||!preview||preview.overLimit||previewKey!==JSON.stringify(payload())||(['relationships','consistency','memory'].includes(task.value)&&!saved.chapterIds.length);
-    task.disabled=reset.disabled=selectAll.disabled=clearChapters.disabled=!!pending;skillMode.disabled=!!pending||!ready;
+    task.disabled=reset.disabled=selectAll.disabled=clearChapters.disabled=manageSkills.disabled=!!pending;bubbles.forEach(value=>{if(value.saveSkill)value.saveSkill.disabled=!!pending;});skillMode.disabled=!!pending||!ready;
     chapterChoices.querySelectorAll('input').forEach(box=>box.disabled=!!pending);skillChoices.querySelectorAll('input').forEach(box=>box.disabled=!!pending||box.dataset.available!=='true');
     configure.hidden=!!available();reset.hidden=task.value==='custom';
     profileChoice.disabled=modelChoice.disabled=!!pending||modelSaving||configurationLoading||!ready;refreshModels.disabled=!!pending||modelSaving||modelsLoading||!configuration?.endpoint;
@@ -138,7 +140,7 @@ function createAIChatView(panel,book,channel){
   function renderChoices(){
     const chapters=validChapters();saved.chapterIds=book.kind==='short'?chapters.map(chapter=>chapter.id):saved.chapterIds.filter(id=>chapters.some(chapter=>chapter.id===id));materialSummary.textContent=saved.chapterIds.length?(book.kind==='short'?T('资料 · 正文'):T('资料 · {0} 章',saved.chapterIds.length)):T('资料');chapterChoices.replaceChildren();chapterTools.hidden=chapterChoices.hidden=book.kind==='short'||!chapters.length;
     if(book.kind!=='short')chapters.forEach(chapter=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.value=chapter.id;box.checked=saved.chapterIds.includes(chapter.id);box.addEventListener('change',()=>{if(pending)return;saved.manualChapters=true;saved.chapterIds=box.checked?[...new Set([...saved.chapterIds,chapter.id])]:saved.chapterIds.filter(id=>id!==chapter.id);renderChoices();persist();schedulePreview();});row.append(box,el('span',null,chapter.title||T('未命名章节')));chapterChoices.append(row);});
-    skillChoices.replaceChildren();skills.forEach(skill=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.value=skill.id;box.checked=(saved.skillIds||[]).includes(skill.id);box.dataset.available=String(!!skill.imported);box.addEventListener('change',()=>{if(pending)return;saved.skillIds=box.checked?[...new Set([...(saved.skillIds||[]),skill.id])]:saved.skillIds.filter(id=>id!==skill.id);persist();schedulePreview();});row.append(box,el('span',null,writingSkillName(skill.id)),el('small',null,skill.imported?T('已导入'):T('未导入')));skillChoices.append(row);});skillMode.value=saved.skillMode;controls();
+    skillChoices.replaceChildren();skills.forEach(skill=>{const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.value=skill.id;box.checked=(saved.skillIds||[]).includes(skill.id);box.dataset.available=String(!!skill.imported);box.addEventListener('change',()=>{if(pending)return;saved.skillIds=box.checked?[...new Set([...(saved.skillIds||[]),skill.id])]:saved.skillIds.filter(id=>id!==skill.id);persist();schedulePreview();});row.append(box,el('span',null,writingSkillName(skill.id)),el('small',null,writingSkillOriginName(skill)));skillChoices.append(row);});skillMode.value=saved.skillMode;controls();
   }
   function chooseChapters(all){if(pending)return;saved.manualChapters=true;saved.chapterIds=all?validChapters().map(chapter=>chapter.id):[];renderChoices();persist();schedulePreview();}
   function chooseTask(value,restore=false){
@@ -168,10 +170,11 @@ function createAIChatView(panel,book,channel){
     const group=el('section','ai-chat-turn'),user=el('div','ai-chat-message ai-chat-user'),answer=el('div','ai-chat-message ai-chat-assistant');if(turn.user)user.append(el('div','ai-chat-message-text',turn.user));renderImages(turn.id+':user',user,turn.attachments);group.append(user,answer);transcript.append(group);bubbles.set(turn.id,{group,answer});saved.turns.filter(item=>item!==turn&&['error','cancelled'].includes(item.status)).forEach(renderAnswer);renderAnswer(turn);scrollEnd();
   }
   function renderAnswer(turn){
-    const answer=bubbles.get(turn.id)?.answer;if(!answer)return;renderImages(turn.id+':reply',answer,[]);answer.replaceChildren();candidates.get(turn.id)?.dispose();candidates.delete(turn.id);deferredCandidates.delete(turn.id);
+    const answer=bubbles.get(turn.id)?.answer;if(!answer)return;renderImages(turn.id+':reply',answer,[]);answer.replaceChildren();candidates.get(turn.id)?.dispose();candidates.delete(turn.id);deferredCandidates.delete(turn.id);bubbles.get(turn.id).saveSkill=null;
     if(turn.status==='pending'){answer.append(el('div',turn.reply?'ai-chat-message-text ai-chat-streaming':'ai-chat-waiting',turn.reply||T('正在思考…')),action(T('停止等待'),'text-button',cancelPending));return;}
     if(turn.status!=='complete'){if(turn.reply)answer.append(el('div','ai-chat-message-text',turn.reply));answer.append(el('p','ai-chat-message-error',T(turn.error||'请求中断，可重试。')));if(turn===saved.turns.at(-1))answer.append(action(T('重试'),'text-button',()=>run(turn)));return;}
     if(turn.reply)answer.append(el('div','ai-chat-message-text',turn.reply));renderImages(turn.id+':reply',answer,turn.images);if(typeof turn.imageWarning==='string'&&turn.imageWarning.length<=2000)answer.append(el('p','ai-chat-message-error',T(turn.imageWarning)));
+    if(turn.reply?.trim()){const tools=el('div','ai-chat-message-tools'),saveSkill=writingSkillIcon('存为 Skill','save',()=>{if(pending||!visible()||modalOpen()||turn.status!=='complete')return;openWritingSkillEditor({content:turn.reply});});saveSkill.dataset.saveWritingSkill=turn.id;saveSkill.disabled=!!pending;tools.append(saveSkill);answer.append(tools);bubbles.get(turn.id).saveSkill=saveSkill;}
     if(turn.data&&!turn.consumed){
       const host=el('div','ai-chat-candidate');answer.append(host);
       // The shared renderer's interaction guard also guards initial creation.

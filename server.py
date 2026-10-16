@@ -1154,6 +1154,34 @@ def sync_book_folder(book_id, create=False):
 
 def handle_ai_request(path, data):
     service = AIService(DB_PATH.parent)
+    if path == "/api/skills/generate":
+        if (not isinstance(data, dict) or set(data) - {"prompt", "model", "profileId"}
+                or not isinstance(data.get("prompt"), str) or not data["prompt"].strip() or len(data["prompt"]) > 8000):
+            raise SkillError("请填写不超过 8000 字的技能要求。")
+        if any(key in data and (not isinstance(data[key], str) or not data[key].strip()) for key in ("model", "profileId")):
+            raise SkillError("请选择有效的 AI 服务和模型。")
+        instruction = ("根据下面作者的要求，编写一个可以在小说写作 App 内使用的写作技能。"
+                       "仅返回 JSON 对象，字段为 name、description、content，全部是字符串。"
+                       "content 是完整的 SKILL.md Markdown 规则，包含适用场景、可执行的写作步骤和自查标准。"
+                       "规则须明确遵循作者本轮要求及 App 输出格式；不得要求读取本机文件、运行脚本、执行工具、自动保存作品或声称已完成未执行的操作。"
+                       "不要附带本机路径、凭据、占位参考文件或外部依赖。这里只生成候选，作者确认前不会保存。\n作者要求：\n" + data["prompt"])
+        empty_book = {"id": "skill-generator", "title": "", "kind": "long", "chapters": [], "outline": [], "notes": [], "relations": []}
+        result = service.run(empty_book, "custom", [], instruction, [], "auto", model=data.get("model"), profile_id=data.get("profileId"))
+        raw = result["data"]["text"].strip()
+        if raw.startswith("```") and raw.endswith("```"):
+            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        try:
+            draft = json.loads(raw)
+        except (ValueError, TypeError):
+            draft = None
+        if isinstance(draft, dict) and set(draft) == {"name", "description", "content"}:
+            candidate = {**draft, "files": []}
+        else:
+            from skills import _metadata
+            metadata = _metadata("custom-preview", raw)
+            candidate = {"name": metadata["name"], "description": metadata["description"], "content": raw, "files": []}
+        SkillsService.prepare(candidate)
+        return candidate
     if path == "/api/ai/models":
         if not isinstance(data, dict):
             raise AIError(400, "模型读取参数不正确。")
@@ -1346,6 +1374,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(AIService(DB_PATH.parent).list_models())
             elif path == "/api/skills":
                 self.send_json(SkillsService(DB_PATH.parent).list())
+            elif re.fullmatch(r"/api/skills/[^/]+/export", path):
+                self.send_json(SkillsService(DB_PATH.parent).export(path[len("/api/skills/"):-len("/export")]))
             elif path.startswith("/api/skills/"):
                 self.send_json(SkillsService(DB_PATH.parent).detail(path[len("/api/skills/"):]))
             elif path == "/api/examples":
@@ -1440,6 +1470,12 @@ class Handler(BaseHTTPRequestHandler):
             compared = comparison_drafts.apply(chapter_history_context(), path, data)
             if compared is not None:
                 self.send_json(compared)
+                return
+            if path == "/api/skills/custom":
+                self.send_json(SkillsService(DB_PATH.parent).create(data), 201)
+                return
+            if path == "/api/skills/import-file":
+                self.send_json(SkillsService(DB_PATH.parent).import_file(data))
                 return
             if path == "/api/skills/import":
                 if not isinstance(data, dict) or set(data) != {"skillIds"}:
@@ -1538,6 +1574,9 @@ class Handler(BaseHTTPRequestHandler):
             if compared is not None:
                 self.send_json(compared)
                 return
+            if path.startswith("/api/skills/"):
+                self.send_json(SkillsService(DB_PATH.parent).delete(path[len("/api/skills/"):], data))
+                return
             result = server_extensions.handle(chapter_history_context(), "DELETE", self.path, data)
             self.send_json(result if result is not None else {"error": "找不到这个操作"}, 200 if result is not None else 404)
         except (AIError, SkillError, SyncError) as exc:
@@ -1565,6 +1604,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/skills/settings":
                 self.send_json(SkillsService(DB_PATH.parent).save_settings(data))
+                return
+            if path.startswith("/api/skills/"):
+                self.send_json(SkillsService(DB_PATH.parent).update(path[len("/api/skills/"):], data))
                 return
             if path == "/api/ai/settings":
                 self.send_json(AIService(DB_PATH.parent).save_settings(data))

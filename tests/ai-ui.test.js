@@ -14,7 +14,7 @@ class Element{
   get options(){return this.children;}
   contains(target){return this===target||this.children.some(child=>child.contains(target));}
   querySelectorAll(selector){const tags=selector.split(',').map(tag=>tag.toUpperCase());return descendants(this).filter(node=>tags.includes(node.tagName));}
-  querySelector(){return null;}
+  querySelector(selector){return selector==='.writing-skill-editor[open],.writing-skill-confirm[open]'?find(this,node=>node.open&&['writing-skill-editor','writing-skill-confirm'].includes(node.className)):null;}
   focus(){} select(){this.selected=true;} scrollIntoView(){} close(){this.open=false;} showModal(){this.open=true;}
 }
 function descendants(node){return node.children.flatMap(child=>[child,...descendants(child)]);}
@@ -35,6 +35,7 @@ function harness(){
   h.result=(request)=>({bookId:state.book.id,action:request.action,chapterIds:request.chapterIds,data:request.action==='draft'?{title:'AI测试草稿',body:'<img src=x onerror=alert(1)>\n一段新的试写。'}:request.action==='consistency'?{issues:[{title:'待核查',description:'核对人物设定',chapterIds:request.chapterIds,evidence:[{chapterId:request.chapterIds[0],quote:sample.chapters[0].body.slice(0,40)}]}]}:{people:[{name:'测试新人物',group:'测试组',description:'仅供确认',evidence:[{chapterId:request.chapterIds[0],quote:sample.chapters[0].body.slice(0,40)}]}],relationships:[{from:'测试新人物',to:'沈砚',type:'cooperate',label:'测试核验',description:'作者确认后建立',evidence:[{chapterId:request.chapterIds[0],quote:sample.chapters[0].body.slice(0,40)}]}]}});
   context.localAPI=async(url,method='GET',data)=>{
     h.calls.push({url,method,data:structuredClone(data)});
+    if(h.skillOperation){const special=await h.skillOperation(url,method,data);if(special!==undefined)return special;}
     if(url==='/api/ai/settings'){if(method==='PUT'){const {apiKey,clearKey,...settings}=data;h.settings={...h.settings,...settings,hasKey:clearKey?false:!!apiKey||h.settings.hasKey};}return h.settings;}
     if(url==='/api/ai/models')return h.models?h.models(data):{models:[{id:'stub-model'},{id:'second-model'}]};
     if(url==='/api/skills'){if(h.skillError)throw h.skillError;return structuredClone(h.skills);}
@@ -194,29 +195,29 @@ test('writing skill settings import local copies, save explicit defaults and kee
   h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));
   const section=container.children[0];assert.equal(section.open,false);
   const check=id=>find(section,node=>node.id==='writing-skill-default-'+id);
-  assert.equal(check('chinese-novelist').disabled,true);assert.ok(!find(section,node=>node.textContent.includes('Very long')));
+  assert.equal(check('chinese-novelist').disabled,true);assert.equal(find(section,node=>node.className==='writing-skill-description'&&node.textContent.includes('Very long')).title,h.skills.skills[2].description);
   await find(section,node=>node.textContent==='导入本机写作 Skill').listeners.click();
   assert.deepEqual(h.calls.find(call=>call.url==='/api/skills/import').data.skillIds,['chinese-novelist','novelskill','human-writing']);
   assert.equal(check('chinese-novelist').disabled,false);check('chinese-novelist').checked=true;check('chinese-novelist').listeners.change();
   find(section,node=>node.id==='writing-skill-default-mode').value='polish';
-  await find(section,node=>node.textContent==='保存默认选择').listeners.click();
+  await find(section,node=>node.title==='保存默认选择').listeners.click();
   assert.deepEqual(h.skills.defaults,{skillIds:['chinese-novelist'],skillMode:'polish'});
-  await find(section,node=>node.tagName==='BUTTON'&&node.textContent==='查看').listeners.click();
+  await find(section,node=>node.tagName==='BUTTON'&&node.title==='查看 Skill').listeners.click();
   const viewer=find(section,node=>node.className==='writing-skill-viewer'),documents=descendants(viewer).filter(node=>node.tagName==='PRE');
   assert.equal(documents.length,2);assert.match(documents[0].textContent,/<img src=x/);assert.match(documents[1].textContent,/连续阅读参考内容/);
   assert.ok(!find(viewer,node=>node.tagName==='IMG'));assert.equal(JSON.stringify(h.state.book),snapshot);assert.ok(!h.calls.some(call=>call.url.endsWith('/ai')));
-  check('chinese-novelist').checked=false;check('chinese-novelist').listeners.change();await find(section,node=>node.textContent==='保存默认选择').listeners.click();
+  check('chinese-novelist').checked=false;check('chinese-novelist').listeners.change();await find(section,node=>node.title==='保存默认选择').listeners.click();
   assert.deepEqual(h.skills.defaults.skillIds,[],'explicit no-skill preference is saved');
 });
 
-test('skill details discard out-of-order responses and results after a book switch',async()=>{
+test('skill details discard out-of-order responses and results after the manager closes',async()=>{
   const h=harness(),container=new Element();h.context.container=container;h.skills.skills.forEach(skill=>skill.imported=true);
   h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));
-  const section=container.children[0],views=descendants(section).filter(node=>node.tagName==='BUTTON'&&node.textContent==='查看'),responses=[];
+  const section=container.children[0],views=descendants(section).filter(node=>node.tagName==='BUTTON'&&node.title==='查看 Skill'),responses=[];
   h.skillDetail=id=>new Promise(resolve=>responses.push({id,resolve}));const first=views[0].listeners.click(),second=views[1].listeners.click();
   responses[1].resolve({content:'new selection',files:[]});await second;responses[0].resolve({content:'stale selection',files:[]});await first;
   assert.ok(find(section,node=>node.textContent==='new selection'));assert.ok(!find(section,node=>node.textContent==='stale selection'));
-  const third=views[2].listeners.click();h.state.book={...h.state.book,id:'different-book'};responses[2].resolve({content:'different book late text',files:[]});await third;
+  const third=views[2].listeners.click();container.replaceChildren();responses[2].resolve({content:'different book late text',files:[]});await third;
   assert.ok(!find(section,node=>node.textContent==='different book late text'));
 });
 
@@ -629,4 +630,46 @@ test('confirmed service deletion sends an explicit empty JSON body through the r
   const h=harness(),container=new Element();h.context.container=container;h.settings={...h.settings,id:'first',name:'服务一',activeProfileId:'first',profiles:[{id:'first',name:'服务一'},{id:'second',name:'服务二'}]};const original=h.context.localAPI;
   h.context.localAPI=async(url,method,data)=>{if(url==='/api/ai/profiles/first'&&method==='DELETE'){h.calls.push({url,method,data:structuredClone(data)});assert.deepEqual(structuredClone(data),{},'DELETE must carry JSON so read_json can validate it');h.settings={...h.settings,id:'second',name:'服务二',activeProfileId:'second',profiles:[{id:'second',name:'服务二'}]};return h.settings;}return original(url,method,data);};
   h.run('appendAISettings(container)');await new Promise(resolve=>setImmediate(resolve));const remove=find(container,node=>node.textContent==='删除服务');await remove.listeners.click();assert.equal(remove.textContent,'确认删除服务');await remove.listeners.click();const deletion=h.calls.find(call=>call.method==='DELETE');assert.ok(deletion);assert.deepEqual(deletion.data,{});assert.equal(find(container,node=>node.id==='ai-profile-choice').value,'second');
+});
+
+
+test('the returned Skill catalog retains custom entries, current names and server descriptions',async()=>{
+  const h=harness();h.skills.skills.push({id:'custom-test',name:'我的对白规则',description:'每个人物说话都有不同节奏。',builtin:false,usable:true,origin:'local'});h.skills.defaults={skillIds:['custom-test'],skillMode:'polish'};
+  const values=h.context.writingSkillList(h.skills);assert.equal(values.length,4);assert.equal(values[3].imported,true);assert.equal(h.context.writingSkillName('custom-test'),'我的对白规则');
+  await h.run("showAIAssistant('draft')");assert.equal(field(h,'ai-skill-custom-test').disabled,false);assert.equal(field(h,'ai-skill-custom-test').checked,true);await button(h,'发送所选资料').listeners.click();assert.deepEqual(h.calls.filter(call=>call.url.endsWith('/ai')).at(-1).data.skillIds,['custom-test']);
+});
+
+test('the shared Skill editor renders untrusted text, cancels without writes and saves only explicit reviewed values',async()=>{
+  const h=harness(),snapshot=JSON.stringify(h.state.book);h.context.seed={name:'自己的方法',description:'个人规则',content:'<img src=x onerror=alert(1)>\n认真听人物说话。',files:[{path:'references/example.md',content:'<script>bad()</script>'}]};
+  h.run('openWritingSkillEditor(seed)');let dialog=find(h.context.document.body,node=>node.id==='writing-skill-editor');assert.ok(dialog.open);assert.equal(find(dialog,node=>node.id==='writing-skill-content').value,h.context.seed.content);assert.ok(!find(dialog,node=>node.tagName==='IMG'||node.tagName==='SCRIPT'));await find(dialog,node=>node.textContent==='取消').listeners.click();assert.ok(!h.calls.some(call=>call.method==='POST'||call.method==='PUT'));
+  h.skillOperation=(url,method,data)=>url==='/api/skills/custom'?{...h.skills,skill:{id:'custom-saved',...data}}:undefined;h.run('openWritingSkillEditor(seed)');dialog=find(h.context.document.body,node=>node.id==='writing-skill-editor');find(dialog,node=>node.id==='writing-skill-content').value='作者确认后的规则';await find(dialog,node=>node.id==='writing-skill-save').listeners.click();const request=h.calls.find(call=>call.url==='/api/skills/custom');assert.equal(request.method,'POST');assert.equal(request.data.content,'作者确认后的规则');assert.equal(request.data.files[0].path,'references/example.md');assert.equal(JSON.stringify(h.state.book),snapshot);assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-editor'));
+});
+
+test('AI Skill generation pins the configured model and profile, previews editable output and never saves on cancel',async()=>{
+  const h=harness(),snapshot=JSON.stringify(h.state.book);h.settings.activeProfileId='profile-two';h.settings.model='configured-model';h.skillOperation=url=>url==='/api/skills/generate'?{name:'候选对白方法',description:'已生成的简介',content:'让对白承载人物行动。',files:[]}:undefined;h.run('openWritingSkillEditor()');const dialog=find(h.context.document.body,node=>node.id==='writing-skill-editor');assert.equal(h.calls.length,0);await find(dialog,node=>node.title==='用 AI 创建 Skill').listeners.click();const prompt=find(dialog,node=>node.id==='writing-skill-generate-prompt');prompt.value='帮我建立群像对白规则';prompt.listeners.input();await find(dialog,node=>node.id==='writing-skill-generate-send').listeners.click();const request=h.calls.find(call=>call.url==='/api/skills/generate');assert.deepEqual(request.data,{prompt:prompt.value,model:'configured-model',profileId:'profile-two'});assert.equal(find(dialog,node=>node.id==='writing-skill-name').value,'候选对白方法');assert.equal(find(dialog,node=>node.id==='writing-skill-content').disabled,false);assert.ok(!h.calls.some(call=>call.url==='/api/skills/custom'));await find(dialog,node=>node.textContent==='取消').listeners.click();assert.ok(!h.calls.some(call=>call.url==='/api/skills/custom'));assert.equal(JSON.stringify(h.state.book),snapshot);
+});
+
+test('a cancelled AI Skill preview ignores a late reply and cannot recreate a dialog or save a rule',async()=>{
+  const h=harness();let finish;h.skillOperation=url=>url==='/api/skills/generate'?new Promise(resolve=>finish=resolve):undefined;h.run('openWritingSkillEditor()');const dialog=find(h.context.document.body,node=>node.id==='writing-skill-editor'),prompt=find(dialog,node=>node.id==='writing-skill-generate-prompt');prompt.value='延迟返回的写作规则';prompt.listeners.input();const request=find(dialog,node=>node.id==='writing-skill-generate-send').listeners.click();await new Promise(resolve=>setImmediate(resolve));assert.equal(find(dialog,node=>node.id==='writing-skill-save').disabled,true);await find(dialog,node=>node.textContent==='取消').listeners.click();finish({name:'迟到内容',content:'不应保存'});await request;assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-editor'));assert.ok(!h.calls.some(call=>call.url==='/api/skills/custom'));
+});
+
+test('file import previews portable content and cancel creates no custom rule',async()=>{
+  const h=harness(),container=new Element();h.context.container=container;h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));h.skillOperation=url=>url==='/api/skills/import-file'?{draft:{name:'导入规则',description:'portable',content:'校验后才采用。',files:[]}}:undefined;const input=find(container,node=>node.id==='writing-skill-import-file');input.files=[{name:'method.writer-skill.json',size:50,text:async()=>'portable-json'}];await input.listeners.change();const request=h.calls.find(call=>call.url==='/api/skills/import-file');assert.deepEqual(request.data,{fileName:'method.writer-skill.json',content:'portable-json',preview:true});const dialog=find(h.context.document.body,node=>node.id==='writing-skill-editor');assert.equal(find(dialog,node=>node.id==='writing-skill-name').value,'导入规则');await find(dialog,node=>node.textContent==='取消').listeners.click();assert.ok(!h.calls.some(call=>call.url==='/api/skills/custom'));
+});
+
+test('editing preserves revision and reference files, while delete requires confirmation and refreshes defaults',async()=>{
+  const h=harness(),container=new Element(),custom={id:'custom-edit',name:'我的规则',builtin:false,usable:true,origin:'local',revision:'old-revision'};h.skills.skills.push(custom);h.skills.defaults={skillIds:[custom.id],skillMode:'polish'};h.context.container=container;h.skillDetail=id=>({...custom,id,content:'旧规则',files:[{path:'references/sample.md',content:'参考内容'}]});h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));
+  h.skillOperation=(url,method,data)=>{if(url==='/api/skills/custom-edit'&&method==='PUT')return{...h.skills,skill:{...custom,...data}};if(url==='/api/skills/custom-edit'&&method==='DELETE'){h.skills.skills=h.skills.skills.filter(skill=>skill.id!==custom.id);h.skills.defaults.skillIds=[];return structuredClone(h.skills);}};
+  let row=find(container,node=>node.dataset.skillId===custom.id);await find(row,node=>node.title==='编辑 Skill').listeners.click();let dialog=find(h.context.document.body,node=>node.id==='writing-skill-editor');find(dialog,node=>node.id==='writing-skill-content').value='修改后的规则';await find(dialog,node=>node.id==='writing-skill-save').listeners.click();const edit=h.calls.find(call=>call.method==='PUT');assert.equal(edit.data.revision,'old-revision');assert.equal(edit.data.files[0].content,'参考内容');row=find(container,node=>node.dataset.skillId===custom.id);await find(row,node=>node.title==='删除 Skill').listeners.click();assert.ok(!h.calls.some(call=>call.method==='DELETE'));dialog=find(h.context.document.body,node=>node.className==='writing-skill-confirm');await find(dialog,node=>node.textContent==='取消').listeners.click();assert.ok(!h.calls.some(call=>call.method==='DELETE'));await find(row,node=>node.title==='删除 Skill').listeners.click();dialog=find(h.context.document.body,node=>node.className==='writing-skill-confirm');await find(dialog,node=>node.textContent==='删除').listeners.click();assert.equal(h.calls.find(call=>call.method==='DELETE').data.revision,'old-revision');assert.ok(!find(container,node=>node.dataset.skillId===custom.id));assert.deepEqual(h.skills.defaults.skillIds,[]);
+});
+
+
+test('portable import permits JSON overhead above the raw rule limit but rejects files over the backend import cap',async()=>{
+  const h=harness(),container=new Element();h.context.container=container;h.skillOperation=url=>url==='/api/skills/import-file'?{draft:{name:'完整便携规则',content:'规则正文',files:[]}}:undefined;h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));const input=find(container,node=>node.id==='writing-skill-import-file');input.files=[{name:'full.writer-skill.json',size:2*1024*1024+4096,text:async()=>'portable-with-overhead'}];await input.listeners.change();assert.ok(h.calls.some(call=>call.url==='/api/skills/import-file'));const dialog=find(h.context.document.body,node=>node.id==='writing-skill-editor');await find(dialog,node=>node.textContent==='取消').listeners.click();const count=h.calls.filter(call=>call.url==='/api/skills/import-file').length;input.files=[{name:'too-large.json',size:8*1024*1024+1,text:async()=>{throw Error('must not read an oversized file');}}];await input.listeners.change();assert.equal(h.calls.filter(call=>call.url==='/api/skills/import-file').length,count);assert.ok(find(container,node=>node.textContent==='Skill 文件过大。'));
+});
+
+test('late edit and import previews cannot reopen closed settings or stack over a newer Skill editor',async()=>{
+  const h=harness(),container=new Element(),settings=new Element('dialog');settings.open=true;container.closest=selector=>selector==='#settings-dialog'?settings:null;h.context.container=container;h.skills.skills.forEach(skill=>skill.imported=true);h.run('appendWritingSkillSettings(container)');await new Promise(resolve=>setImmediate(resolve));let finish;h.skillDetail=()=>new Promise(resolve=>finish=resolve);let row=find(container,node=>node.dataset.skillId==='chinese-novelist');let pending=find(row,node=>node.title==='编辑 Skill').listeners.click();settings.open=false;finish({content:'迟到的编辑',files:[]});await pending;assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-editor'));
+  settings.open=true;pending=find(row,node=>node.title==='编辑 Skill').listeners.click();await find(container,node=>node.id==='writing-skill-add').listeners.click();const newer=find(h.context.document.body,node=>node.id==='writing-skill-editor');finish({content:'较旧的编辑',files:[]});await pending;assert.equal(descendants(h.context.document.body).filter(node=>node.id==='writing-skill-editor').length,1);assert.equal(find(newer,node=>node.id==='writing-skill-content').value,'');await find(newer,node=>node.textContent==='取消').listeners.click();
+  h.skillOperation=url=>url==='/api/skills/import-file'?new Promise(resolve=>finish=resolve):undefined;const input=find(container,node=>node.id==='writing-skill-import-file');input.files=[{name:'late.md',size:10,text:async()=>'# late'}];pending=input.listeners.change();await new Promise(resolve=>setImmediate(resolve));settings.open=false;finish({draft:{name:'迟到导入',content:'不打开',files:[]}});await pending;assert.ok(!find(h.context.document.body,node=>node.id==='writing-skill-editor'));
 });

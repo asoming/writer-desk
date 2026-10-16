@@ -15,6 +15,7 @@ command = [python, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "-
            "--distpath", str(build / "service-dist"), "--workpath", str(build / "pyinstaller"),
            "--specpath", str(build), "--add-data", f"{root / 'public'}{os.pathsep}public"]
 command += ["--add-data", f"{root / 'mobile'}{os.pathsep}mobile"]
+command += ["--add-data", f"{root / 'bundled-skills'}{os.pathsep}bundled-skills"]
 for example in ("manifest.json", "tide-archive.yejian.json"):
     if (root / "examples" / example).is_file():
         command += ["--add-data", f"{root / 'examples' / example}{os.pathsep}examples"]
