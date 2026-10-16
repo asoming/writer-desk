@@ -222,6 +222,8 @@ You can keep several service profiles and switch them in chat. Usage records sto
 
 Book context and attached images are sent only when you submit a request. Ordinary writing, saving and local mention indexing do not need AI. Context size is validated by the model service by default; the app does not impose a fixed character cap or silently truncate your material. API keys are stored in separate local configuration.
 
+![Writer's Desk 0.8.4: bundled and custom writing Skills](docs/skills-manager-v0.8.4.png)
+
 **Settings → Writing Skills** manages bundled and custom writing rules. The installers include original rules authored for this project for Chinese fiction, novel planning and natural Chinese prose. They retain the `chinese-novelist`, `novelskill` and `human-writing` IDs for compatibility with existing selections. These bundled rules work on another computer without Codex; configure your AI service URL, key and model separately on that computer.
 
 Create, view, edit and delete custom Skills; import Markdown or an app-exported `.writer-skill.json` package; export an individual Skill to move it to another computer. File imports and AI-generated rules open as editable previews and enter the library only after you save them. A completed AI reply can also be opened with **Save as Skill**, edited and saved. Select rules and save the default selection, or choose them temporarily in the chat materials panel, to include them in AI requests.
