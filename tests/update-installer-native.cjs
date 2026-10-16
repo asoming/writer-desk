@@ -14,6 +14,7 @@ const reportPath = reportIndex >= 0 ? path.resolve(process.argv[reportIndex + 1]
 const results = { passed: false, platform: process.platform, headless: true,
   fixtureOnly: true, actualReleaseInstaller: false, cases: {} };
 const children = new Set();
+const ownedHelperPids = new Set();
 let temporary;
 function report() {
   const output = JSON.stringify(results, null, 2) + '\n';
@@ -156,6 +157,95 @@ async function exercise(assembly, folderName, systemRoot, powershell, mutate) {
     await stop(helper);
   }
 }
+
+function processExists(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+}
+async function stopOwnedHelper(pid) {
+  if (!ownedHelperPids.has(pid)) return;
+  if (processExists(pid)) {
+    process.kill(pid);
+    await until(() => !processExists(pid), 'Owned helper did not stop', 5000);
+  }
+  ownedHelperPids.delete(pid);
+}
+async function actualOwnerExit(assembly, systemRoot, powershell) {
+  const directory = path.join(temporary, "真实父进程退出 Author's Draft");
+  fs.mkdirSync(directory);
+  const file = path.join(directory, path.basename(assembly)), marker = path.join(directory, 'fixture-ran.txt');
+  fs.copyFileSync(assembly, file);
+  const options = { file, sha256: digest(file) };
+  const helperModule = path.resolve(__dirname, '../desktop/update-installer.cjs');
+  // This child owns PowerShell in the same way the desktop main process does.
+  // Its normal process.exit(0), rather than killing an unrelated wait PID,
+  // proves the acknowledged helper survives the process that created it.
+  const code = `const {spawn}=require('node:child_process');
+const {launch}=require(${JSON.stringify(helperModule)});
+let ready=false;
+process.on('message',message=>{if(ready&&message?.command==='exit')process.exit(0);});
+launch({...${JSON.stringify(options)},pid:process.pid},(command,args,options)=>{
+  const helper=spawn(command,args,options);
+  process.send({type:'helper',ownerPid:process.pid,helperPid:helper.pid,command,detached:options.detached});
+  return helper;
+},{systemRoot:${JSON.stringify(systemRoot)},timeoutMs:15000}).then(()=>{
+  ready=true;process.send({type:'ready',ownerPid:process.pid});
+}).catch(error=>{process.send({type:'failed',code:error.code||'',message:error.message});process.exit(1);});`;
+  let owner, helperPid, helperInfo, diagnostics = '';
+  try {
+    owner = tracked(process.execPath, ['-e', code], { windowsHide: true,
+      env: { ...process.env, PATH: path.join(systemRoot, 'System32') }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+    const record = chunk => { diagnostics = (diagnostics + chunk.toString('utf8')).slice(-4096); };
+    owner.stdout.on('data', record); owner.stderr.on('data', record);
+    await bounded(new Promise((resolve, reject) => {
+      owner.on('message', message => {
+        try {
+          if (message?.type === 'helper') {
+            assert.equal(message.ownerPid, owner.pid);
+            assert.ok(Number.isSafeInteger(message.helperPid) && message.helperPid > 0);
+            helperPid = message.helperPid; ownedHelperPids.add(helperPid); helperInfo = message;
+          } else if (message?.type === 'ready') {
+            assert.equal(message.ownerPid, owner.pid); assert.ok(helperPid); resolve();
+          } else if (message?.type === 'failed') reject(new Error('Owner helper failed: ' + message.code + ' ' + message.message));
+        } catch (error) { reject(error); }
+      });
+      owner.once('error', reject);
+      owner.once('exit', code => reject(new Error('Owner exited before helper readiness: ' + code)));
+    }), 20000, 'Real owner did not acknowledge helper readiness');
+    assert.equal(helperInfo.detached, false, 'This acceptance must exercise the production non-detached helper');
+    assert.equal(path.win32.normalize(helperInfo.command).toLowerCase(), path.win32.normalize(powershell).toLowerCase());
+    assert.equal(owner.exitCode, null);
+    assert.equal(processExists(helperPid), true);
+    assert.equal(fs.existsSync(marker), false);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(fs.existsSync(marker), false, 'The owned helper ran before its owner exited');
+    await new Promise((resolve, reject) => owner.send({ command: 'exit' }, error => error ? reject(error) : resolve()));
+    const closed = await bounded(owner.finished, 10000, 'Owner did not exit normally');
+    assert.equal(closed.code, 0); assert.equal(closed.signal, null);
+    await until(() => fs.existsSync(marker), 'Helper did not run the fixture after its actual owner exited', 15000);
+    assert.equal(fs.readFileSync(marker, 'utf8'), 'fixture-only');
+    await until(() => !processExists(helperPid), 'Helper remained after completing the owned fixture', 10000);
+    ownedHelperPids.delete(helperPid);
+    return { nonDetachedProductionHelper: true, pathWithoutPowerShell: true,
+      unicodeSpaceAndApostrophePath: true, acknowledgedWhileOwnerAlive: true,
+      ownerExitedNormallyWithCodeZero: true, fixtureExecutedOnlyAfterActualOwnerExit: true,
+      helperExitedAfterFixture: true };
+  } catch (error) {
+    results.ownerFailure = { helperPid: helperPid || null, ownerExitCode: owner?.exitCode ?? null,
+      ownerSignal: owner?.signalCode ?? null, diagnostics };
+    throw error;
+  } finally {
+    if (owner?.exitCode === null && owner.signalCode === null && owner.connected) {
+      try {
+        owner.send({ command: 'exit' });
+        await bounded(owner.finished, 2000, 'Owner cleanup required termination');
+      } catch { }
+    }
+    await stop(owner);
+    if (helperPid) await stopOwnedHelper(helperPid);
+  }
+}
+
 (async () => {
   if (process.platform !== 'win32') {
     results.passed = true; results.skipped = 'Native Windows helper acceptance runs only on Windows';
@@ -172,12 +262,16 @@ async function exercise(assembly, folderName, systemRoot, powershell, mutate) {
     const assembly = fixtureExecutable(powershell, compiledDirectory);
     results.cases.readyAndWait = await exercise(assembly, "有效样本 Author's Draft", systemRoot, powershell, false);
     results.cases.reverification = await exercise(assembly, "改动样本 Author's Draft", systemRoot, powershell, true);
+    results.cases.actualOwnerExit = await actualOwnerExit(assembly, systemRoot, powershell);
     results.passed = true;
   } catch (error) {
     results.error = error.stack || String(error);
   } finally {
     for (const child of children) {
       try { await stop(child); } catch (error) { results.passed = false; results.cleanupError = error.message; }
+    }
+    for (const pid of ownedHelperPids) {
+      try { await stopOwnedHelper(pid); } catch (error) { results.passed = false; results.cleanupError = error.message; }
     }
     if (temporary) {
       try { fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }

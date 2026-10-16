@@ -14,7 +14,9 @@ function buildPowerShell({file,sha256,pid}={}){
 function prepare(options,runtime={}){
   const script=buildPowerShell(options),root=runtime.systemRoot||process.env.SystemRoot||process.env.WINDIR||'C:\\Windows';
   if(typeof root!=='string'||!/^([A-Za-z]:)[\\/]/.test(root)||/[\u0000-\u001f\u007f]/.test(root)||root.slice(2).includes(':')||root.split(/[\\/]/).some(part=>part==='.'||part==='..'))invalid();
-  return{command:path.win32.join(root,'System32','WindowsPowerShell','v1.0','powershell.exe'),args:['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],options:{detached:true,stdio:['ignore','pipe','pipe'],windowsHide:true}};
+  // Windows PowerShell can exit without executing when detached; unref after
+  // readiness lets this hidden child outlive the writer without that flag.
+  return{command:path.win32.join(root,'System32','WindowsPowerShell','v1.0','powershell.exe'),args:['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],options:{detached:false,stdio:['ignore','pipe','pipe'],windowsHide:true}};
 }
 async function launch(options,spawnProcess=spawn,runtime={}){
   const prepared=prepare(options,runtime);let child;

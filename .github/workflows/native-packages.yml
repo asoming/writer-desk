@@ -72,7 +72,19 @@ jobs:
         run: node --test --test-concurrency=1 tests/*.test.js tests/*.test.cjs
       - name: Windows update helper readiness and re-verification
         if: runner.os == 'Windows'
-        run: node tests/update-installer-native.cjs --report dist/update-installer-native.json
+        shell: pwsh
+        run: |
+          node tests/update-installer-native.cjs --report dist/update-installer-native.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $writerHelperExitCode = 1
+          try {
+            $env:ELECTRON_RUN_AS_NODE = '1'
+            & .\node_modules\electron\dist\electron.exe .\tests\update-installer-native.cjs --report dist/update-installer-electron.json
+            $writerHelperExitCode = $LASTEXITCODE
+          } finally {
+            Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+          }
+          if ($writerHelperExitCode -ne 0) { exit $writerHelperExitCode }
       - name: Real editor typing and IME regression on Linux
         if: runner.os == 'Linux'
         run: |
@@ -138,6 +150,7 @@ jobs:
             dist/WriterDesk-*.sha256
             dist/installer-smoke.json
             dist/update-installer-native.json
+            dist/update-installer-electron.json
             dist/editor-layout-regression.json
             dist/review-jump-regression.json
             dist/editor-tools-regression.json
@@ -159,6 +172,7 @@ jobs:
           path: |
             dist/*smoke*.json
             dist/update-installer-native.json
+            dist/update-installer-electron.json
             dist/linux-tar-*.json
             dist/linux-tar-*.log
             dist/editor-layout-regression.json

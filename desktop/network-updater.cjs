@@ -121,10 +121,10 @@ function createNetworkUpdater(options){
     if(!value||value.format!=='writer-desk-network-download'||value.platform!==platform||value.arch!==arch||value.installKind!==installKind||typeof value.sha256!=='string'||!/^[a-f0-9]{64}$/.test(value.sha256)||!Number.isSafeInteger(value.size)||value.size<1||value.size>MAX_ASSET)fail('network-invalid-receipt');
     versionParts(value.version);if(compareVersions(value.version,minimumVersion())<=0)fail('network-downgrade');
     try {
-    const file=location(value);safeDirectory(fs,path.dirname(file));const stat=safeFile(fs,file,MAX_ASSET);
-    if(stat.size!==value.size||await hashFile(fs,file)!==value.sha256)fail('network-hash-mismatch');
-    const sidecar=path.join(path.dirname(file),sidecarName(value.filename));safeFile(fs,sidecar,MAX_CHECKSUM);
-    if(checksumValue(fs.readFileSync(sidecar),value.filename)!==value.sha256)fail('network-hash-mismatch');return file;
+      const file=location(value);safeDirectory(fs,path.dirname(file));const stat=safeFile(fs,file,MAX_ASSET);
+      if(stat.size!==value.size||await hashFile(fs,file)!==value.sha256)fail('network-hash-mismatch');
+      const sidecar=path.join(path.dirname(file),sidecarName(value.filename));safeFile(fs,sidecar,MAX_CHECKSUM);
+      if(checksumValue(fs.readFileSync(sidecar),value.filename)!==value.sha256)fail('network-hash-mismatch');return file;
     } catch(error) {
       if(error.code==='ENOENT')fail('network-package-missing');
       if(['EACCES','EPERM'].includes(error.code))fail('network-storage-permission');
