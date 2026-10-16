@@ -19,3 +19,32 @@ Windows 参数矩阵实测发现，原有 detached 后台方式会使 PowerShell
 ## 旧版 Windows 升级
 
 已经报错的旧版本仍运行原有更新代码。本次先保存并正常退出，再从发行页手动下载并运行 0.8.6 Windows EXE；作品与个人配置保留。之后使用修正后的 App 内更新流程。若系统阻止安装器，保留系统提示用于进一步定位，不自动绕过系统策略。
+
+## 最终发行与独立校验
+
+构建提交为 `d43e6de72558451251fca04aff3f65ad474d8dfb`。四平台工作流 [38856499226](https://github.com/asoming/writer-desk/actions/runs/38856499226) 的 Linux、Windows、Mac Apple Silicon、Mac Intel 和发行汇总全部成功。54 个 Node 测试文件共 477 项检查，Windows 473 项通过、4 项平台专属跳过、0 失败；各平台完成 41 套 Python 回归、10 类原生界面流程、冻结服务及实际安装包检查。
+
+Windows [独立原生检查](https://github.com/asoming/writer-desk/actions/runs/38856097202) 与[最终打包任务](https://github.com/asoming/writer-desk/actions/runs/38856499226/job/116829216319) 均通过。最终任务在 Node 22 与实际 Electron 运行环境分别完成四组助手检查：就绪及等待父进程、再次校验拒绝改动文件、真正创建者正常退出后仍执行测试程序、取消后两层助手均停止且未来退出不再执行。测试覆盖 PowerShell 不在 PATH、中文、空格和单引号路径，只执行自建临时标记程序。
+
+早期 Windows 验证分别发现后台 PowerShell 未执行、非独立子进程随创建者退出、依赖可选校验命令的问题；最终采用隐藏引导与独立 .NET 工作进程。打包脚本通过 Electron 的官方包入口取得实际可执行文件，避免延迟下载时硬编码路径缺失；修正后四平台完整重跑通过。
+
+[0.8.6 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.6) 提供 18 个资产。6 个主体文件、独立校验文件与 5 份平台报告均已实际下载复核。源码 ZIP 的 Git archive 注释匹配构建提交，未包含个人目录、密钥或数据库。Linux TAR 的 238 个清单文件逐一验证；打包后的桌面更新、保存退出代码及前端资源均与源码相符，18 个内置规则 Markdown 文件逐字一致。
+
+独立解压实际冻结服务，以临时作品库和空 Codex 目录再次完成 8 组 Skill 检查及 18 次模拟请求；101,506 字示例保留完整。未读取真实用户作品或使用收费 AI。
+
+官网当前版本、下载入口和公开更新索引同步至 0.8.6；索引保留最近 30 个版本。历史截图保留真实版本标记。
+
+本机已从校验后的 TAR 安装 0.8.6，安装文件、18 个规则、应用菜单和原启动脚本均复核一致。当前打开的 0.8.5 窗口保留，未强制关闭；正常保存退出后再打开固定图标即可进入新版。
+
+启用预览版时，实际更新选择函数可从 0.8.5 为五类平台安装方式正确选择 0.8.6。
+
+Windows 发布者签名、Apple 公证与实体 Mac 触控板体验未在本轮补做，沿用现有测试版签名状态。
+
+| 文件 | SHA256 |
+| --- | --- |
+| `WriterDesk-0.8.6-linux-amd64.deb` | `4423a65f6589e3f58f8eba4da79a43b715580dfbb45a466d02e116865ce7e950` |
+| `WriterDesk-0.8.6-linux-x64.tar.gz` | `d7928b68426f35f6900429cc063706c3e8c3eccdb853e05e21f43cca938c1984` |
+| `WriterDesk-0.8.6-mac-arm64.dmg` | `d2148a8acae9261b59667a856387ecc9db7c84e381f64aeed9225c65ecd6b90a` |
+| `WriterDesk-0.8.6-mac-x64.dmg` | `c2a8f05f748cb5ffa4742df68ca8f282913373db0c6f8244481217b6f5b0ccb8` |
+| `WriterDesk-0.8.6-windows-x64.exe` | `f2381a30477e53ce1e2ac9b0363ec3e7591c7f65b59466f62c0e2e44e67d757a` |
+| `WriterDesk-0.8.6-source.zip` | `68647efb8e7977f8bb52b1244168f49cd11df700fad85336d90e8a4a95450cbd` |

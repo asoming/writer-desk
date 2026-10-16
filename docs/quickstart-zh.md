@@ -1,23 +1,25 @@
-# 快速上手 · 作家工作台 0.8.5
+# 快速上手 · 作家工作台 0.8.6
 
 作家工作台是本地小说写作 App。长篇按卷章组织，短篇直接编辑一篇连续正文。写作、保存、备份、本地策划、稿件导入与规则校对无需联网；AI 按需配置。
 
 [使用指南](user-guide-zh.md) · [下载](https://github.com/asoming/writer-desk/releases) · [0.7.0 功能验收](acceptance-v0.7.0.md) · [0.6.1 打包验收](acceptance-v0.6.1.md)
 
-本文适用于 0.8.5 测试版，Skill 采用文章式详情弹窗和自动保存滑动开关；「立即试用」保留当前提示词进入作品对话，不自动发送。内置规则仍可跨电脑使用。各平台安装包与验收状态见[本轮验收](acceptance-0.8.5.md)及发行页。
+本文适用于 0.8.6 测试版，本版修正 Windows 联网安装的助手启动与退出交接，并区分保存、文件与启动阶段的失败提示。Skill 弹窗、自动保存开关和跨电脑内置规则继续可用。各平台安装包与验收状态见[本轮验收](acceptance-0.8.6.md)及发行页。
 
 ## 安装与启动
 
-从 [0.8.5 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.5)下载对应文件与 SHA256 校验清单，安装包可用状态以发行页为准。
+从 [0.8.6 发行页](https://github.com/asoming/writer-desk/releases/tag/v0.8.6)下载对应文件与 SHA256 校验清单，安装包可用状态以发行页为准。
 
-| 系统 | 0.8.5 安装包 | 安装方式 |
+| 系统 | 0.8.6 安装包 | 安装方式 |
 | --- | --- | --- |
-| Ubuntu 22.04+ / 兼容 Debian 桌面，x64 | `WriterDesk-0.8.5-linux-amd64.deb` | 使用系统软件安装器，或 `sudo apt install ./WriterDesk-0.8.5-linux-amd64.deb` |
-| Windows 10 / 11，x64 | `WriterDesk-0.8.5-windows-x64.exe` | 运行安装向导 |
-| macOS 13+，Apple 芯片 | `WriterDesk-0.8.5-mac-arm64.dmg` | 将 App 拖入 Applications |
-| macOS 13+，Intel | `WriterDesk-0.8.5-mac-x64.dmg` | 将 App 拖入 Applications |
+| Ubuntu 22.04+ / 兼容 Debian 桌面，x64 | `WriterDesk-0.8.6-linux-amd64.deb` | 使用系统软件安装器，或 `sudo apt install ./WriterDesk-0.8.6-linux-amd64.deb` |
+| Windows 10 / 11，x64 | `WriterDesk-0.8.6-windows-x64.exe` | 运行安装向导 |
+| macOS 13+，Apple 芯片 | `WriterDesk-0.8.6-mac-arm64.dmg` | 将 App 拖入 Applications |
+| macOS 13+，Intel | `WriterDesk-0.8.6-mac-x64.dmg` | 将 App 拖入 Applications |
 
 桌面包包含运行环境，无需另外安装 Python 或 Node.js。升级前保存并正常退出旧版，安装后从固定应用入口打开，在「设置 → 关于」确认版本。个人作品保存在用户数据目录，独立于安装目录。
+
+Windows 旧版若在「保存并打开安装器」报错，请先保存并正常退出，再手动运行本版 EXE 升级一次；之后的联网更新使用新版实现。
 
 Linux 压缩包用户的升级入口与 DEB 不同；旧菜单入口可能仍优先打开旧版，详见[安装与旧图标迁移](../desktop/BUILD.md#run-a-linux-release)。签名、公证及 Mac 实机检查边界见[发行说明](distribution-checklist.md)。
 
