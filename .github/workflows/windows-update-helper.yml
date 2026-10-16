@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Diagnose PowerShell standard input and detached process combinations
+        run: node tests/update-installer-probe.cjs --report artifacts/update-installer-probe.json
       - name: Run disposable update helper acceptance
         run: node tests/update-installer-native.cjs --report artifacts/update-installer-native.json
       - name: Upload fixture diagnostics
@@ -29,4 +31,6 @@ jobs:
           name: windows-update-helper-probe
           if-no-files-found: error
           retention-days: 7
-          path: artifacts/update-installer-native.json
+          path: |
+            artifacts/update-installer-native.json
+            artifacts/update-installer-probe.json
