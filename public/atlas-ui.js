@@ -7,10 +7,16 @@ function atlasRelationTypeLabel(type){return state.kind==='short'&&type==='autom
 function atlasGroups(){return [...new Set(people().map(p=>p.profile.group||T('未分组')))];}
 function atlasColor(person){return atlasColors[Math.max(0,atlasGroups().indexOf(person.profile.group||T('未分组')))%atlasColors.length];}
 function atlasCorePerson(){return people().find(p=>/主角|主视角|主人公|protagonist/i.test(p.profile.role))||people()[0];}
+function atlasMainPersonIds(relations=graphRelations()){
+  if(Array.isArray(state.book.atlasMainPersonIds))return state.book.atlasMainPersonIds;
+  const center=atlasCorePerson()?.id,ids=new Set(center?[center]:[]);
+  relations.filter(r=>r.fromId===center||r.toId===center).forEach(r=>{ids.add(r.fromId);ids.add(r.toId);});
+  return [...ids];
+}
 function atlasViews(){
-  return [{id:'core',title:T('核心关系'),description:T('以主角和直接关系展开。点选人物突出相关连线，查看右侧档案。')},
+  return [{id:'core',title:T('主脉络'),description:''},
     ...state.book.atlasViews.map(v=>({...v,id:'view:'+v.id})),
-    {id:'all',title:T('全部人物'),description:state.kind==='short'?T('查看全篇的人物网络。可按分组或关系类型缩小范围。'):T('查看整本书的人物网络。可按分组、关系类型或卷缩小范围。')}];
+    {id:'all',title:T('总脉络'),description:''}];
 }
 function graphRelations({showAutomatic=state.showAutomatic,type=state.graphRelationType}={}){
   let relations=combinedRelations().filter(r=>showAutomatic||!r.automatic);
@@ -22,8 +28,7 @@ function graphRelations({showAutomatic=state.showAutomatic,type=state.graphRelat
 function filteredGraphPeople(relations=graphRelations({showAutomatic:state.atlasMode==='index'||state.showAutomatic,type:state.atlasMode==='index'?'':state.graphRelationType})){
   let list=people();const view=state.atlasView||'core';
   if(view==='core'){
-    const center=atlasCorePerson()?.id,ids=new Set([center]);
-    relations.filter(r=>r.fromId===center||r.toId===center).forEach(r=>{ids.add(r.fromId);ids.add(r.toId);});
+    const ids=new Set(atlasMainPersonIds(relations));
     list=list.filter(p=>ids.has(p.id));
   }else if(view.startsWith('view:')){
     const saved=state.book.atlasViews.find(v=>'view:'+v.id===view);if(saved)list=list.filter(p=>saved.personIds.includes(p.id));
@@ -47,12 +52,23 @@ function setAtlasView(id){
   state.atlasView=id;state.graphGroup='';state.graphScope='all';state.graphZoom=null;state.atlasFocusId=null;state.personEditing=false;
   renderPeople();
 }
+function setAtlasSection(section){
+  state.atlasMode=section==='growth'?'growth':'graph';
+  if(section!=='growth')setAtlasView(section==='main'?'core':'all');else renderPeople();
+}
 function renderAtlasNavigation(){
+  const growth=state.atlasMode==='growth',main=!growth&&state.atlasView==='core';
+  $('people-view').classList.toggle('atlas-growth-active',growth);
+  for(const [id,active]of [['atlas-main-tab',main],['atlas-total-tab',!growth&&!main],['atlas-growth-tab',growth]]){
+    const button=$(id);if(button){button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));}
+  }
+  if($('atlas-main-members'))$('atlas-main-members').hidden=!main;
   const tabs=$('atlas-views');tabs.replaceChildren();
-  atlasViews().forEach(view=>{
-    const button=action(view.title,'atlas-view-tab'+(view.id===state.atlasView?' active':''),()=>setAtlasView(view.id));
+  atlasViews().filter(view=>view.id!=='core').sort((a,b)=>(a.id==='all'?-1:b.id==='all'?1:0)).forEach(view=>{
+    const button=action(view.id==='all'?T('全部人物'):view.title,'atlas-view-tab'+(view.id===state.atlasView?' active':''),()=>setAtlasView(view.id));
     button.setAttribute('aria-pressed',String(view.id===state.atlasView));tabs.append(button);
   });
+  if(tabs.parentElement)tabs.parentElement.hidden=growth||main;
   const groups=$('atlas-group-tabs');groups.replaceChildren();
   const all=action(T('全部分组'),'atlas-group-chip'+(!state.graphGroup?' active':''),()=>{state.graphGroup='';state.graphZoom=null;renderPeople();});all.setAttribute('aria-pressed',String(!state.graphGroup));groups.append(all);
   atlasGroups().forEach((name,index)=>{
@@ -64,12 +80,15 @@ function renderAtlasNavigation(){
   $('atlas-view-title').textContent=state.graphGroup||view.title;
   $('atlas-description').textContent=view.id.startsWith('view:')?view.description||'':'';$('atlas-description').hidden=!$('atlas-description').textContent;
   $('atlas-edit-view').hidden=!state.atlasView.startsWith('view:');
-  $('graph-type').value=state.graphRelationType||'';$('graph-type').hidden=state.atlasMode==='index';
-  const automaticControl=$('graph-auto-control');if(automaticControl)automaticControl.hidden=state.atlasMode==='index';
+  $('graph-type').value=state.graphRelationType||'';$('graph-type').hidden=state.atlasMode!=='graph';
+  $('graph-scope').hidden=growth;
+  const automaticControl=$('graph-auto-control');if(automaticControl)automaticControl.hidden=state.atlasMode!=='graph';
   const automaticLabel=$('graph-auto-label');if(automaticLabel)automaticLabel.textContent=state.kind==='short'?T('显示正文共同提及'):T('显示同章提及');
   const automaticOption=$('relation-automatic-option');if(automaticOption)automaticOption.textContent=atlasRelationTypeLabel('automatic');
-  $('atlas-map-button').classList.toggle('active',state.atlasMode!=='index');$('atlas-index-button').classList.toggle('active',state.atlasMode==='index');
-  $('people-layout').hidden=state.atlasMode==='index';$('atlas-timeline-section').hidden=state.kind==='short'||state.atlasMode==='index';
+  $('atlas-map-button').classList.toggle('active',state.atlasMode==='graph');$('atlas-index-button').classList.toggle('active',state.atlasMode==='index');
+  const modeSwitch=$('atlas-map-button').parentElement;if(modeSwitch)modeSwitch.hidden=growth;
+  $('people-layout').hidden=state.atlasMode!=='graph';$('atlas-timeline-section').hidden=state.kind==='short'||state.atlasMode!=='graph';
+  $('relation-index').hidden=growth;if($('atlas-growth-section'))$('atlas-growth-section').hidden=!growth;
   $('relation-index').classList.toggle('atlas-index-active',state.atlasMode==='index');
   if(state.atlasMode==='index')$('relation-index').open=true;
 }
@@ -78,9 +97,9 @@ function atlasFocusLayout(list,relations,centerId){
   const center=list.find(p=>p.id===centerId);if(!center)return null;
   const sides=[[],[]],groups=new Map();list.filter(p=>p!==center).forEach(p=>{const key=p.profile.group||'';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(p);});
   [...groups.values()].sort((a,b)=>b.length-a.length).forEach(group=>{const side=sides[0].length<=sides[1].length?0:1;sides[side].push(...group);});
-  const rows=Math.max(1,...sides.map(s=>s.length)),height=Math.max(370,rows*112+70),width=1000;
-  const nodes=[{id:center.id,x:500,y:height/2,width:174,height:76}];
-  sides.forEach((side,index)=>side.forEach((p,row)=>nodes.push({id:p.id,x:index?850:150,y:height/2+(row-(side.length-1)/2)*112,width:174,height:70})));
+  const rows=Math.max(1,...sides.map(s=>s.length)),height=Math.max(400,rows*146+90),width=1120;
+  const nodes=[{id:center.id,x:560,y:height/2,width:220,height:104}];
+  sides.forEach((side,index)=>side.forEach((p,row)=>nodes.push({id:p.id,x:index?950:170,y:height/2+(row-(side.length-1)/2)*146,width:220,height:104})));
   const positions=new Map(nodes.map(n=>[n.id,n]));
   const edges=relations.map((r,index)=>{
     const a=positions.get(r.fromId),b=positions.get(r.toId),hub=a.id===centerId?a:b,other=hub===a?b:a;
@@ -106,7 +125,7 @@ function renderAtlas(){
   if(!state.book)return;
   const list=filteredGraphPeople(),ids=new Set(list.map(p=>p.id)),relations=graphRelations().filter(r=>ids.has(r.fromId)&&ids.has(r.toId)),manual=relations.filter(r=>!r.automatic);
   const graph=$('people-graph');graph.replaceChildren();
-  const nodes=list.map(p=>({id:p.id,width:174,height:70})),edges=manual.map(r=>({id:r.id,fromId:r.fromId,toId:r.toId,label:r.label,width:Math.min(190,Array.from(r.label||'').length*16+22)}));
+  const main=state.atlasView==='core',nodes=list.map(p=>({id:p.id,width:main?220:174,height:main?104:70})),edges=manual.map(r=>({id:r.id,fromId:r.fromId,toId:r.toId,label:r.label,width:Math.min(190,Array.from(r.label||'').length*16+22)}));
   const key=JSON.stringify([state.atlasView,state.graphScope,state.graphVolume,state.graphGroup,state.graphRelationType,nodes.map(n=>n.id),edges,state.seq]);
   if(state.atlasLayoutKey!==key){
     const pairs=new Set(),parallel=manual.some(r=>{const pair=[r.fromId,r.toId].sort().join('\0');if(pairs.has(pair))return true;pairs.add(pair);return false;});
@@ -133,7 +152,8 @@ function renderAtlas(){
     const box=positions.get(person.id);if(!box)return;const color=atlasColor(person),outside=state.graphGroup&&(person.profile.group||T('未分组'))!==state.graphGroup;
     const node=svgElement('g',{class:'graph-node'+(person.id===state.personId?' selected':'')+(focus&&!neighbors.has(person.id)?' dimmed':'')+(outside?' context-node':''),role:'button',tabindex:0,'aria-label':T('查看人物 ')+(person.title||T('未命名人物'))});
     node.style.setProperty('--group-color',color);
-    node.append(svgElement('title',{},person.title),svgElement('rect',{x:box.x-box.width/2,y:box.y-box.height/2,width:box.width,height:box.height,rx:10,class:'person-node-card',style:'stroke:'+color}),svgElement('rect',{x:box.x-box.width/2+1,y:box.y-box.height/2+12,width:4,height:box.height-24,rx:2,fill:color}),svgElement('text',{x:box.x,y:box.y-4,'text-anchor':'middle',style:'fill:'+color},Array.from(person.title||T('未命名')).slice(0,9).join('')),svgElement('text',{x:box.x,y:box.y+19,'text-anchor':'middle',class:'node-meta'},person.profile.group||T('未分组')));
+    node.append(svgElement('title',{},person.title),svgElement('rect',{x:box.x-box.width/2,y:box.y-box.height/2,width:box.width,height:box.height,rx:10,class:'person-node-card',style:'stroke:'+color}),svgElement('rect',{x:box.x-box.width/2+1,y:box.y-box.height/2+12,width:4,height:box.height-24,rx:2,fill:color}),svgElement('text',{x:box.x,y:box.y+(main?-22:-4),'text-anchor':'middle',style:'fill:'+color},Array.from(person.title||T('未命名')).slice(0,9).join('')),svgElement('text',{x:box.x,y:box.y+(main?4:19),'text-anchor':'middle',class:'node-meta'},Array.from(main?(person.profile.role||person.profile.group||T('未分组')):person.profile.group||T('未分组')).slice(0,16).join('')));
+    if(main)node.append(svgElement('text',{x:box.x,y:box.y+30,'text-anchor':'middle',class:'node-purpose'},Array.from(person.profile.desire||person.profile.group||'').slice(0,16).join('')));
     graphActivate(node,()=>selectAtlasPerson(person.id));graph.append(node);
   });
   if(state.graphZoom===null||!state.graphZoom){const panel=graph.parentElement;state.graphZoom=Math.max(.66,Math.min(1,panel.clientWidth/state.graphWidth,(panel.clientHeight||450)/state.graphHeight));panel.scrollTop=0;panel.scrollLeft=0;}
@@ -154,7 +174,7 @@ function zoomAtlasAt(nextZoom,point){
 function resetAtlasForPerson(){state.atlasView='all';state.atlasMode='graph';state.graphScope='all';state.graphVolume='';state.graphGroup='';state.graphRelationType='';state.graphZoom=null;state.personEditing=false;state.atlasFocusId=state.personId;}
 function selectAtlasPerson(id){state.personId=id;state.personEditing=false;state.atlasFocusId=id;state.atlasMode='graph';renderPeople();}
 function renderPersonWorkspace(){
-  if(!state.book)return;const list=people();state.book.atlasViews??=[];state.atlasView??='core';
+  if(!state.book)return;const list=people();state.book.atlasViews??=[];state.atlasView??='core';state.atlasMode??='graph';
   if(state.kind==='short')state.graphVolume='';
   if(!atlasViews().some(v=>v.id===state.atlasView))state.atlasView='core';
   if(!list.some(p=>p.id===state.personId))state.personId=list[0]?.id||null;
@@ -173,7 +193,7 @@ function renderPersonWorkspace(){
     renderPersonArc();renderPersonOverview(person);renderRelationsForPerson();renderChapterLinks($('person-links'),person);renderChapterLinks($('person-auto-links'),{chapterIds:analysis.appearances[person.id]||[]});
     $('person-link-count').textContent=String(person.chapterIds.length);$('person-auto-count').textContent=String((analysis.appearances[person.id]||[]).length);
   }
-  renderAtlasTimeline();renderPersonSearch();
+  renderAtlasTimeline();renderPersonSearch();if(state.atlasMode==='growth')renderAtlasGrowth();else $('atlas-growth-table')?.replaceChildren();
 }
 function renderPersonOverview(person){
   const reader=$('person-overview');reader.replaceChildren();$('person-editor-fields').hidden=!state.personEditing;reader.hidden=!!state.personEditing;$('person-edit').textContent=state.personEditing?T('完成编辑'):T('编辑人物');
@@ -232,7 +252,100 @@ function showAtlasViewEditor(existing=null){
     }finally{save.disabled=false;}
   });showDialog(existing?T('编辑主题分图'):T('新建主题分图'),form);title.focus();
 }
+function showAtlasMainMembers(){
+  const book=state.book;if(!book)return;
+  const form=el('form'),search=el('input','text-field'),choices=el('div','atlas-view-members'),selected=new Set(atlasMainPersonIds(graphRelations({showAutomatic:false,type:''})));
+  search.type='search';search.placeholder=T('搜索人物…');search.setAttribute('aria-label',T('搜索主脉络人物'));
+  function renderChoices(){
+    const query=search.value.trim().toLocaleLowerCase();choices.replaceChildren();
+    people().filter(person=>[person.title,person.profile.group,...person.aliases].join(' ').toLocaleLowerCase().includes(query)).forEach(person=>{
+      const row=el('label','checkbox-row'),box=el('input');box.type='checkbox';box.checked=selected.has(person.id);
+      box.addEventListener('change',()=>box.checked?selected.add(person.id):selected.delete(person.id));row.append(box,el('span',null,person.title||T('未命名人物')),el('small',null,person.profile.group));choices.append(row);
+    });
+  }
+  search.addEventListener('input',renderChoices);renderChoices();form.append(search,choices);
+  const buttons=el('div','dialog-actions'),save=el('button','primary-button',T('保存'));save.type='submit';
+  buttons.append(action(T('自动选择'),'secondary-button',async()=>{
+    if(save.disabled||state.book!==book)return;save.disabled=true;
+    try{delete book.atlasMainPersonIds;markDirty();if(!await requireSaved())return;closeDialog();setAtlasSection('main');}finally{save.disabled=false;}
+  }),action(T('取消'),'secondary-button',closeDialog),save);form.append(buttons);
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();if(save.disabled||state.book!==book)return;save.disabled=true;
+    try{book.atlasMainPersonIds=book.notes.filter(person=>person.type==='人物'&&selected.has(person.id)).map(person=>person.id);markDirty();if(!await requireSaved())return;closeDialog();setAtlasSection('main');}finally{save.disabled=false;}
+  });
+  showDialog(T('选择主脉络人物'),form);search.focus();
+}
+function atlasGrowthPeople(){
+  return people().filter(person=>!state.graphGroup||(person.profile.group||T('未分组'))===state.graphGroup);
+}
+function atlasGrowthChapters(person,volumeId){
+  const ids=new Set(personChapterIds(person));return activeChapters().filter(chapter=>ids.has(chapter.id)&&(!volumeId||chapter.volumeId===volumeId));
+}
+function atlasGrowthColumns(){
+  if(state.kind==='short')return [{id:'desire',title:T('愿望与目标')},{id:'flaw',title:T('矛盾与弱点')},{id:'ending',title:T('最终去向')}];
+  return activeVolumes().filter(volume=>!state.graphVolume||volume.id===state.graphVolume);
+}
+function atlasGrowthBody(person,column){
+  return state.kind==='short'?person.profile[column.id]||'':person.profile.arcs.find(arc=>arc.volumeId===column.id)?.body||'';
+}
+function showAtlasGrowthEditor(personId,columnId){
+  const book=state.book,person=people().find(item=>item.id===personId),column=atlasGrowthColumns().find(item=>item.id===columnId);
+  if(!book||!person||!column)return;
+  const short=state.kind==='short',form=el('form'),body=el('textarea','text-field atlas-growth-editor');
+  body.id='atlas-growth-body';body.value=atlasGrowthBody(person,column);body.maxLength=5000000;body.rows=10;body.setAttribute('aria-label',T('人物成长内容'));body.placeholder=short?column.title:T('这一卷的变化与关键行动');
+  form.append(el('p','dialog-description',person.title+' · '+column.title),body);
+  const chapters=atlasGrowthChapters(person,short?null:column.id);
+  if(chapters.length){
+    const initial=body.value,links=el('div','atlas-growth-editor-links');links.append(el('h3','field-label',T('正文提及与关联')));
+    chapters.forEach(chapter=>links.append(action(chapter.title||T('未命名章节'),'chapter-link',()=>{
+      if(body.value!==initial){toast(T('请先保存人物成长内容。'));return;}state.personId=person.id;jumpToChapter(chapter.id);
+    })));form.append(links);
+  }
+  const buttons=el('div','dialog-actions'),save=el('button','primary-button',T('保存'));save.type='submit';buttons.append(action(T('取消'),'secondary-button',closeDialog),save);form.append(buttons);
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();if(save.disabled||state.book!==book||person.deletedAt||!book.notes.includes(person))return;save.disabled=true;
+    try{
+      if(short)person.profile[column.id]=body.value;
+      else{
+        if(!activeVolumes().some(volume=>volume.id===column.id))return;
+        let arc=person.profile.arcs.find(item=>item.volumeId===column.id);if(!arc){arc={volumeId:column.id,body:''};person.profile.arcs.push(arc);}arc.body=body.value;
+      }
+      markDirty();if(!await requireSaved())return;closeDialog();renderPeople();
+    }finally{save.disabled=false;}
+  });
+  showDialog(T('编辑人物成长'),form);body.focus();
+}
+function renderAtlasGrowth(){
+  const container=$('atlas-growth-table');if(!container)return;container.replaceChildren();
+  const list=atlasGrowthPeople(),columns=atlasGrowthColumns();$('atlas-growth-count').textContent=T('{0} 人',list.length);
+  if(!list.length||!columns.length){container.append(el('p','empty-hint',!list.length?T('这个视图还没有人物，可调整分组筛选。'):T('先创建卷，再记录人物成长。')));return;}
+  const table=el('table','atlas-growth-matrix');table.style.setProperty('--growth-columns',String(columns.length));
+  const head=el('thead'),header=el('tr');header.append(el('th','atlas-growth-person-heading',T('人物')));
+  columns.forEach(column=>{
+    const cell=el('th');cell.append(el('strong',null,column.title));
+    if(state.kind==='long'){
+      const chapters=activeChapters(),indices=chapters.map((chapter,index)=>chapter.volumeId===column.id?index+1:null).filter(Boolean);
+      if(indices.length)cell.append(el('small',null,T('第 {0}–{1} 章',Math.min(...indices),Math.max(...indices))));
+    }header.append(cell);
+  });head.append(header);table.append(head);const rows=el('tbody');
+  list.forEach(person=>{
+    const row=el('tr'),name=el('th','atlas-growth-person');name.style.setProperty('--group-color',atlasColor(person));
+    const open=action('','atlas-growth-person-link',()=>{state.atlasView='all';state.graphGroup='';state.graphVolume='';selectAtlasPerson(person.id);$('person-detail').scrollIntoView({block:'nearest'});});
+    open.setAttribute('aria-label',T('查看人物 ')+(person.title||T('未命名人物')));open.append(el('strong',null,person.title||T('未命名人物')),el('small',null,person.profile.group||T('未分组')));name.append(open);row.append(name);
+    columns.forEach(column=>{
+      const cell=el('td'),body=atlasGrowthBody(person,column),edit=action('','atlas-growth-cell'+(!body?' empty':''),()=>showAtlasGrowthEditor(person.id,column.id));
+      edit.style.setProperty('--group-color',atlasColor(person));edit.setAttribute('aria-label',T('编辑 {0} · {1} 的成长轨迹',person.title||T('未命名人物'),column.title));edit.title=T('编辑人物成长');edit.append(el('span',null,body||'—'));cell.append(edit);
+      if(state.kind==='long'){
+        const links=el('div','atlas-growth-chapter-links'),chapters=atlasGrowthChapters(person,column.id);
+        chapters.slice(0,3).forEach(chapter=>{const link=action(chapter.title||T('未命名章节'),'atlas-growth-chapter',()=>{state.personId=person.id;jumpToChapter(chapter.id);});link.title=T('正文提及与关联')+' · '+chapter.title;links.append(link);});
+        if(chapters.length>3){const more=action(T('＋{0}',chapters.length-3),'atlas-growth-chapter',()=>showAtlasGrowthEditor(person.id,column.id));more.title=T('查看关联正文');links.append(more);}cell.append(links);
+      }
+      row.append(cell);
+    });rows.append(row);
+  });table.append(rows);container.append(table);
+}
 function bindAtlasEvents(){
+  $('atlas-main-tab').addEventListener('click',()=>setAtlasSection('main'));$('atlas-total-tab').addEventListener('click',()=>setAtlasSection('total'));$('atlas-growth-tab').addEventListener('click',()=>setAtlasSection('growth'));$('atlas-main-members').addEventListener('click',showAtlasMainMembers);
   $('atlas-new-view').addEventListener('click',()=>showAtlasViewEditor());$('atlas-edit-view').addEventListener('click',()=>showAtlasViewEditor(state.book.atlasViews.find(v=>'view:'+v.id===state.atlasView)));
   $('person-edit').addEventListener('click',()=>{state.personEditing=!state.personEditing;renderPersonOverview(currentPerson());if(state.personEditing)$('person-title').focus();});
   $('atlas-clear-focus').addEventListener('click',()=>{state.atlasFocusId=null;renderAtlas();});

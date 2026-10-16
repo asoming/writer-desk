@@ -122,6 +122,8 @@
 
   function createController(window,model){
     let hooks={},busy=false,pane=null,splitOwner=null,splitChapterId=null,baseline=null,lastCompared=null,rootObserver=null,comparisonTimer=null;
+    let pair=null,opening=false,openingSequence=0,draftTimer=null,chapterRequest=0;
+    const drafts=new Map();
     const t=(text,...args)=>hooks.T?hooks.T(text,...args):text.replace(/\{(\d+)\}/g,(_,i)=>args[i]??'');
     const node=(tag,className,text)=>{const item=document.createElement(tag);if(className)item.className=className;if(text!==undefined)item.textContent=text;return item;};
     const button=(text,className,handler)=>{const item=node('button',className,t(text));item.type='button';item.addEventListener('click',handler);return item;};
@@ -185,21 +187,128 @@
       if(hooks.navigateSearchResult){await hooks.navigateSearchResult(result);return;}
       const key=result.type==='outline'?'outline':result.type==='relation'?'relations':'notes',item=book()[key]?.find(value=>value.id===result.id&&!value.deletedAt);if(item&&hooks.jumpToOwner)await hooks.jumpToOwner({type:result.type==='outline'?'outline':result.type==='relation'?'relation':'person',item});
     }
+    const draftKey=(bookId,chapterId)=>JSON.stringify([bookId,chapterId]);
+    const draftPath=record=>'/api/books/'+encodeURIComponent(record.bookId)+'/chapters/'+encodeURIComponent(record.chapterId)+'/comparison';
+    const pending=record=>!record.invalid&&(record.savedSequence!==record.sequence||!!record.saving);
+    const chapterText=chapter=>({title:chapter.title,body:chapter.body});
+    const sameText=(left,right)=>left?.title===right?.title&&left?.body===right?.body;
+    function hasPendingDrafts(){return[...drafts.values()].some(pending);}
+    function draftStatus(text,error=false){hooks.saveStatus?.(t(text),error);}
+    function captureInput(field){
+      if(!isComparing())return false;
+      pair.draft[field]=field==='body'?hooks.getEditor().value:document.getElementById('chapter-title').value;
+      pair.sequence++;pair.error=null;draftStatus('修改稿待保存');
+      clearTimeout(draftTimer);if(!hooks.isComposing?.())draftTimer=setTimeout(()=>flushDrafts(),450);
+      scheduleComparison();hooks.resizeEditor?.();return true;
+    }
+    async function savePair(record){
+      if(record.invalid)return true;
+      if(hooks.isComposing?.())return !pending(record);
+      if(record.saving){const saved=await record.saving;if(record.invalid)return true;if(!saved)return false;return savePair(record);}
+      if(record.savedSequence===record.sequence)return true;
+      const sequence=record.sequence,payload={version:record.version,canonicalFingerprint:record.canonicalFingerprint,baseline:copy(record.baseline),draft:copy(record.draft)};
+      record.saving=(async()=>{
+        try{
+          const result=await hooks.api(draftPath(record),'PUT',payload);
+          if(record.invalid)return true;
+          if(!result?.draft||!Number.isInteger(result.draft.version))throw Error(t('对照稿保存结果不正确。'));
+          record.version=result.draft.version;record.canonicalFingerprint=result.draft.canonicalFingerprint;
+          record.canonical=copy(result.draft.canonical||record.canonical);record.savedSequence=sequence;record.error=null;
+          if(pair===record)draftStatus(record.sequence===sequence?'修改稿已保存':'修改稿待保存');return true;
+        }catch(error){if(record.invalid)return true;record.error=error;draftStatus('修改稿保存未完成',true);message(error);return false;}
+      })();
+      const result=await record.saving;record.saving=null;
+      if(result&&!record.invalid&&record.savedSequence!==record.sequence)return savePair(record);
+      return result;
+    }
+    async function flushDrafts(){
+      clearTimeout(draftTimer);draftTimer=null;
+      if(hooks.isComposing?.())return !hasPendingDrafts();
+      for(const record of [...drafts.values()])if(!await savePair(record))return false;
+      return true;
+    }
+    function restorePrimary(){
+      const chapter=active(book()?.chapters).find(item=>item.id===hooks.getChapterId());if(!chapter)return;
+      const editor=hooks.getEditor(),title=document.getElementById('chapter-title'),area=hooks.getWritingArea(),top=area?.scrollTop;
+      if(editor.value!==chapter.body)editor.value=chapter.body;if(title&&title.value!==chapter.title)title.value=chapter.title;
+      hooks.resizeEditor?.();if(area)area.scrollTop=top;
+    }
     async function showSplit(){
-      if(blocked()||!book())return;const owner=book(),id=hooks.getChapterId();
-      if(!await hooks.requireSaved()||book()!==owner||hooks.getChapterId()!==id)return;
-      const chapter=active(owner.chapters).find(item=>item.id===id);if(!chapter)return;
-      if(pane&&!pane.hidden&&splitOwner===owner&&splitChapterId===id){hooks.closeDialog();return;}
-      if(!pane)buildPane();if(!pane)return;
-      splitOwner=owner;splitChapterId=id;baseline=chapter.body;lastCompared=null;pane.hidden=false;
-      const area=hooks.getWritingArea(),top=area.scrollTop;area.classList.add('editor-dual-primary');pane.parentElement.classList.add('editor-dual-open');
-      renderSplit();syncComparisonControls();hooks.closeDialog();hooks.resizeEditor?.();area.scrollTop=top;
+      if(blocked()||opening||!book()||isComparing())return false;
+      opening=true;const sequence=++openingSequence,owner=book(),id=hooks.getChapterId();
+      try{
+        if(!await hooks.requireSaved()||book()!==owner||hooks.getChapterId()!==id)return false;
+        const chapter=active(owner.chapters).find(item=>item.id===id);if(!chapter)return false;
+        const result=await hooks.api(draftPath({bookId:owner.id,chapterId:id}));
+        if(sequence!==openingSequence||book()!==owner||hooks.getChapterId()!==id||hooks.getView?.()&&hooks.getView()!=='write')return false;
+        if(!result?.canonical||typeof result.canonicalFingerprint!=='string')throw Error(t('对照原文读取失败。'));
+        // A remote canonical change must be refreshed through the ordinary
+        // book loader, never silently copied over an unsaved local manuscript.
+        if(!sameText(result.canonical,chapterText(chapter)))throw Error(t('正文已发生变化，请重新打开作品后继续对照。'));
+        const saved=result.draft,record={bookId:owner.id,chapterId:id,owner,version:saved?.version||0,
+          baseline:copy(saved?.baseline||result.canonical),draft:copy(saved?.draft||result.canonical),
+          canonical:copy(saved?.canonical||result.canonical),visibleCanonical:copy(result.canonical),canonicalFingerprint:saved?.canonicalFingerprint||result.canonicalFingerprint,
+          sequence:0,savedSequence:saved?0:-1,saving:null,error:null,invalid:false};
+        drafts.set(draftKey(owner.id,id),record);pair=record;
+        if(!pane)buildPane();if(!pane)return false;
+        splitOwner=owner;splitChapterId=id;baseline=record.baseline.body;lastCompared=null;pane.hidden=false;
+        const editor=hooks.getEditor(),title=document.getElementById('chapter-title'),area=hooks.getWritingArea(),top=area.scrollTop;
+        editor.value=record.draft.body;if(title)title.value=record.draft.title;
+        area.classList.add('editor-dual-primary');pane.parentElement.classList.add('editor-dual-open');
+        renderSplit();syncComparisonControls();hooks.closeDialog();hooks.resizeEditor?.();area.scrollTop=top;
+        draftStatus('修改稿已保存');return true;
+      }catch(error){message(error);return false;}finally{opening=false;syncComparisonControls();}
+    }
+    async function toggleComparison(){return isComparing()?closeSplit():showSplit();}
+    async function closeSplit(){
+      if(hooks.isComposing?.()||busy)return false;
+      const record=pair;
+      if(!await flushDrafts()||hooks.isComposing?.()||pair!==record)return false;
+      clearComparison();restorePrimary();hooks.renderStats?.();draftStatus('已保存');return true;
+    }
+    function requestClose(){
+      if(!isComparing()||blocked())return false;const record=pair,root=node('div','comparison-exit-dialog'),footer=node('div','dialog-actions');
+      root.append(node('p','dialog-description',t('是否将修改稿保存为正文？')));
+      const cancel=button('取消','secondary-button',()=>hooks.closeDialog());cancel.id='comparison-cancel';
+      const keep=button('不保存退出','secondary-button',async()=>{if(pair===record&&await closeSplit())hooks.closeDialog();});keep.id='comparison-keep';
+      const apply=button('保存修改','primary-button',()=>applyPair(record));apply.id='comparison-apply';
+      footer.append(cancel,keep,apply);root.append(footer);hooks.showDialog(t('退出对照修改'),root);return true;
+    }
+    async function applyPair(record,rebase=false){
+      if(pair!==record||blocked())return false;
+      const run=async()=>{
+        if(!await hooks.requireSaved()||pair!==record)return false;
+        const latest=await hooks.api(draftPath(record));if(pair!==record)return false;
+        if(latest.draft?.version!==record.version)throw Error(t('对照修改已在另一个窗口变化，请重新打开后继续。'));
+        if(latest.stale&&!rebase){
+          const root=node('div','comparison-exit-dialog'),footer=node('div','dialog-actions');
+          root.append(node('p','dialog-description',t('正文已在其他位置修改。采用修改稿会替换当前正文，两份对照稿仍会保留。')));
+          footer.append(button('取消','secondary-button',()=>hooks.closeDialog()),button('采用修改稿','primary-button',()=>applyPair(record,true)));
+          root.append(footer);hooks.showDialog(t('确认修改稿'),root);return false;
+        }
+        const fresh=await hooks.api('/api/books/'+encodeURIComponent(record.bookId)),freshChapter=fresh.book?.chapters.find(item=>item.id===record.chapterId&&!item.deletedAt);
+        if(pair!==record||fresh.book?.id!==record.bookId||!freshChapter||!sameText(chapterText(freshChapter),latest.canonical))throw Error(t('正文已发生变化，请重新打开作品后继续对照。'));
+        if(latest.stale){
+          const rebased=await hooks.api(draftPath(record),'PUT',{version:record.version,canonicalFingerprint:latest.canonicalFingerprint,baseline:record.baseline,draft:record.draft,rebase:true});
+          record.version=rebased.draft.version;record.canonicalFingerprint=rebased.draft.canonicalFingerprint;record.canonical=copy(rebased.canonical);
+        }
+        const candidate=copy(fresh.book),chapter=candidate.chapters.find(item=>item.id===record.chapterId),before=chapter.body;
+        chapter.title=record.draft.title;chapter.body=record.draft.body;
+        window.ManuscriptMarks?.reanchorChapter(record.chapterId,before,chapter.body,candidate);
+        const payload={version:record.version,canonicalFingerprint:record.canonicalFingerprint,revision:fresh.revision};
+        if(candidate.reviewTools)payload.reviewTools=candidate.reviewTools;
+        const result=await hooks.api(draftPath(record)+'/apply','POST',payload);
+        if(pair!==record)return false;
+        record.version=result.comparison.version;record.canonical=copy(result.comparison.canonical);record.canonicalFingerprint=result.comparison.canonicalFingerprint;
+        clearComparison();hooks.closeDialog();hooks.acceptComparison(result);draftStatus('已保存');return true;
+      };
+      busy=true;try{return await(hooks.transition?hooks.transition(run):run());}catch(error){message(error);return false;}finally{busy=false;}
     }
     function buildPane(){
       const area=hooks.getWritingArea(),parent=area?.parentElement;if(!parent)return;
       pane=node('section','editor-dual-pane');pane.hidden=true;pane.setAttribute('aria-label',t('原文'));
       const divider=node('div','editor-dual-divider'),heading=node('div','chapter-heading editor-compare-heading'),label=node('span','eyebrow editor-compare-label',t('原文')),title=node('h2','editor-dual-title'),scroll=node('div','editor-dual-scroll'),original=node('div','editor-compare-original');
-      const rightHeading=area.querySelector('.chapter-heading'),rightLabel=node('span','eyebrow editor-compare-right-label',t('修改稿')),exit=button('退出对照修改','icon-button editor-compare-exit',()=>closeSplit());
+      const rightHeading=area.querySelector('.chapter-heading'),rightLabel=node('span','eyebrow editor-compare-right-label',t('修改稿')),exit=button('退出对照修改','icon-button editor-compare-exit',requestClose);
       exit.id='exit-comparison';exit.textContent='';exit.title=t('退出对照修改');exit.setAttribute('aria-label',t('退出对照修改'));
       const icon=document.createElementNS('http://www.w3.org/2000/svg','svg'),path=document.createElementNS('http://www.w3.org/2000/svg','path');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('width','18');icon.setAttribute('height','18');icon.setAttribute('fill','none');icon.setAttribute('stroke','currentColor');icon.setAttribute('stroke-width','1.6');icon.setAttribute('aria-hidden','true');path.setAttribute('d','M6 6l12 12M18 6L6 18');icon.append(path);exit.append(icon);rightHeading?.prepend(rightLabel);rightHeading?.append(exit);
       divider.tabIndex=0;divider.setAttribute('role','separator');divider.setAttribute('aria-orientation','vertical');divider.setAttribute('aria-label',t('调整对照宽度'));
@@ -224,7 +333,7 @@
       if(!pane||pane.hidden||book()!==splitOwner||hooks.getChapterId()!==splitChapterId)return;
       const chapter=active(splitOwner.chapters).find(item=>item.id===splitChapterId);if(!chapter)return;
       const {title,original,scroll}=pane._controls,editor=hooks.getEditor(),text=editor.value,top=scroll.scrollTop;
-      title.textContent=splitOwner.kind==='short'?splitOwner.title:document.getElementById('chapter-title')?.value||chapter.title||splitOwner.title;title.style.whiteSpace=splitOwner.kind==='short'?'normal':'nowrap';original.dataset.chapterId=chapter.id;
+      title.textContent=splitOwner.kind==='short'?splitOwner.title:pair?.baseline.title||splitOwner.title;title.style.whiteSpace=splitOwner.kind==='short'?'normal':'nowrap';original.dataset.chapterId=chapter.id;
       if(lastCompared!==text){const fragment=document.createDocumentFragment();for(const part of model.compareParts(baseline,text)){
         if(part.kind==='added'){const marker=node('span','editor-compare-insertion','+');marker.title=t('新增：{0}',part.text);marker.setAttribute('aria-label',marker.title);fragment.append(marker);}
         else fragment.append(node('span',part.kind==='removed'?'editor-compare-source editor-compare-removed':'editor-compare-source',part.text));
@@ -236,12 +345,13 @@
       if((baseline?.length||0)+(hooks.getEditor()?.value.length||0)<20000)sync();else comparisonTimer=setTimeout(sync,100);
     }
     function clearComparison(){
-      clearTimeout(comparisonTimer);comparisonTimer=null;baseline=null;lastCompared=null;splitOwner=null;splitChapterId=null;
+      clearTimeout(comparisonTimer);comparisonTimer=null;baseline=null;lastCompared=null;splitOwner=null;splitChapterId=null;pair=null;openingSequence++;
       if(!pane)return;const area=hooks.getWritingArea(),top=area?.scrollTop;pane.hidden=true;pane.parentElement.classList.remove('editor-dual-open','editor-dual-stacked');pane._controls.original.replaceChildren();pane._controls.title.textContent='';delete pane._controls.original.dataset.chapterId;area?.classList.remove('editor-dual-primary');hooks.resizeEditor?.();if(area)area.scrollTop=top;
       syncComparisonControls();
     }
-    function closeSplit(){if(hooks.isComposing?.())return false;clearComparison();return true;}
     function forcePurge(bookId,ids=null,wholeBook=false){
+      openingSequence++;
+      for(const [key,record]of drafts){if(record.bookId===bookId&&(wholeBook||(ids||[]).includes(record.chapterId)||record.owner.kind==='short'&&(ids||[]).length)){record.invalid=true;drafts.delete(key);}}
       if(!splitOwner||splitOwner.id!==bookId)return false;
       // Legacy short sections share one manuscript owner. Purging an alias can
       // remove part of that owner's body without changing its chapter ID.
@@ -249,10 +359,25 @@
       clearComparison();return true;
     }
     function isComparing(){return!!pane&&!pane.hidden&&book()===splitOwner&&hooks.getChapterId()===splitChapterId;}
-    function syncComparisonControls(){const control=document.getElementById('writing-compare');if(!control)return;control.setAttribute('aria-pressed',String(isComparing()));control.disabled=!active(book()?.chapters).some(item=>item.id===hooks.getChapterId())||!!hooks.getView?.()&&hooks.getView()!=='write';}
-    function sync(){if(pane&&!pane.hidden){if(book()!==splitOwner||hooks.getChapterId()!==splitChapterId||!active(book()?.chapters).some(item=>item.id===splitChapterId)||hooks.getView?.()&&hooks.getView()!=='write')clearComparison();else renderSplit();}syncComparisonControls();}
+    function syncComparisonControls(){const control=document.getElementById('writing-compare');if(!control)return;control.setAttribute('aria-pressed',String(isComparing()));control.title=t(isComparing()?'退出对照修改':'对照修改');control.setAttribute('aria-label',control.title);control.disabled=opening||!active(book()?.chapters).some(item=>item.id===hooks.getChapterId())||!!hooks.getView?.()&&hooks.getView()!=='write';}
+    function canonicalChanged(){
+      if(!isComparing())return false;const chapter=active(book()?.chapters).find(item=>item.id===splitChapterId);
+      if(chapter&&!sameText(chapterText(chapter),pair.visibleCanonical||pair.canonical)){clearComparison();restorePrimary();return true;}return false;
+    }
+    function sync(){if(pane&&!pane.hidden){if(book()!==splitOwner||hooks.getChapterId()!==splitChapterId||!active(book()?.chapters).some(item=>item.id===splitChapterId)||hooks.getView?.()&&hooks.getView()!=='write')clearComparison();else if(!canonicalChanged())renderSplit();}syncComparisonControls();}
     function configure(options){hooks=options;if(!rootObserver&&typeof MutationObserver==='function'){rootObserver=new MutationObserver(sync);const primary=hooks.getEditor?.(),title=document.getElementById('chapter-title');if(title)title.addEventListener('input',scheduleComparison);if(primary)primary.addEventListener('input',scheduleComparison);const list=document.getElementById('chapter-list');if(list)rootObserver.observe(list,{childList:true,subtree:false});}}
-    function beforeSwitch(){return closeSplit();}
-    return{configure,menu,showOrganizer,splitCurrent,showSearch,showSplit,closeSplit,isComparing,forcePurge,sync,beforeSwitch,mutate,resize:growSplit};
+    function beforeSwitch(){if(hooks.isComposing?.()||hasPendingDrafts())return false;clearComparison();return true;}
+    function beforeChapter(id){
+      if(!isComparing())return true;
+      if(id===splitChapterId){if(!canonicalChanged())return false;return true;}
+      if(hooks.isComposing?.())return false;
+      if(hasPendingDrafts()){
+        const owner=book(),previous=hooks.getChapterId(),request=++chapterRequest;
+        flushDrafts().then(saved=>{if(saved&&!hooks.isComposing?.()&&request===chapterRequest&&book()===owner&&hooks.getChapterId()===previous){clearComparison();hooks.selectChapter(id);}});return false;
+      }
+      clearComparison();return true;
+    }
+    return{configure,menu,showOrganizer,splitCurrent,showSearch,showSplit,toggleComparison,closeSplit,requestClose,isComparing,
+      captureInput,flushDrafts,hasPendingDrafts,canonicalChanged,beforeChapter,forcePurge,sync,beforeSwitch,mutate,resize:growSplit};
   }
 })(typeof window==='undefined'?globalThis:window);

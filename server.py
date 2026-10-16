@@ -26,6 +26,7 @@ from types import SimpleNamespace
 from urllib.parse import quote, unquote, urlparse
 import protection
 import chapter_history
+import comparison_drafts
 import planning
 import home_dashboard
 import review_tools
@@ -309,6 +310,7 @@ def initialize():
                     external_backups.initialize(conn)
                     conn.execute("CREATE TABLE IF NOT EXISTS sync_tombstones(book_id TEXT PRIMARY KEY,deleted_at TEXT NOT NULL)")
                     chapter_history.initialize(conn)
+                    comparison_drafts.initialize(conn)
                     planning.initialize(conn)
                     home_dashboard.initialize(conn)
                     seeded = conn.execute("SELECT 1 FROM app_migrations WHERE name IN (?,?) LIMIT 1", (INITIAL_LIBRARY_MIGRATION, DEFAULT_EXAMPLE_MIGRATION)).fetchone()
@@ -545,6 +547,13 @@ def validate_book(data):
                 "description": checked_string(view.get("description", ""), "人物分图说明", 50000),
                 "personIds": list(members),
             })
+    if "atlasMainPersonIds" in data:
+        members = data["atlasMainPersonIds"]
+        person_ids = {note["id"] for note in result["notes"] if note["type"] == "人物"}
+        if (not isinstance(members, list) or len(members) > 10000
+                or any(not isinstance(identity, str) or identity not in person_ids for identity in members)):
+            raise ValueError("主脉络必须指向本作品的人物")
+        result["atlasMainPersonIds"] = list(dict.fromkeys(members))
     for key in ("outline", "relations"):
         items = data.get(key, [])
         if not isinstance(items, list) or len(items) > 10000:
@@ -690,6 +699,7 @@ def purge_book_rows(conn, book_id, deleted_at=None):
     conn.execute("DELETE FROM history WHERE book_id=?", (book_id,))
     conn.execute("DELETE FROM backup_runs WHERE book_id=?", (book_id,))
     planning.purge_book(conn, book_id)
+    comparison_drafts.purge_book(conn, book_id)
     conn.execute("DELETE FROM books WHERE id=?", (book_id,))
     conn.execute("DELETE FROM pending_chapter_purges WHERE book_id=?", (book_id,))
 
@@ -1303,6 +1313,10 @@ class Handler(BaseHTTPRequestHandler):
             if chapter_result is not None:
                 self.send_json(chapter_result)
                 return
+            compared = comparison_drafts.read(chapter_history_context(), path)
+            if compared is not None:
+                self.send_json(compared)
+                return
             planned = planning.read(chapter_history_context(), path)
             if planned is not None:
                 self.send_json(planned)
@@ -1423,6 +1437,10 @@ class Handler(BaseHTTPRequestHandler):
             if chapter_result is not None:
                 self.send_json(chapter_result)
                 return
+            compared = comparison_drafts.apply(chapter_history_context(), path, data)
+            if compared is not None:
+                self.send_json(compared)
+                return
             if path == "/api/skills/import":
                 if not isinstance(data, dict) or set(data) != {"skillIds"}:
                     raise SkillError("写作技能导入参数不正确。")
@@ -1515,12 +1533,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         try:
             data = self.read_json()
+            path = unquote(urlparse(self.path).path)
+            compared = comparison_drafts.delete(chapter_history_context(), path, data)
+            if compared is not None:
+                self.send_json(compared)
+                return
             result = server_extensions.handle(chapter_history_context(), "DELETE", self.path, data)
             self.send_json(result if result is not None else {"error": "找不到这个操作"}, 200 if result is not None else 404)
         except (AIError, SkillError, SyncError) as exc:
             self.send_json({"error": exc.message}, exc.status)
         except protection.ProtectionError as exc:
-            self.send_json({"error": str(exc)}, exc.status)
+            self.send_json({"error": str(exc), "conflict": exc.conflict}, exc.status)
         except (ValueError, TypeError) as exc:
             self.send_json({"error": str(exc)}, 400)
         except PermissionError as exc:
@@ -1532,6 +1555,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            compared = comparison_drafts.put(chapter_history_context(), path, data)
+            if compared is not None:
+                self.send_json(compared)
+                return
             extension = server_extensions.handle(chapter_history_context(), "PUT", self.path, data)
             if extension is not None:
                 self.send_json(extension)

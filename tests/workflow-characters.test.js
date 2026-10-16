@@ -256,3 +256,63 @@ test('the last available theme can be saved again after failure at the 100-view 
   assert.equal(h.state.book.atlasViews.length, 100);
   assert.equal(h.state.atlasView, 'view:' + created.id, 'The failed save retry must be allowed even though its unsaved view already fills the final slot');
 });
+
+test('main, total and growth views preserve authored maps and existing character records', () => {
+  const h = harness(), before = JSON.stringify(h.state.book);
+  h.run("setAtlasSection('main')");assert.equal(h.state.atlasView, 'core');assert.equal(h.run('filteredGraphPeople().length'), 8);
+  h.run("setAtlasSection('total')");assert.equal(h.state.atlasView, 'all');assert.equal(h.run('filteredGraphPeople().length'), 32);
+  h.run("setAtlasSection('growth')");assert.equal(h.state.atlasMode, 'growth');assert.equal(h.get('people-layout').hidden, true);
+  assert.equal(h.get('atlas-growth-section').hidden, false);assert.equal(h.get('relation-index').hidden, true);
+  const matrix = h.get('atlas-growth-table').children[0];assert.equal(matrix.children[0].children[0].children.length, 7);
+  assert.equal(matrix.children[1].children.length, 32);
+  for (const row of matrix.children[1].children) assert.equal(row.children.length, 7);
+  assert.equal(JSON.stringify(h.state.book), before, 'Reading all three views must never rewrite profiles or maps');
+});
+
+test('authored main membership is exact, including deliberate emptiness and recoverable characters', async () => {
+  const h = harness(), people = h.state.book.notes.filter(note => note.type === '人物'), selected = [people[1].id, people[7].id];
+  h.state.book.atlasMainPersonIds = selected;
+  h.run("setAtlasSection('main')");assert.deepEqual(Array.from(h.run('filteredGraphPeople().map(person=>person.id)')), selected);
+  h.state.book.atlasMainPersonIds = [];h.run('renderPeople()');assert.equal(h.run('filteredGraphPeople().length'), 0);
+  h.state.book.atlasMainPersonIds = selected;people[1].deletedAt = '2026-10-16T00:00:00Z';h.run('renderPeople()');assert.equal(h.run('filteredGraphPeople().length'), 1);
+  h.run('showAtlasMainMembers()');const form = h.context.dialog[1];await form.listeners.submit({preventDefault(){}});
+  assert.deepEqual(h.state.book.atlasMainPersonIds, selected, 'Saving visible choices must retain hidden recycled members');
+  people[1].deletedAt = null;h.run('renderPeople()');assert.equal(h.run('filteredGraphPeople().length'), 2);
+  h.run('showAtlasMainMembers()');const automatic = find(h.context.dialog[1], node => node.textContent === '自动选择');
+  await automatic.listeners.click();assert.equal('atlasMainPersonIds' in h.state.book, false);
+  assert.equal(h.run('filteredGraphPeople().length'), 8, 'Automatic core selection remains the original protagonist and manual neighbors');
+});
+
+test('growth editing updates the original arc, survives failed-save retry and never duplicates it', async () => {
+  const h = harness(), person = h.state.book.notes.find(note => note.type === '人物'), volume = h.state.book.volumes[0];
+  const old = person.profile.arcs.find(arc => arc.volumeId === volume.id), initialCount = person.profile.arcs.length;
+  h.run("setAtlasSection('growth')");h.run(`showAtlasGrowthEditor(${JSON.stringify(person.id)},${JSON.stringify(volume.id)})`);
+  const form = h.context.dialog[1], input = find(form, node => node.id === 'atlas-growth-body');assert.equal(input.value, old.body);
+  input.value = '在旧船票中找到证词，开始承担公开记录的责任。';h.run('saveNow=async()=>false');
+  await form.listeners.submit({preventDefault(){}});assert.equal(person.profile.arcs.length, initialCount);assert.equal(old.body, input.value);
+  assert.equal(find(form, node => node.type === 'submit').disabled, false);
+  h.run('saveNow=async()=>true');await form.listeners.submit({preventDefault(){}});
+  assert.equal(person.profile.arcs.length, initialCount);assert.equal(h.state.atlasMode, 'growth');
+  assert.equal(h.run(`atlasGrowthBody(people().find(person=>person.id===${JSON.stringify(person.id)}),activeVolumes()[0])`), input.value);
+  assert.equal(h.state.book.chapters.reduce((n, c) => n + Array.from(c.body).filter(char => !/\s/u.test(char)).length, 0), 101506);
+});
+
+test('growth filters preserve unshown arcs and link only existing active chapters', () => {
+  const h = harness(), person = h.state.book.notes.find(note => note.type === '人物'), before = JSON.stringify(h.state.book);
+  h.state.graphGroup = person.profile.group;h.state.graphVolume = h.state.book.volumes[1].id;
+  h.run("setAtlasSection('growth')");assert.equal(h.run('atlasGrowthColumns().length'), 1);
+  assert.ok(Array.from(h.run('atlasGrowthPeople().map(person=>person.profile.group)')).every(group=>group===person.profile.group));
+  const ids = Array.from(h.run(`atlasGrowthChapters(people()[0],${JSON.stringify(h.state.graphVolume)}).map(chapter=>chapter.id)`));
+  assert.ok(ids.every(id=>h.state.book.chapters.some(chapter=>chapter.id===id&&chapter.volumeId===h.state.graphVolume&&!chapter.deletedAt)));
+  const volume = h.state.book.volumes[1];volume.deletedAt = '2026-10-16T00:00:00Z';assert.equal(h.run('atlasGrowthColumns().length'), 0);
+  volume.deletedAt = null;assert.equal(JSON.stringify(h.state.book), before);
+});
+
+test('short-story growth reuses motivation, contradiction and outcome without adding volumes', async () => {
+  const h = harness();h.state.kind = h.state.book.kind = 'short';h.state.graphVolume = '';h.state.book.volumes = [];
+  const person = h.state.book.notes.find(note => note.type === '人物'), arcs = JSON.stringify(person.profile.arcs);
+  h.run("setAtlasSection('growth')");assert.deepEqual(Array.from(h.run('atlasGrowthColumns().map(column=>column.id)')), ['desire','flaw','ending']);
+  h.run(`showAtlasGrowthEditor(${JSON.stringify(person.id)},'ending')`);const form = h.context.dialog[1];find(form,node=>node.id==='atlas-growth-body').value='在港口留下自己的记录。';
+  await form.listeners.submit({preventDefault(){}});assert.equal(person.profile.ending,'在港口留下自己的记录。');assert.equal(JSON.stringify(person.profile.arcs),arcs);
+  assert.equal(h.state.book.volumes.length,0);
+});

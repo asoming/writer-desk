@@ -13,6 +13,7 @@ import re
 import stat
 
 import protection
+import comparison_drafts
 import planning
 import asset_library
 import external_backups
@@ -384,6 +385,7 @@ def write(srv, path, data):
                 check_folder(srv, book_id)
                 protection.rewrite_snapshots(srv.DB_PATH, book_id, srv.validate_book, lambda value: sanitize(value, ids), dry_run=True)
                 book = srv.validate_book(sanitize(raw, ids))
+                comparison_drafts.purge_chapters(conn, book_id, ids, short=raw.get("kind") == "short")
                 # Rewrite each saved version separately; keep unrelated history
                 # IDs, revisions, timestamps and chapter bodies unchanged.
                 for saved in conn.execute("SELECT id,payload FROM history WHERE book_id=?", (book_id,)).fetchall():

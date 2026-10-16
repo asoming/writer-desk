@@ -48,13 +48,14 @@ function initializeWorkspaceExpansion(){
     onApply:applyLivePurge,onWholeBook:applyLiveWholeBook,onRevision:(revision,info)=>{if(state.book?.id===info.bookId){state.revision=revision;if(info.safe){state.conflict=false;state.error=null;$('error-banner').hidden=true;if(state.dirty&&!state.composing){clearTimeout(state.timer);state.timer=setTimeout(saveNow,650);}}}},
     resetReviewAnchors,toast,setComposing:value=>{state.composing=value;}});
   window.WriterLiveSync?.start();
-  window.WriterEditorTools.configure({getBook:()=>state.book,getChapterId:()=>state.chapterId,
+  window.WriterEditorTools.configure({getBook:()=>state.book,getChapterId:()=>state.chapterId,getRevision:()=>state.revision,
     getEditor:()=>$('editor'),getWritingArea:()=>$('writing-area'),getView:()=>state.view,
     isComposing:()=>state.composing,isTransitioning:()=>state.transitioning,
     setComposing:value=>{state.composing=value;},requireSaved,markDirty,saveNow,
     resetReviewAnchors,syncReviewAnchors,renderShell,renderChapters,renderStats,renderBacklinks,
     selectChapter,openBook,jumpToChapter,jumpToOwner,navigateSearchResult:navigateLibrarySearchResult,
-    showWriting:()=>navigate('write'),api,showDialog,closeDialog,toast,T,uid,preference,resizeEditor,
+    showWriting:()=>navigate('write'),api,showDialog,closeDialog,toast,T,uid,preference,resizeEditor,transition,saveStatus,
+    acceptComparison:result=>setBook(result),
     extraActions:[{label:'素材库',run:()=>window.WriterAssetLibrary.show()}]});
   const tools=action('','icon-button',()=>window.WriterEditorTools.menu());
   tools.id='editor-tools';tools.setAttribute('aria-label',T('写作工具'));tools.title=T('写作工具');

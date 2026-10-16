@@ -213,6 +213,7 @@
     const initial = options?.getBook?.(), editor = options?.getEditor?.(), chapterId = options?.getChapterId?.();
     if (!initial || !editor || editor.disabled || (options?.isComposing?.() || options?.isTransitioning?.())) return false;
     const chapter = initial.chapters.find(item => item.id === chapterId && !item.deletedAt); if (!chapter) return false;
+    if (editor.value !== chapter.body) { options.toast?.(t('请先保存或退出对照修改，再添加批注或书签。')); return false; }
     const source = chapter.body, start = editor.selectionStart, end = editor.selectionEnd;
     try {
       const range = paragraphRange(source, start, end);
