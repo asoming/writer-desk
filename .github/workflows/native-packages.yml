@@ -76,15 +76,10 @@ jobs:
         run: |
           node tests/update-installer-native.cjs --report dist/update-installer-native.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $writerHelperExitCode = 1
-          try {
-            $env:ELECTRON_RUN_AS_NODE = '1'
-            & .\node_modules\electron\dist\electron.exe .\tests\update-installer-native.cjs --report dist/update-installer-electron.json
-            $writerHelperExitCode = $LASTEXITCODE
-          } finally {
-            Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
-          }
-          if ($writerHelperExitCode -ne 0) { exit $writerHelperExitCode }
+          # Electron resolves/downloads its executable lazily. Resolve the
+          # package API first, then wait for its real exit status through Node.
+          node -e 'const electron = require("electron"); const result = require("node:child_process").spawnSync(electron, ["tests/update-installer-native.cjs", "--report", "dist/update-installer-electron.json"], { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: "inherit", timeout: 120000 }); if (result.error) throw result.error; process.exit(Number.isInteger(result.status) ? result.status : 1);'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Real editor typing and IME regression on Linux
         if: runner.os == 'Linux'
         run: |
