@@ -52,7 +52,7 @@
   global.WriterImmersiveWriting=createController(global);
 
   function createController(window){
-    const doc=window.document;let options={},active=null,entering=false,entryCancelled=false,exiting=false,switching=false,editorLock=null,bound=false,timer=null,checkpointTimer=null,pending=null,overlay=null,chaptersButton=null,outlineButton=null,exitButton=null,fields={},lastSummary=null,memoryQueue=[],settled=new Map(),purged=new Set();
+    const doc=window.document;let options={},active=null,entering=false,entryCancelled=false,exiting=false,switching=false,chapterEpoch=0,editorLock=null,bound=false,timer=null,checkpointTimer=null,pending=null,overlay=null,chaptersButton=null,outlineButton=null,exitButton=null,fields={},lastSummary=null,memoryQueue=[],settled=new Map(),purged=new Set();
     const tr=(text,...values)=>options.translate?options.translate(text,...values):text.replace(/\{(\d+)\}/g,(_,index)=>values[index]??'');
     const editor=()=>options.getEditor?.()||doc.getElementById('editor');
     const area=()=>options.getWritingArea?.()||doc.getElementById('writing-area');
@@ -117,15 +117,22 @@
       }catch(problem){if(active){enqueue(active.tracker.finish());restore();}try{await options.exitFullscreen?.();}catch{}options.toast?.(tr(problem?.message||'无法进入沉浸式码字。'));return false;}finally{entering=false;}
     }
     function restore(){window.clearInterval(timer);window.clearInterval(checkpointTimer);timer=checkpointTimer=null;const record=active;active=null;preserveLayout(()=>{doc.body.classList.remove('immersive-writing','immersive-chapters-open');doc.getElementById('workspace')?.classList.remove('focus');if(overlay)overlay.hidden=true;if(record&&!!options.isOutlineOpen?.()!==record.outlineWasOpen)options.toggleOutline?.();});return record;}
+    function cancelChapterSwitch(){if(!active&&!entering)return false;chapterEpoch++;return true;}
     async function switchChapter(id){
       if(!active||!active.chaptersAllowed||entering||exiting||switching||options.isComposing?.()||options.isTransitioning?.())return false;
-      const record=active,book=options.getBook?.(),previous=options.getChapter?.();
+      const record=active,book=options.getBook?.(),previous=options.getChapter?.(),epoch=chapterEpoch;
       const target=()=>options.getChapters?.().find(chapter=>chapter.id===id&&!chapter.deletedAt);
+      const current=()=>active===record&&!exiting&&chapterEpoch===epoch&&options.getBook?.()===book&&options.getView?.()==='write'&&options.getChapter?.()?.id===previous?.id&&!options.isComposing?.()&&!options.isTransitioning?.()&&!!target();
       if(id===previous?.id)return true;if(!target()||!options.selectChapter)return false;
       switching=true;const unlock=lockEditor();update();
       try{
         if(await (options.requireSaved||options.saveNow)?.()===false)return false;
-        if(active!==record||exiting||options.getBook?.()!==book||options.getView?.()!=='write'||options.getChapter?.()?.id!==previous?.id||options.isComposing?.()||options.isTransitioning?.()||!target())return false;
+        if(!current())return false;
+        // A native exit may still be restoring macOS window geometry before
+        // its final state event reaches the renderer. Check its current intent
+        // as well as the renderer epoch before applying a completed save.
+        if(options.canSwitchChapter&&await options.canSwitchChapter()!==true)return false;
+        if(!current())return false;
         options.selectChapter(id);if(options.getChapter?.()?.id!==id)return false;
         sync();if(window.innerWidth<=900)preserveLayout(()=>setChaptersOpen(false));editor()?.focus({preventScroll:true});return true;
       }catch(problem){options.toast?.(tr(problem?.message||'无法切换章节，请稍后重试。'));return false;}
@@ -141,7 +148,7 @@
       options.showDialog?.(tr('本次码字'),content);return content;
     }
     async function exit({showSummary=true,save=true,nativeExited=false}={}){
-      if(!active||entering||exiting)return false;exiting=true;if(exitButton)exitButton.disabled=true;
+      if(!active||entering||exiting)return false;cancelChapterSwitch();exiting=true;if(exitButton)exitButton.disabled=true;
       let unlock=()=>{};
       try{if(save&&options.saveNow&&await options.saveNow()===false){active.tracker.setForeground(foreground());if(nativeExited)try{await options.enterFullscreen?.();}catch{}return false;}
         const checkpoint=active.tracker.snapshot();const durable=enqueue(checkpoint);if(!durable&&await drain()===false){options.toast?.(tr('码字记录暂时无法保存，请稍后重试。'));return false;}
@@ -164,6 +171,6 @@
     function sync(){if(!active)return;const chapter=options.getChapter?.();if(options.getBook?.()?.id!==active.bookId||!chapter||options.getView?.()!=='write')return exit({showSummary:true,save:false});if(chapter.id!==active.chapterId){active.chapterId=chapter.id;resetEditorCounter();}update();}
     function purgeBook(bookId){purged.add(bookId);queueWrite(queueRead().filter(record=>record.bookId!==bookId));if(lastSummary?.record.bookId===bookId)lastSummary=null;}
     function configure(value){options=value||{};bind();drain();}
-    return{configure,enter,exit,isActive:()=>!!active,flush,fullscreenChanged,sync,switchChapter,purgeBook,showLastSummary:()=>lastSummary&&summary(lastSummary.record,lastSummary.title)};
+    return{configure,enter,exit,isActive:()=>!!active,flush,fullscreenChanged,sync,switchChapter,cancelChapterSwitch,purgeBook,showLastSummary:()=>lastSummary&&summary(lastSummary.record,lastSummary.title)};
   }
 })(typeof window==='undefined'?globalThis:window);

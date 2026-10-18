@@ -31,7 +31,7 @@ async function harness(t, platform = 'darwin', options = {}) {
       this.webContents.setWindowOpenHandler = () => {};
       this.webContents.getZoomFactor = () => 1;
       this.webContents.send = (channel, state) => {
-        sent.push({ channel, state: copy(state) });
+        sent.push({ channel, state: state === undefined ? undefined : copy(state) });
         if (channel === 'writer:before-close') queueMicrotask(() => ipc.emit('writer:save-result', event(), { token: state, saved: false }));
       };
     }
@@ -238,6 +238,64 @@ test('exit waits for a delayed native maximize restoration before reporting comp
   assert.equal(restored.maximized, true); assert.equal(restored.immersiveWriting, false); assert.equal(h.win.buttons, true);
 });
 
+test('native Escape reports exit intent immediately without publishing completion during geometry restoration', async t => {
+  const h = await harness(t, 'darwin', { maximized: true }); await h.invoke(true);
+  h.win.maximized = false; h.win.holdFullscreen = true; h.win.holdMaximize = true;
+  const before = h.sent.filter(item => item.channel === 'writer:window-state').length;
+  assert.equal(h.key('Escape').prevented, true);
+  assert.equal(h.sent.filter(item => item.channel === 'writer:immersive-exit-requested').length, 1);
+  const readState = () => h.ipc['writer:app-settings'](h.event());
+  assert.equal(readState().immersiveExitRequested, true);
+  assert.equal(readState().fullscreen, true);
+  await tick(); h.win.completeFullscreen(false); await tick();
+  assert.equal(readState().fullscreen, false, 'macOS can clear its flag before window geometry is restored');
+  assert.equal(readState().immersiveWriting, true);
+  assert.equal(readState().immersiveExitRequested, true, 'Late renderer saves can see that native exit is still pending');
+  assert.equal(h.sent.filter(item => item.channel === 'writer:window-state').length, before, 'No final window state before restoration completes');
+  h.win.completeMaximize(true); await tick();
+  assert.equal(h.state().immersiveWriting, false); assert.equal(h.state().immersiveExitRequested, false);
+  assert.equal(h.state().maximized, true); assert.equal(h.win.buttons, true);
+});
+
+test('queued entry and duplicate exits keep one synchronous exit intent until every request settles', async t => {
+  const h = await harness(t); h.win.holdFullscreen = true;
+  const entering = h.invoke(true), firstExit = h.invoke(false), secondExit = h.invoke(false);
+  const readState = () => h.ipc['writer:app-settings'](h.event());
+  assert.equal(readState().immersiveExitRequested, true);
+  assert.equal(h.sent.filter(item => item.channel === 'writer:immersive-exit-requested').length, 1);
+  await tick(); assert.deepEqual(h.win.pending, [true]);
+  h.win.completeFullscreen(true); const entered = await entering;
+  assert.equal(entered.immersiveWriting, true); assert.equal(entered.immersiveExitRequested, true);
+  await tick(); assert.deepEqual(h.win.pending, [true, false]);
+  assert.equal(readState().immersiveExitRequested, true);
+  h.win.completeFullscreen(false);
+  const [first, second] = await Promise.all([firstExit, secondExit]);
+  assert.equal(first.immersiveExitRequested, true, 'A duplicate queued exit still owns the intent after the first completes');
+  assert.equal(second.immersiveExitRequested, false);
+  assert.equal(readState().immersiveExitRequested, false); assert.equal(h.state().immersiveExitRequested, false);
+  assert.equal(h.win.listenerCount('enter-full-screen'), 1); assert.equal(h.win.listenerCount('leave-full-screen'), 1);
+});
+
+test('failed exits clear their intent and permit a new retry notification', async t => {
+  const h = await harness(t); await h.invoke(true); h.win.rejectFullscreen = true;
+  assert.equal((await h.invoke(false)).code, 'immersive-fullscreen-failed');
+  assert.equal(h.state().immersiveWriting, true); assert.equal(h.state().immersiveExitRequested, false);
+  assert.equal(h.sent.filter(item => item.channel === 'writer:immersive-exit-requested').length, 1);
+  h.win.rejectFullscreen = false;
+  assert.equal((await h.invoke(false)).immersiveExitRequested, false);
+  assert.equal(h.sent.filter(item => item.channel === 'writer:immersive-exit-requested').length, 2);
+  assert.equal(h.win.listenerCount('leave-full-screen'), 1);
+});
+
+test('destroying a window with a pending exit clears intent and native transition listeners', async t => {
+  const h = await harness(t); await h.invoke(true); h.win.holdFullscreen = true;
+  const exiting = h.invoke(false); await tick();
+  assert.equal(h.ipc['writer:app-settings'](h.event()).immersiveExitRequested, true);
+  h.win.destroy(); assert.equal((await exiting).code, 'immersive-window-unavailable');
+  assert.equal(h.win.listenerCount('leave-full-screen'), 0); assert.equal(h.win.listenerCount('enter-full-screen'), 0);
+  assert.equal(h.win.listenerCount('closed'), 1, 'Only the application window cleanup listener remains');
+});
+
 test('Escape and F11 exit immersive while the ordinary fullscreen action remains available', async t => {
   const h = await harness(t, 'linux'); await h.invoke(true);
   assert.equal(h.key('Escape').prevented, true); await tick(); assert.equal(h.state().immersiveWriting, false);
@@ -287,7 +345,7 @@ test('preload exposes a narrow boolean API and validates native immersive respon
   assert.deepEqual(h.calls, []);
   const state = await h.bridge.setImmersiveWriting(true); assert.equal(state.immersiveWriting, true);
   assert.deepEqual(h.calls, [['writer:immersive-writing', true]]);
-  for (const response of [{ fullscreen: true, maximized: false }, { ...h.ipc.response, immersiveWriting: 'yes' },
+  for (const response of [{ fullscreen: true, maximized: false }, { ...h.ipc.response, immersiveWriting: 'yes' }, { ...h.ipc.response, immersiveExitRequested: 'false' },
     { ...h.ipc.response, priorWindowState: { fullscreen: 'yes', maximized: false } }, { ...h.ipc.response, priorWindowState: [] }]) {
     h.ipc.response = response; await assert.rejects(h.bridge.setImmersiveWriting(false), { code: 'invalid-response' });
   }
@@ -296,9 +354,26 @@ test('preload exposes a narrow boolean API and validates native immersive respon
 test('preload forwards authenticated window state without paths and ignores malformed updates', () => {
   const h = preloadHarness(), states = [], off = h.bridge.onWindowState(value => states.push(copy(value)));
   h.ipc.emit('writer:window-state', {}, { fullscreen: true, maximized: false });
-  h.ipc.emit('writer:window-state', {}, { fullscreen: false, maximized: true, immersiveWriting: false, priorWindowState: null, secretPath: '/private' });
+  h.ipc.emit('writer:window-state', {}, { fullscreen: false, maximized: true, immersiveWriting: false, immersiveExitRequested: true, priorWindowState: null, secretPath: '/private' });
   h.ipc.emit('writer:window-state', {}, { fullscreen: false, maximized: true, immersiveWriting: 'false' });
+  h.ipc.emit('writer:window-state', {}, { fullscreen: false, maximized: true, immersiveExitRequested: 1 });
   h.ipc.emit('writer:window-state', {}, { fullscreen: false, maximized: true, priorWindowState: { fullscreen: false } });
-  assert.deepEqual(states, [{ fullscreen: true, maximized: false }, { fullscreen: false, maximized: true, immersiveWriting: false, priorWindowState: null }]);
+  assert.deepEqual(states, [{ fullscreen: true, maximized: false }, { fullscreen: false, maximized: true, immersiveWriting: false, immersiveExitRequested: true, priorWindowState: null }]);
   off(); h.ipc.emit('writer:window-state', {}, { fullscreen: false, maximized: false }); assert.equal(states.length, 2);
+});
+
+test('preload exit-request subscription forwards only a payload-free notification and removes its listener', async () => {
+  const h = preloadHarness(); let requests = 0;
+  assert.throws(() => h.bridge.onImmersiveExitRequested(null), { name: 'TypeError' });
+  const off = h.bridge.onImmersiveExitRequested(() => requests++);
+  h.ipc.emit('writer:immersive-exit-requested', {});
+  h.ipc.emit('writer:immersive-exit-requested', {}, { immersiveExitRequested: true });
+  h.ipc.emit('writer:immersive-exit-requested', {}, false);
+  assert.equal(requests, 1);
+  off(); off(); assert.equal(h.ipc.listenerCount('writer:immersive-exit-requested'), 0);
+  h.ipc.emit('writer:immersive-exit-requested', {}); assert.equal(requests, 1);
+  h.ipc.response = { version: 'test', dataPath: '/fixture', zoomFactor: 1, fullscreen: false, maximized: false, immersiveWriting: true, immersiveExitRequested: true };
+  assert.equal((await h.bridge.getAppSettings()).immersiveExitRequested, true);
+  h.ipc.response.immersiveExitRequested = 'true';
+  await assert.rejects(h.bridge.getAppSettings(), { code: 'invalid-response' });
 });

@@ -103,9 +103,19 @@ app.whenReady().then(async () => {
     await controller.set(true); state = await controller.set(false);
     await until(() => win.isMaximized(), 'restored maximize');
     assert.equal(state.immersiveWriting, false); assert.equal(state.fullscreen, false);
-    report.cases.maximizedWindow = { enteredFromMaximized: true, restoredMaximized: true };
-    win.unmaximize(); await until(() => !win.isMaximized(), 'leave maximize');
+    win.unmaximize();
+    // The OS can clear isMaximized before applying the normal rectangle.
+    // Require the original geometry across consecutive native observations;
+    // the exact restoration assertion below still checks the same bounds.
+    let restoredObservations = 0;
+    await until(() => {
+      const bounds = win.getNormalBounds();
+      const restored = !win.isMaximized() && ['x', 'y', 'width', 'height'].every(key => Math.abs(bounds[key] - beforeMaximize[key]) <= 2);
+      restoredObservations = restored ? restoredObservations + 1 : 0;
+      return restoredObservations >= 3;
+    }, 'leave maximize and restore stable normal geometry');
     sameBounds(win.getNormalBounds(), beforeMaximize);
+    report.cases.maximizedWindow = { enteredFromMaximized: true, restoredMaximized: true, restoredNormalBounds: true };
 
     await nativeFullscreen(true);
     state = await controller.set(true); assert.equal(state.priorWindowState.fullscreen, true);

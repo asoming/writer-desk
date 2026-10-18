@@ -1,10 +1,10 @@
 'use strict';
 
-function createImmersiveWindow(target, { platform = process.platform, onState = () => {}, unavailable = () => false, transitionTimeout = 8000 } = {}) {
-  let active = false, phase = 'idle', previous = null;
+function createImmersiveWindow(target, { platform = process.platform, onState = () => {}, onExitRequest = () => {}, unavailable = () => false, transitionTimeout = 8000 } = {}) {
+  let active = false, phase = 'idle', previous = null, exitRequests = 0;
   let transition = Promise.resolve();
   const failure = code => Object.assign(new Error('Could not switch immersive writing'), { code });
-  const state = () => ({ fullscreen: !target.isDestroyed() && target.isFullScreen(), maximized: !target.isDestroyed() && target.isMaximized(), immersiveWriting: active,
+  const state = () => ({ fullscreen: !target.isDestroyed() && target.isFullScreen(), maximized: !target.isDestroyed() && target.isMaximized(), immersiveWriting: active, immersiveExitRequested: exitRequests > 0,
     priorWindowState: previous ? { fullscreen: previous.fullscreen, maximized: previous.maximized } : null });
   const publish = () => { if (!target.isDestroyed()) onState(state()); };
   function nativeTransition({ matches, eventName, change, failureCode, timeoutCode }) {
@@ -65,7 +65,7 @@ function createImmersiveWindow(target, { platform = process.platform, onState = 
     // Closing first asks the renderer to save its final session. That save
     // callback may exit immersive mode, so the close guard blocks entry only.
     if (target.isDestroyed() || (enabled && unavailable())) throw failure('immersive-window-unavailable');
-    if (enabled === active) return state();
+    if (enabled === active) return false;
     if (enabled) {
       const snapshot = { fullscreen: target.isFullScreen(), maximized: target.isMaximized(), bounds: target.getNormalBounds() };
       previous = snapshot;
@@ -86,7 +86,6 @@ function createImmersiveWindow(target, { platform = process.platform, onState = 
         try { if (!target.isDestroyed()) buttons(true); } catch { }
         previous = null;
         phase = 'idle';
-        publish();
         throw error;
       }
     } else {
@@ -101,19 +100,31 @@ function createImmersiveWindow(target, { platform = process.platform, onState = 
         phase = 'idle';
       } catch (error) {
         phase = 'active';
-        publish();
         throw error;
       }
     }
-    publish();
-    return state();
+    return true;
   }
   function set(enabled) {
     if (typeof enabled !== 'boolean') return Promise.reject(failure('immersive-invalid-request'));
+    if (target.isDestroyed()) return Promise.reject(failure('immersive-window-unavailable'));
+    const notifyExit = !enabled && exitRequests++ === 0;
     // A quick Escape during entry waits for that animation before restoring
-    // the captured state; it never toggles an in-flight native request.
-    const operation = transition.then(() => apply(enabled));
+    // the captured state. Expose the intent immediately, so a renderer save
+    // cannot apply late chapter navigation during the native exit animation.
+    const operation = transition.then(async () => {
+      let changed = true;
+      try { changed = await apply(enabled); }
+      finally {
+        if (!enabled) exitRequests = Math.max(0, exitRequests - 1);
+        if (!enabled || changed) publish();
+      }
+      return state();
+    });
     transition = operation.catch(() => {});
+    // Install the queued operation before notifying: a callback may itself
+    // request an exit, and must join this transition rather than bypass it.
+    if (notifyExit) { try { onExitRequest(); } catch { } }
     return operation;
   }
   const listeners = [];
@@ -131,7 +142,7 @@ function createImmersiveWindow(target, { platform = process.platform, onState = 
   function dispose() {
     for (const [event, listener] of listeners) target.removeListener(event, listener);
     target.removeListener('closed', dispose);
-    active = false; previous = null; phase = 'idle';
+    active = false; previous = null; phase = 'idle'; exitRequests = 0;
   }
   target.once('closed', dispose);
   return { set, state, phase: () => phase, dispose };

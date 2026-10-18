@@ -23,9 +23,9 @@ async function nativeRequest(channel, ...args) {
 }
 function checkedWindowState(value, required = false) {
   const state = {};
-  for (const key of ['fullscreen', 'maximized', 'immersiveWriting']) {
+  for (const key of ['fullscreen', 'maximized', 'immersiveWriting', 'immersiveExitRequested']) {
     if (typeof value[key] === 'boolean') state[key] = value[key];
-    else if ((required && key !== 'immersiveWriting') || Object.hasOwn(value, key)) throw Object.assign(new Error('Invalid window state'), { code: 'invalid-response' });
+    else if ((required && (key === 'fullscreen' || key === 'maximized')) || Object.hasOwn(value, key)) throw Object.assign(new Error('Invalid window state'), { code: 'invalid-response' });
   }
   if (Object.hasOwn(value, 'priorWindowState')) {
     const previous = value.priorWindowState;
@@ -83,6 +83,12 @@ contextBridge.exposeInMainWorld('WriterDesktop', {
     };
     ipcRenderer.on('writer:window-state', listener);
     return () => ipcRenderer.removeListener('writer:window-state', listener);
+  },
+  onImmersiveExitRequested: callback => {
+    if (typeof callback !== 'function') throw new TypeError('An immersive exit callback is required');
+    const listener = (_event, ...args) => { if (args.length === 0) callback(); };
+    ipcRenderer.on('writer:immersive-exit-requested', listener);
+    return () => ipcRenderer.removeListener('writer:immersive-exit-requested', listener);
   },
   openBookFolder: async bookId => {
     const result = await ipcRenderer.invoke('writer:open-book-folder', bookId);

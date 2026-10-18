@@ -269,7 +269,7 @@ async function testMainContract() {
   assert.equal((await action('toggleFullscreen')).fullscreen, true); assert.equal((await action('toggleFullscreen')).fullscreen, false);
   assert.deepEqual(sentEvents.filter(value => value.channel === 'writer:window-state').map(value => JSON.parse(JSON.stringify(value.token))), [
     { fullscreen: false, maximized: true }, { fullscreen: false, maximized: false }, { fullscreen: true, maximized: false }, { fullscreen: false, maximized: false }
-  ].map(value => ({ ...value, immersiveWriting: false, priorWindowState: null })));
+  ].map(value => ({ ...value, immersiveWriting: false, immersiveExitRequested: false, priorWindowState: null })));
   await action('minimize'); assert.equal(win.minimized, true);
   await action('openDataFolder'); assert.equal(openedFolders.at(-1), path.join(userData, 'data'));
   shellError = 'Private OS command details';

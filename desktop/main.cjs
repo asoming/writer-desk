@@ -264,7 +264,7 @@ const appActions = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll',
 const editActions = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']);
 function windowState() {
   if (!window || window.isDestroyed()) return {};
-  return { zoomFactor: window.webContents.getZoomFactor(), ...(immersiveWindow ? immersiveWindow.state() : { fullscreen: window.isFullScreen(), maximized: window.isMaximized(), immersiveWriting: false, priorWindowState: null }) };
+  return { zoomFactor: window.webContents.getZoomFactor(), ...(immersiveWindow ? immersiveWindow.state() : { fullscreen: window.isFullScreen(), maximized: window.isMaximized(), immersiveWriting: false, immersiveExitRequested: false, priorWindowState: null }) };
 }
 function publishWindowState() {
   if (window && !window.isDestroyed()) {
@@ -548,7 +548,9 @@ function createWindow() {
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, nodeIntegrationInWorker: false, webSecurity: true, navigateOnDragDrop: false, webviewTag: false, session: appSession }
   });
-  immersiveWindow = createImmersiveWindow(window, { platform: process.platform, onState: publishWindowState, unavailable: () => closing || allowQuit });
+  immersiveWindow = createImmersiveWindow(window, { platform: process.platform, onState: publishWindowState,
+    onExitRequest: () => { if (window && !window.isDestroyed()) window.webContents.send('writer:immersive-exit-requested'); },
+    unavailable: () => closing || allowQuit });
   window.setMenu(null);
   window.setMenuBarVisibility(false);
   window.webContents.setWindowOpenHandler(({ url }) => { openExternal(url); return { action: 'deny' }; });
