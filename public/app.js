@@ -129,15 +129,17 @@ function renderChapters(){renderVolumeChapters();}
 
 function resizeEditor(){if(state.view!=='write'||!state.book)return;window.WriterEditorLayout.resize($('editor'),$('writing-area'));window.WriterEditorTools?.resize();}
 function closeSidebar(){$('workspace').classList.remove('sidebar-mobile-open');$('sidebar-backdrop').hidden=true;}
-function selectChapter(id){
+function selectChapter(id,options={}){
+  const immersive=window.WriterImmersiveWriting;
+  if(state.kind==='long'&&immersive?.isActive()&&!options.immersiveChecked&&id!==state.chapterId)return immersive.switchChapter(id);
   if(window.WriterEditorTools?.beforeChapter(id)===false)return;
   if(state.composing)return;if(state.kind==='short')id=ensureShortManuscript()?.id;const c=activeChapters().find(c=>c.id===id);state.chapterId=c?.id||null;if(typeof syncAIChat==='function')syncAIChat();if(c){state.collapsedVolumes?.delete(c.volumeId);const query=$('chapter-search').value.trim().toLocaleLowerCase();if(query&&!(c.title+' '+c.body).toLocaleLowerCase().includes(query))$('chapter-search').value='';}
   const short=state.kind==='short';$('chapter-title').hidden=short;$('chapter-number').hidden=short;$('chapter-tools').hidden=short;$('short-story-title').hidden=!short;$('short-story-title').textContent=state.book?.title||'';$('backlinks-label').textContent=short?T('正文关联'):T('本章关联');$('editor').setAttribute('aria-label',short?T('正文'):T('章节正文'));
   $('editor-empty').hidden=!!c;$('manuscript').hidden=!c;$('chapter-volume-control').hidden=!c||state.kind==='short';
   $('link-current-chapter').disabled=!c;$('backlinks-edit').disabled=!c;$('toggle-focus').hidden=state.view!=='write'||!c;
-  if(!c){$('chapter-title').value='';$('editor').value='';$('chapter-title').disabled=true;$('editor').disabled=true;renderChapters();renderStats();renderBacklinks();window.WriterEditorTools?.sync();return;}
+  if(!c){$('chapter-title').value='';$('editor').value='';$('chapter-title').disabled=true;$('editor').disabled=true;window.WriterImmersiveWriting?.sync();renderChapters();renderStats();renderBacklinks();window.WriterEditorTools?.sync();return;}
   $('chapter-title').disabled=false;$('editor').disabled=false;state.volumeId=c.volumeId||null;preference('yejian.chapter.'+state.book.id,c.id);
-  $('chapter-title').value=c.title;$('editor').value=c.body;const list=activeChapters().filter(x=>x.volumeId===c.volumeId),index=list.findIndex(x=>x.id===id),volume=activeVolumes().find(v=>v.id===c.volumeId);
+  $('chapter-title').value=c.title;$('editor').value=c.body;window.WriterImmersiveWriting?.sync();const list=activeChapters().filter(x=>x.volumeId===c.volumeId),index=list.findIndex(x=>x.id===id),volume=activeVolumes().find(v=>v.id===c.volumeId);
   $('chapter-number').textContent=(volume?volume.title+' · ':'')+T('章节')+' '+String(index+1).padStart(2,'0');
   $('move-up').disabled=index<=0;$('move-down').disabled=index===list.length-1;$('trash-chapter').disabled=false;
   renderChapterVolumeSelect();renderChapters();renderStats();renderBacklinks();resizeEditor();$('writing-area').scrollTop=0;requestAnimationFrame(()=>{Array.from($('chapter-list').querySelectorAll('[data-chapter]')).find(row=>row.dataset.chapter===state.chapterId)?.scrollIntoView({block:'nearest'});});closeSidebar();window.WriterEditorTools?.sync();
@@ -405,7 +407,7 @@ async function registerTools(){
 async function initialize(){
   state.kind=preference('yejian.kind')==='short'?'short':'long';state.view='home';state.collection=null;
   let browserImmersiveEntered=false;
-  window.WriterImmersiveWriting?.configure({getBook:()=>state.book,getChapter:currentChapter,getView:()=>state.view,getEditor:()=>$('editor'),getWritingArea:()=>$('writing-area'),api,saveNow,translate:T,icons:svgIcon,storage:clientStorage,resizeEditor,showDialog,toast,
+  window.WriterImmersiveWriting?.configure({getBook:()=>state.book,getChapter:currentChapter,getChapters:activeChapters,isComposing:()=>state.composing,isTransitioning:()=>state.transitioning,requireSaved,selectChapter:id=>selectChapter(id,{immersiveChecked:true}),getView:()=>state.view,getEditor:()=>$('editor'),getWritingArea:()=>$('writing-area'),api,saveNow,translate:T,icons:svgIcon,storage:clientStorage,resizeEditor,showDialog,toast,
     toggleOutline:()=>window.WriterWorkPlan?.isOpen()?window.WriterWorkPlan.close():window.WriterWorkPlan?.open(),isOutlineOpen:()=>!!window.WriterWorkPlan?.isOpen(),
     enterFullscreen:async()=>{if(window.WriterDesktop?.setImmersiveWriting)return window.WriterDesktop.setImmersiveWriting(true);browserImmersiveEntered=!document.fullscreenElement;if(browserImmersiveEntered)await document.documentElement.requestFullscreen();return{fullscreen:true};},
     exitFullscreen:async()=>{if(window.WriterDesktop?.setImmersiveWriting)return window.WriterDesktop.setImmersiveWriting(false);if(browserImmersiveEntered&&document.fullscreenElement)await document.exitFullscreen();browserImmersiveEntered=false;return{fullscreen:!!document.fullscreenElement};},

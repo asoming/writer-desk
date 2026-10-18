@@ -192,7 +192,7 @@ function renderVolumeChapters(){
   groups.forEach(volume=>{
     const group=el('section','volume-group'),all=chapters.filter(c=>volume.id?c.volumeId===volume.id:!ids.has(c.volumeId)),list=query?all.filter(c=>(c.title+' '+c.body).toLocaleLowerCase().includes(query)):all;if(query&&!list.length)return;
     if(state.kind==='long'){
-      const heading=el('div','volume-heading'),pick=action('','volume-select'+(state.volumeId===volume.id?' active':''),()=>{state.volumeId=volume.id;renderChapters();if(list[0])selectChapter(list[0].id);});
+      const heading=el('div','volume-heading'),pick=action('','volume-select'+(state.volumeId===volume.id?' active':''),()=>{if(list[0])return selectChapter(list[0].id);if(window.WriterImmersiveWriting?.isActive())return;state.volumeId=volume.id;renderChapters();});
       pick.append(el('strong',null,volume.title),el('small',null,query?T('{0} / {1} 章',list.length,all.length):list.length+T(' 章')));const collapsed=!query&&state.collapsedVolumes?.has(volume.id),fold=action(collapsed?'▸':'▾','volume-fold',()=>{state.collapsedVolumes??=new Set();if(state.collapsedVolumes.has(volume.id))state.collapsedVolumes.delete(volume.id);else state.collapsedVolumes.add(volume.id);renderChapters();});fold.setAttribute('aria-label',T('展开或收起卷')+' '+volume.title);fold.setAttribute('aria-expanded',String(!collapsed));heading.append(fold,pick);
       if(volume.id){const edit=action('','volume-edit',()=>showVolumeEditor(volume));edit.innerHTML=svgIcon('pen');edit.setAttribute('aria-label',T('编辑卷 ')+volume.title);heading.append(edit);}group.append(heading);
     }

@@ -17,6 +17,8 @@ const englishMessages={
   "开始 / 结束": "Start / end",
   "最近码字": "Recent sessions",
   "收起作品大纲": "Hide book outline",
+  "收起卷与章节": "Hide volumes and chapters",
+  "无法切换章节，请稍后重试。": "Could not switch chapters. Please try again.",
   "{0} 字/时": "{0} chars/hour",
   "{0} 字/时 · {1} 字/分": "{0} chars/hour · {1} chars/min",
   "今日 {0} 次": "{0} sessions today",
