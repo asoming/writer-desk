@@ -4,11 +4,11 @@
 
 ## Source and release status
 
-当前已发布测试版为 [0.8.7](https://github.com/asoming/writer-desk/releases/tag/v0.8.7)。日常升级优先使用「设置 → 更新 → 检查更新」，联网更新默认展开，「安装包更新」折叠为备用。使用方法见[使用指南](../docs/user-guide-zh.md)，本轮检查见[0.8.7 验收](../docs/acceptance-0.8.7.md)。此前稿件导入与校对检查仍见[0.7.0 验收](../docs/acceptance-v0.7.0.md)。
+当前已发布测试版为 [0.8.8](https://github.com/asoming/writer-desk/releases/tag/v0.8.8)。日常升级优先使用「设置 → 更新 → 检查更新」，联网更新默认展开，「安装包更新」折叠为备用。使用方法见[使用指南](../docs/user-guide-zh.md)，本轮检查见[0.8.8 验收](../docs/acceptance-0.8.8.md)。此前联网更新入口见[0.8.7 验收](../docs/acceptance-0.8.7.md)，稿件导入与校对检查仍见[0.7.0 验收](../docs/acceptance-v0.7.0.md)。
 
 ## Run a Linux release
 
-Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。系统安装使用 `sudo apt install ./WriterDesk-0.8.7-linux-amd64.deb`；`apt` 会安装依赖，在 `/opt/Writer's Desk` 放置程序、注册应用菜单，作品仍使用下文的原有数据目录。也可解压 `WriterDesk-0.8.7-linux-x64.tar.gz` 后直接运行目录里的 `writer-desk`，或执行 `bash install-linux.sh` 注册当前用户的固定安装入口。安装脚本使用包内 Electron 的 Node 运行时，不需要系统 Python 或 Node。
+Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11/Wayland 图形桌面）。系统安装使用 `sudo apt install ./WriterDesk-0.8.8-linux-amd64.deb`；`apt` 会安装依赖，在 `/opt/Writer's Desk` 放置程序、注册应用菜单，作品仍使用下文的原有数据目录。也可解压 `WriterDesk-0.8.8-linux-x64.tar.gz` 后直接运行目录里的 `writer-desk`，或执行 `bash install-linux.sh` 注册当前用户的固定安装入口。安装脚本使用包内 Electron 的 Node 运行时，不需要系统 Python 或 Node。
 
 以前通过 `.tar.gz` 安装时，`~/.local/share/applications/writer-desk.desktop` 会优先于 `.deb` 的系统菜单入口，导致图标继续打开旧版。迁移到 `.deb` 时，先保存并退出旧版，确认直接运行 `/opt/Writer's Desk/writer-desk` 能打开新版，再将旧用户入口改名为 `writer-desk.desktop.backup`；设置了 `XDG_DATA_HOME` 时使用其 `applications/` 目录。保留旧 `versions/` 目录和作品目录。系统安装脚本不会遍历或修改用户 home；不要混用两套升级入口。日常升级优先使用「设置 → 更新 → 检查更新」；联网不可用时，系统版使用新版 `.deb`，托管用户安装使用下述离线 `.tar.gz` 备用方式。
 
@@ -16,9 +16,9 @@ Linux x64 构建面向 Ubuntu 22.04+ 或兼容环境（glibc 2.35+，GTK 3，X11
 
 ## Updates and offline packages
 
-日常升级优先打开「设置 → 更新 → 检查更新」。联网更新默认显示，按界面完成检查、下载、校验与保存后安装。0.8.7 为测试版，检查此版本需启用「接收预览版」；升级保留原有选择，不会自动开启。离线升级或联网更新不可用时，再展开「安装包更新」，从固定发行页下载对应安装包。
+日常升级优先打开「设置 → 更新 → 检查更新」。联网更新默认显示，按界面完成检查、下载、校验与保存后安装。0.8.8 为测试版，检查此版本需启用「接收预览版」；升级保留原有选择，不会自动开启。离线升级或联网更新不可用时，再展开「安装包更新」，从固定发行页下载对应安装包。
 
-在“设置 → 更新 → 安装包更新 → 选择安装包”选择可信来源的 `WriterDesk-<版本号>-linux-x64.tar.gz`。同一目录必须有同名 `.sha256` 校验文件，例如 `WriterDesk-0.8.7-linux-x64.sha256`，其内容包含完整压缩包文件名与 SHA256。也支持 `.tar.gz.sha256` 后缀。安装器检查压缩包校验、发行清单、文件散列、架构和版本，拒绝路径穿越、链接、特殊文件以及未列入清单的文件。每个版本的发行目录包含自动生成的 `release-manifest.json`；清单不包含自身的散列。
+在“设置 → 更新 → 安装包更新 → 选择安装包”选择可信来源的 `WriterDesk-<版本号>-linux-x64.tar.gz`。同一目录必须有同名 `.sha256` 校验文件，例如 `WriterDesk-0.8.8-linux-x64.sha256`，其内容包含完整压缩包文件名与 SHA256。也支持 `.tar.gz.sha256` 后缀。安装器检查压缩包校验、发行清单、文件散列、架构和版本，拒绝路径穿越、链接、特殊文件以及未列入清单的文件。每个版本的发行目录包含自动生成的 `release-manifest.json`；清单不包含自身的散列。
 
 准备完成只记录 `pending.json`，保持当前版本。点击“重启完成升级”后，程序先确认正文已保存、复验准备好的文件、优雅停止本机服务，再启动新版本。新版本的服务和窗口成功载入后才更新 `current` 与菜单入口；启动失败保留原入口。保存或校验失败会留在原窗口。安装器和设置入口均拒绝降级或用不同文件覆盖同一版本。
 

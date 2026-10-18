@@ -10,12 +10,12 @@
   <a href="README.md">中文介绍</a> ·
   <a href="README.en.md">English guide</a> ·
   <a href="https://asoming.github.io/writer-desk/?lang=en">产品官网 / Website</a> ·
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.7">下载 / Download</a> ·
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.8">下载 / Download</a> ·
   <a href="https://github.com/asoming/writer-desk/issues">反馈 / Feedback</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.7"><img src="https://img.shields.io/badge/release-v0.8.7%20preview-6366f1" alt="Release v0.8.7 preview"></a>
+  <a href="https://github.com/asoming/writer-desk/releases/tag/v0.8.8"><img src="https://img.shields.io/badge/release-v0.8.8%20preview-6366f1" alt="Release v0.8.8 preview"></a>
   <a href="https://github.com/asoming/writer-desk/actions/workflows/native-packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/asoming/writer-desk/native-packages.yml?branch=main&amp;label=Desktop%20builds&amp;logo=github" alt="Desktop builds"></a>
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-64748b" alt="Platforms: Linux, Windows, macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="License: MIT"></a>
@@ -25,21 +25,21 @@ Writer's Desk is a desktop writing app for novels and short stories. Each book h
 
 Writing, saving and backups work offline. AI assistance is optional. The interface supports Chinese and English, light and dark themes, and a warm eye-comfort mode.
 
-[Download](https://github.com/asoming/writer-desk/releases/tag/v0.8.7) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
+[Download](https://github.com/asoming/writer-desk/releases/tag/v0.8.8) · [Chinese quick start](docs/quickstart-zh.md) · [Chinese user guide](docs/user-guide-zh.md) · [Desktop build guide](desktop/BUILD.md)
 
-> Current preview: **0.8.7**. Packages and SHA256 checksums are listed on the [release page](https://github.com/asoming/writer-desk/releases/tag/v0.8.7); verification status is tracked in the [0.8.7 record](docs/acceptance-0.8.7.md). Windows installers are unsigned; macOS uses ad-hoc signing and is not notarized.
+> Current preview: **0.8.8**. Packages and SHA256 checksums are listed on the [release page](https://github.com/asoming/writer-desk/releases/tag/v0.8.8); verification status is tracked in the [0.8.8 record](docs/acceptance-0.8.8.md). Windows installers are unsigned; macOS uses ad-hoc signing and is not notarized.
 
-Version 0.8.7 makes online updates the primary entry in Settings → Updates, expanded by default with a prominent Check for updates button. Installer updates are collapsed as a fallback, with a fixed release-page download link on every platform. The Windows helper fixes from 0.8.6 remain in place.
+Version 0.8.8 adds immersive writing: a full-screen manuscript with an optional work outline and one exit icon. A compact readout shows the book, typed characters, speed, active writing and idle time. Review the summary on exit and today's totals and recent sessions on Home. Online updates remain the primary upgrade path, with installer updates collapsed as a fallback.
 
 ## Features
 
 | Area | What you can do |
 | --- | --- |
-| Home | Library activity, daily goal, streak, calendar, 7 / 30-day trend and recent books; shown on every launch. |
+| Home | Library activity, daily goal, streak, calendar, 7 / 30-day trend and recent books; shown on every launch. Today's immersive-writing totals and recent sessions. |
 | Bookshelf | Manage novels and short stories separately; edit titles and covers; choose from ten cover templates or upload an image; generate a random title; open each book's folder. |
 | Outlines | Organize book, volume, chapter, scene and setting notes; use topic categories and search; read a continuous outline; create a volume and chapter directory from the outline. |
 | Character maps | Choose members for main relationships; browse all relationships, groups, filters and themed maps; edit character development by volume and follow manuscript links; maintain profiles and aliases. |
-| Writing | Novel chapters or one continuous short-story manuscript; autosave, drag sorting, batch moves, split and merge, same-chapter comparison, whole-book find and replace, focus mode and resizable panels. |
+| Writing | Novel chapters or one continuous short-story manuscript; autosave, drag sorting, batch moves, split and merge, same-chapter comparison, whole-book find and replace, immersive writing and resizable panels. |
 | Manuscript import | Preview local DOCX, TXT and Markdown files, adjust titles, splitting strategy and encoding, then create a separate book; short stories remain continuous. |
 | Proofreading and annotations | Offline rules and per-book dictionaries; paragraph annotations and named bookmarks, with precise jumps, resolution status and manual relinking. |
 | Story tools | Track foreshadow status and unresolved threads; order story events using custom time labels; keep planning and chapter links within each book. |
@@ -111,6 +111,7 @@ Captured from the actual 0.7.0 interface using an isolated copy of the full samp
 | Split and merge | **Writing tools → Split this chapter**, or **Organize volumes and chapters → Merge selected**; split at the caret or selection, or merge consecutive chapters. Original prose and linked records are preserved. Short stories remain a single manuscript. |
 | Global search | Top-bar search icon; find prose, outlines, characters, notes and material excerpts across active books, then open the matching record. |
 | Character development | **Character maps → Character development**; view characters against volumes, click a card to edit its complete text, or follow character and chapter links. Short stories use goals, flaws and outcomes without invented volumes. |
+| Immersive writing | The writing-toolbar icon opens a full-screen manuscript with an optional work outline and one exit icon. Live characters, speed, active and idle time; exit summaries and recent sessions appear on Home. |
 | Compare and edit | The writing-toolbar icon opens the same chapter’s original and edited drafts. Autosave and `Ctrl / Command + S` save the independent local pair. Clicking the icon again exits without applying edits; the X offers **Save changes**, **Exit without saving**, or **Cancel**. Reopening or restarting retains both drafts; explicit adoption also keeps the original and edited pair. |
 | Materials library | **Writing tools → Asset library**; store images, PDFs, text and author-written web excerpts, linked to chapters or notes. |
 | Enhanced proofreading | **Proofreading and annotations → Local proofreading**; additional deterministic redundancy, grammar-pattern and ambiguous-reference suggestions for manual review. |
@@ -151,18 +152,18 @@ Home aggregates active books. The calendar covers 90 days; streak and lifetime w
 
 ## Updates and installation
 
-For routine upgrades, open **Settings → Updates → Check for updates**. Online updates is visible by default; follow the steps to check, download, verify and save before installation. Version 0.8.7 is a preview release, so enable **Include preview releases** to find it. Upgrading preserves your preference and does not enable it automatically. For offline upgrades or unavailable online updates, expand **Update with an installer** and use the fixed release-page link.
+For routine upgrades, open **Settings → Updates → Check for updates**. Online updates is visible by default; follow the steps to check, download, verify and save before installation. Version 0.8.8 is a preview release, so enable **Include preview releases** to find it. Upgrading preserves your preference and does not enable it automatically. For offline upgrades or unavailable online updates, expand **Update with an installer** and use the fixed release-page link.
 
-For a first installation, download the appropriate package from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.8.7). Check the [verification record](docs/acceptance-0.8.7.md) for completed platform checks. Desktop packages include the runtime; end users do not need Python or Node.js.
+For a first installation, download the appropriate package from [GitHub Releases](https://github.com/asoming/writer-desk/releases/tag/v0.8.8). Check the [verification record](docs/acceptance-0.8.8.md) for completed platform checks. Desktop packages include the runtime; end users do not need Python or Node.js.
 
-| Platform | Requirements | 0.8.7 installer |
+| Platform | Requirements | 0.8.8 installer |
 | --- | --- | --- |
-| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.8.7-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-linux-amd64.deb) |
-| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.8.7-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-windows-x64.exe) |
-| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.8.7-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-mac-arm64.dmg) |
-| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.8.7-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-mac-x64.dmg) |
+| Linux x64 | Ubuntu 22.04+ or a compatible Debian desktop, glibc 2.35+ | [WriterDesk-0.8.8-linux-amd64.deb](https://github.com/asoming/writer-desk/releases/download/v0.8.8/WriterDesk-0.8.8-linux-amd64.deb) |
+| Windows x64 | Windows 10 / 11, 64-bit | [WriterDesk-0.8.8-windows-x64.exe](https://github.com/asoming/writer-desk/releases/download/v0.8.8/WriterDesk-0.8.8-windows-x64.exe) |
+| Mac, Apple silicon | macOS 13+, M-series processor | [WriterDesk-0.8.8-mac-arm64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.8/WriterDesk-0.8.8-mac-arm64.dmg) |
+| Mac, Intel | macOS 13+, Intel processor | [WriterDesk-0.8.8-mac-x64.dmg](https://github.com/asoming/writer-desk/releases/download/v0.8.8/WriterDesk-0.8.8-mac-x64.dmg) |
 
-- **Linux:** run `sudo apt install ./WriterDesk-0.8.7-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
+- **Linux:** run `sudo apt install ./WriterDesk-0.8.8-linux-amd64.deb` in the download directory, then open 作家工作台 from the application menu.
 - **Windows:** run the EXE and follow the installer. It creates desktop and Start menu shortcuts.
 - **macOS:** open the DMG, drag the app to Applications, then launch it from Applications.
 
@@ -170,7 +171,7 @@ After the online download is verified, follow the app's save-and-install steps. 
 
 Only if the built-in helper in Windows 0.8.5 or earlier has already failed at **Save and open installer**, save your work, quit normally and run this release's EXE manually once. Continue using in-app online updates afterward.
 
-The Linux [WriterDesk-0.8.7-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.7/WriterDesk-0.8.7-linux-x64.tar.gz) supports the existing per-user installation and offline updater. This release retains the 0.6.1 fix for the incomplete 0.6.0 TAR manifest; see the [0.6.1 verification record](docs/acceptance-v0.6.1.md) for the historical issue. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
+The Linux [WriterDesk-0.8.8-linux-x64.tar.gz](https://github.com/asoming/writer-desk/releases/download/v0.8.8/WriterDesk-0.8.8-linux-x64.tar.gz) supports the existing per-user installation and offline updater. This release retains the 0.6.1 fix for the incomplete 0.6.0 TAR manifest; see the [0.6.1 verification record](docs/acceptance-v0.6.1.md) for the historical issue. Older user menu entries may take precedence over a new DEB installation; see [Linux installation and launcher migration](desktop/BUILD.md#run-a-linux-release) before switching installation methods.
 
 The release page lists SHA256 checksum files and platform verification results. See the [distribution checklist](docs/distribution-checklist.md) for signing and verification details. Mac supports two-finger scrolling, map panning and pinch-to-zoom, and a save-aware swipe back to the bookshelf. Physical trackpad feel still needs hands-on verification.
 
@@ -305,6 +306,7 @@ The app uses Electron, a vanilla JavaScript interface and a Python saving servic
 - [Chinese quick start](docs/quickstart-zh.md): first use after installation.
 - [0.6.1 packaging verification](docs/acceptance-v0.6.1.md): actual TAR installation, stable launcher and native CI.
 - [0.6.0 verification record](docs/acceptance-v0.6.0.md): completed checks and remaining limits.
+- [0.8.8 verification](docs/acceptance-0.8.8.md): immersive writing, real-input and idle timers, exit summaries and homepage records.
 - [0.8.7 verification](docs/acceptance-0.8.7.md): primary online updates, collapsed fallback installers and the fixed cross-platform release-page link.
 - [0.8.6 verification](docs/acceptance-0.8.6.md): Windows helper readiness and exit handoff, installer rechecking, stage-specific errors and retry behavior.
 - [0.8.5 verification](docs/acceptance-0.8.5.md): article-style Skill dialogs, automatically saved switches, the menu and prompt-preserving Try now.
