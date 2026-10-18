@@ -133,7 +133,13 @@
       }catch(problem){options.toast?.(tr(problem?.message||'无法退出全屏，请按 Esc。'));return false;}
       finally{if(input)input.readOnly=readOnly;exiting=false;if(exitButton)exitButton.disabled=false;}
     }
-    async function flush(value={}){if(value.finish&&active)return exit({showSummary:false,save:false});return checkpoint();}
+    async function flush(value={}){
+      if(value.finish&&active)return exit({showSummary:false,save:false});
+      const saved=await checkpoint();
+      // Closing remains possible when a retryable record is already durable
+      // locally; the next launch can submit it without holding the app open.
+      return value.finish&&saved===false?queueWrite(queueRead()):saved;
+    }
     function fullscreenChanged(value){if(value!==false)return false;if(entering){entryCancelled=true;return false;}if(active&&!exiting)return exit({nativeExited:true});return false;}
     function sync(){if(!active)return;if(options.getBook?.()?.id!==active.bookId||options.getChapter?.()?.id!==active.chapterId||options.getView?.()!=='write')return exit({showSummary:true,save:false});update();}
     function purgeBook(bookId){purged.add(bookId);queueWrite(queueRead().filter(record=>record.bookId!==bookId));if(lastSummary?.record.bookId===bookId)lastSummary=null;}
