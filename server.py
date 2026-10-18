@@ -29,6 +29,7 @@ import chapter_history
 import comparison_drafts
 import planning
 import home_dashboard
+import writing_sessions
 import review_tools
 import manuscript_import
 import story_memory
@@ -700,6 +701,7 @@ def purge_book_rows(conn, book_id, deleted_at=None):
     conn.execute("DELETE FROM backup_runs WHERE book_id=?", (book_id,))
     planning.purge_book(conn, book_id)
     comparison_drafts.purge_book(conn, book_id)
+    writing_sessions.purge_book(conn, book_id)
     conn.execute("DELETE FROM books WHERE id=?", (book_id,))
     conn.execute("DELETE FROM pending_chapter_purges WHERE book_id=?", (book_id,))
 
@@ -1350,10 +1352,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(planned)
                 return
             if path == "/api/home":
+                options = writing_sessions.query(self.path, {"localDay"})
                 with DB_LOCK, connect() as conn:
                     conn.execute("BEGIN")
-                    result = home_dashboard.statistics(conn, book_summary)
+                    result = home_dashboard.statistics(conn, book_summary, options.get("localDay"))
                 self.send_json(result)
+                return
+            if path == "/api/writing-sessions":
+                options = writing_sessions.query(self.path, {"localDay", "bookId"})
+                with DB_LOCK, connect() as conn:
+                    conn.execute("BEGIN")
+                    if "bookId" in options:
+                        require_active_book(saved_book_row(conn, options["bookId"]))
+                    result = writing_sessions.recent(conn, options.get("localDay"), options.get("bookId"), 100)
+                self.send_json({"sessions": result})
                 return
             memory_match = re.fullmatch(r"/api/books/([^/]+)/memory", path)
             if memory_match:
@@ -1428,6 +1440,8 @@ class Handler(BaseHTTPRequestHandler):
                 files["/chapter-history.js"] = "chapter-history.js"
                 files["/chapter-history.css"] = "chapter-history.css"
                 files["/content-cleanup.js"] = "content-cleanup.js"
+                files["/immersive-writing.js"] = "immersive-writing.js"
+                files["/immersive-writing.css"] = "immersive-writing.css"
                 for resource in ("workspace-expansion.js", "home-dashboard.js", "home-dashboard.css", "editor-tools.js", "editor-tools.css", "asset-library.js", "asset-library.css", "external-backups.js", "external-backups.css", "sync-panel.js", "sync-panel.css", "network-updater.js", "network-updater.css", "story-tools.js", "story-tools.css", "story-memory.js", "ai-stream.js", "formatted-export.js", "formatted-export.css", "book-search.js", "version-diff.js", "revision-tools.css", "manuscript-import.js", "manuscript-import.css", "local-proofreading-model.js", "local-proofreading.js", "local-proofreading.css", "manuscript-marks.js", "manuscript-marks.css", "review-entry.js"):
                     files["/" + resource] = resource
                 files['/purge-model.js'] = '../mobile/purge-model.js'
@@ -1453,6 +1467,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self.read_json()
             path = unquote(urlparse(self.path).path)
+            if path == "/api/writing-sessions":
+                with DB_LOCK, connect() as conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    result = writing_sessions.upsert(conn, data)
+                self.send_json({"session": result})
+                return
             extension = server_extensions.handle(chapter_history_context(), "POST", self.path, data)
             if extension is not None:
                 self.send_json(extension)

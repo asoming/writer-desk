@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Package version from package.json (for example 0.8.7)
+        description: Package version from package.json (for example 0.8.8)
         required: true
         type: string
 
@@ -66,7 +66,7 @@ jobs:
           python -m pip install -r scripts/requirements-build.txt
       - name: Install Linux desktop runtime
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb desktop-file-utils libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libxtst6 libsecret-1-0 libnotify4
+        run: sudo apt-get update && sudo apt-get install -y xvfb openbox desktop-file-utils libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libxtst6 libsecret-1-0 libnotify4
       - name: Native packaging and macOS window contracts
         # Keep the dense layout CPU budget deterministic on native CI runners.
         run: node --test --test-concurrency=1 tests/*.test.js tests/*.test.cjs
@@ -83,6 +83,8 @@ jobs:
       - name: Real editor typing and IME regression on Linux
         if: runner.os == 'Linux'
         run: |
+          xvfb-run -a env WRITER_TEST_WINDOW_MANAGER=openbox node node_modules/electron/cli.js --no-sandbox tests/immersive-native-electron.cjs --report dist/immersive-native-regression.json
+          xvfb-run -a env WRITER_TEST_WINDOW_MANAGER=openbox node node_modules/electron/cli.js --no-sandbox tests/immersive-writing-electron.cjs --capture --report dist/immersive-writing-regression.json
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/editor-layout-electron.cjs --report dist/editor-layout-regression.json
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/review-jump-electron.cjs --report dist/review-jump-regression.json
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/editor-tools-electron.cjs --report dist/editor-tools-regression.json
@@ -96,6 +98,8 @@ jobs:
       - name: Real editor typing and IME regression on Windows and macOS
         if: runner.os != 'Linux'
         run: |
+          node node_modules/electron/cli.js tests/immersive-native-electron.cjs --report dist/immersive-native-regression.json
+          node node_modules/electron/cli.js tests/immersive-writing-electron.cjs --report dist/immersive-writing-regression.json
           node node_modules/electron/cli.js tests/editor-layout-electron.cjs --report dist/editor-layout-regression.json
           node node_modules/electron/cli.js tests/review-jump-electron.cjs --report dist/review-jump-regression.json
           node node_modules/electron/cli.js tests/editor-tools-electron.cjs --report dist/editor-tools-regression.json
@@ -121,6 +125,8 @@ jobs:
         run: python -c "import pathlib, subprocess, sys; service = pathlib.Path('build/backend') / ('writer-service.exe' if sys.platform == 'win32' else 'writer-service'); subprocess.run([sys.executable, 'tests/verify_extensions_api.py', '--service', str(service.resolve())], check=True)"
       - name: Frozen homepage statistics, settings and resources
         run: python -c "import pathlib, subprocess, sys; service = pathlib.Path('build/backend') / ('writer-service.exe' if sys.platform == 'win32' else 'writer-service'); subprocess.run([sys.executable, 'tests/verify_home_dashboard.py', '--service', str(service.resolve())], check=True)"
+      - name: Frozen immersive writing sessions and homepage persistence
+        run: python -c "import pathlib, subprocess, sys; service = pathlib.Path('build/backend') / ('writer-service.exe' if sys.platform == 'win32' else 'writer-service'); subprocess.run([sys.executable, 'tests/verify_writing_sessions.py', '--service', str(service.resolve())], check=True)"
       - name: Frozen comparison drafts, adoption and restart
         run: python -c "import pathlib, subprocess, sys; service = pathlib.Path('build/backend') / ('writer-service.exe' if sys.platform == 'win32' else 'writer-service'); subprocess.run([sys.executable, 'tests/verify_comparison_frozen.py', '--service', str(service.resolve())], check=True)"
       - name: Frozen Skills on a clean computer

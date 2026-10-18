@@ -23,9 +23,14 @@ async function nativeRequest(channel, ...args) {
 }
 function checkedWindowState(value, required = false) {
   const state = {};
-  for (const key of ['fullscreen', 'maximized']) {
+  for (const key of ['fullscreen', 'maximized', 'immersiveWriting']) {
     if (typeof value[key] === 'boolean') state[key] = value[key];
-    else if (required || Object.hasOwn(value, key)) throw Object.assign(new Error('Invalid window state'), { code: 'invalid-response' });
+    else if ((required && key !== 'immersiveWriting') || Object.hasOwn(value, key)) throw Object.assign(new Error('Invalid window state'), { code: 'invalid-response' });
+  }
+  if (Object.hasOwn(value, 'priorWindowState')) {
+    const previous = value.priorWindowState;
+    if (previous !== null && (!previous || typeof previous !== 'object' || Array.isArray(previous) || typeof previous.fullscreen !== 'boolean' || typeof previous.maximized !== 'boolean')) throw Object.assign(new Error('Invalid prior window state'), { code: 'invalid-response' });
+    state.priorWindowState = previous === null ? null : { fullscreen: previous.fullscreen, maximized: previous.maximized };
   }
   if (Object.hasOwn(value, 'zoomFactor')) {
     if (!Number.isFinite(value.zoomFactor) || value.zoomFactor <= 0 || value.zoomFactor > 5) throw Object.assign(new Error('Invalid zoom factor'), { code: 'invalid-response' });
@@ -62,13 +67,19 @@ contextBridge.exposeInMainWorld('WriterDesktop', {
   installUpdate: () => nativeRequest('writer:install-update'),
   restartAfterUpdate: () => nativeRequest('writer:restart-after-update'),
   performAppAction: async action => checkedWindowState(await nativeRequest('writer:app-action', action)),
+  setImmersiveWriting: async (...args) => {
+    if (args.length !== 1 || typeof args[0] !== 'boolean') throw Object.assign(new Error('Invalid immersive writing request'), { code: 'immersive-invalid-request' });
+    const result = checkedWindowState(await nativeRequest('writer:immersive-writing', args[0]), true);
+    if (typeof result.immersiveWriting !== 'boolean' || !Object.hasOwn(result, 'priorWindowState')) throw Object.assign(new Error('Invalid immersive writing response'), { code: 'invalid-response' });
+    return result;
+  },
   onWindowState: callback => {
     if (typeof callback !== 'function') throw new TypeError('A window state callback is required');
     const listener = (_event, value) => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return;
       let state;
       try { state = checkedWindowState(value, true); } catch { return; }
-      callback({ fullscreen: state.fullscreen, maximized: state.maximized });
+      callback(state);
     };
     ipcRenderer.on('writer:window-state', listener);
     return () => ipcRenderer.removeListener('writer:window-state', listener);

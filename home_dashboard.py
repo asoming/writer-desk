@@ -2,6 +2,7 @@
 from datetime import date, timedelta
 
 import planning
+import writing_sessions
 
 STAT_DAYS = 90
 RECENT_LIMIT = 6
@@ -9,6 +10,7 @@ RECENT_LIMIT = 6
 
 def initialize(conn):
     conn.execute("CREATE TABLE IF NOT EXISTS home_settings(id INTEGER PRIMARY KEY CHECK(id=1),daily_goal INTEGER NOT NULL CHECK(daily_goal BETWEEN 0 AND 1000000))")
+    writing_sessions.initialize(conn)
 
 
 def settings(conn):
@@ -61,4 +63,5 @@ def statistics(conn, summarize, today=None):
         totals["chapterCount"] += book["chapterCount"]
         if len(recent) < RECENT_LIMIT:
             recent.append(book)
-    return {"today": today.isoformat(), "settings": settings(conn), "totals": totals, "days": days, "recentBooks": recent}
+    return {"today": today.isoformat(), "settings": settings(conn), "totals": totals, "days": days, "recentBooks": recent,
+            "writingSessions": writing_sessions.statistics(conn, today.isoformat())}

@@ -8,6 +8,7 @@ const path = require('node:path');
 const updater = require('./updater.cjs');
 const networkUpdater = require('./network-updater.cjs');
 const updateInstaller = require('./update-installer.cjs');
+const { createImmersiveWindow } = require('./immersive-window.cjs');
 
 const userData = process.env.WRITER_DESK_USER_DATA
   ? path.resolve(process.env.WRITER_DESK_USER_DATA)
@@ -18,6 +19,7 @@ const hasLock = app.requestSingleInstanceLock();
 let window = null, service = null, origin = '', closing = false, allowQuit = false, saveReady = false;
 let closeRequest = null, lastServiceLog = '', updateBusy = false, stoppingService = false;
 let pdfBusy = false;
+let immersiveWindow = null;
 const serviceToken = randomBytes(32).toString('hex');
 const settingsPath = path.join(userData, 'settings.json');
 const storagePath = path.join(userData, 'client-storage.json');
@@ -262,10 +264,16 @@ const appActions = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll',
 const editActions = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']);
 function windowState() {
   if (!window || window.isDestroyed()) return {};
-  return { zoomFactor: window.webContents.getZoomFactor(), fullscreen: window.isFullScreen(), maximized: window.isMaximized() };
+  return { zoomFactor: window.webContents.getZoomFactor(), ...(immersiveWindow ? immersiveWindow.state() : { fullscreen: window.isFullScreen(), maximized: window.isMaximized(), immersiveWriting: false, priorWindowState: null }) };
 }
 function publishWindowState() {
-  if (window && !window.isDestroyed()) window.webContents.send('writer:window-state', { fullscreen: window.isFullScreen(), maximized: window.isMaximized() });
+  if (window && !window.isDestroyed()) {
+    const { zoomFactor, ...state } = windowState();
+    window.webContents.send('writer:window-state', state);
+  }
+}
+function immersiveError(code) {
+  return Object.assign(new Error(text('无法切换沉浸式码字，请重试。', 'Could not switch immersive writing. Try again.')), { code });
 }
 async function performAppAction(action) {
   if (editActions.has(action)) window.webContents[action]();
@@ -340,6 +348,12 @@ ipcMain.handle('writer:app-action', async (event, action) => {
   if (typeof action !== 'string' || !appActions.has(action)) return { error: text('不支持此应用操作。', 'This app action is not supported.'), code: 'invalid-app-action' };
   try { return await performAppAction(action); }
   catch (error) { return { error: error.code === 'open-folder-failed' ? error.message : text('无法完成此操作，请重试。', 'Could not complete this action. Try again.'), code: error.code === 'open-folder-failed' ? error.code : 'app-action-failed' }; }
+});
+ipcMain.handle('writer:immersive-writing', async (event, enabled, ...extra) => {
+  if (!trusted(event)) return { error: text('当前窗口无权切换沉浸式码字。', 'This window is not authorized to switch immersive writing.'), code: 'untrusted-sender' };
+  if (typeof enabled !== 'boolean' || extra.length) return { error: text('沉浸式码字请求不正确。', 'Invalid immersive writing request.'), code: 'immersive-invalid-request' };
+  try { return await immersiveWindow.set(enabled); }
+  catch (error) { return { error: immersiveError().message, code: typeof error.code === 'string' && error.code.startsWith('immersive-') ? error.code : 'immersive-failed' }; }
 });
 ipcMain.handle('writer:open-book-folder', async (event, bookId) => {
   if (!trusted(event)) return { error: text('当前窗口无权打开作品文件夹。', 'This window is not authorized to open book folders.'), code: 'untrusted-sender' };
@@ -531,6 +545,7 @@ function createWindow() {
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, nodeIntegrationInWorker: false, webSecurity: true, navigateOnDragDrop: false, webviewTag: false, session: appSession }
   });
+  immersiveWindow = createImmersiveWindow(window, { platform: process.platform, onState: publishWindowState, unavailable: () => closing || allowQuit });
   window.setMenu(null);
   window.setMenuBarVisibility(false);
   window.webContents.setWindowOpenHandler(({ url }) => { openExternal(url); return { action: 'deny' }; });
@@ -541,6 +556,11 @@ function createWindow() {
   });
   window.webContents.on('will-attach-webview', event => event.preventDefault());
   window.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && !input.isComposing && input.key === 'Escape' && (immersiveWindow.state().immersiveWriting || immersiveWindow.phase() === 'entering')) {
+      event.preventDefault();
+      immersiveWindow.set(false).catch(() => {});
+      return;
+    }
     const action = keyboardAction(input);
     if (!action) return;
     event.preventDefault();
@@ -554,8 +574,7 @@ function createWindow() {
   });
   window.once('ready-to-show', () => window.show());
   window.on('close', event => { if (!allowQuit) { event.preventDefault(); requestClose(); } });
-  window.on('closed', () => { window = null; });
-  for (const event of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) window.on(event, publishWindowState);
+  window.on('closed', () => { window = null; immersiveWindow = null; });
   return window.loadURL(origin + '/').then(() => console.info('[writer-desk] Desktop window loaded; local storage service is ready.'));
 }
 

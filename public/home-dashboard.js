@@ -12,13 +12,20 @@
     const points=days.map((day,index)=>({date:day.date,amount:day.addedChars,x:24+(days.length>1?index/(days.length-1):.5)*632,y:164-day.addedChars/maximum*128}));
     return{maximum,points,line:points.map((point,index)=>(index?'L':'M')+point.x.toFixed(2)+','+point.y.toFixed(2)).join(' ')};
   }
+  function localDate(value=new Date()){return[value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-');}
+  function duration(value){const seconds=Math.max(0,Math.floor(value/1000));return[Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(part=>String(part).padStart(2,'0')).join(':');}
   function validate(value){
     const integer=number=>Number.isSafeInteger(number)&&number>=0;
     const date=text=>typeof text==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(text)&&Number.isFinite(Date.parse(text+'T00:00:00Z'))&&new Date(text+'T00:00:00Z').toISOString().slice(0,10)===text;
     if(!value||!date(value.today)||!value.settings||!integer(value.settings.dailyGoal)||value.settings.dailyGoal>1000000||!value.totals||!['todayChars','totalChars','bookCount','longCount','shortCount','chapterCount','writingDays','currentStreak','bestStreak','last7Chars','last30Chars'].every(key=>integer(value.totals[key]))||!Array.isArray(value.days)||value.days.length!==90||!value.days.every((day,index)=>date(day.date)&&integer(day.addedChars)&&(!index||Date.parse(day.date)-Date.parse(value.days[index-1].date)===DAY))||value.days.at(-1).date!==value.today||!Array.isArray(value.recentBooks)||value.recentBooks.length>6||!value.recentBooks.every(book=>book&&typeof book.id==='string'&&typeof book.title==='string'&&['long','short'].includes(book.kind)&&integer(book.charCount)&&typeof book.cover==='string'))throw Error('写作统计读取失败，请重试。');
+    if(value.writingSessions!==undefined){
+      const metrics=item=>item&&['typedChars','activeMs','idleMs','foregroundMs','speedPerHour','speedPerMinute'].every(key=>integer(item[key]));
+      const stamp=text=>typeof text==='string'&&Number.isFinite(Date.parse(text));
+      const sessions=value.writingSessions;if(!sessions||!metrics(sessions.today)||!integer(sessions.today.count)||!Array.isArray(sessions.recent)||sessions.recent.length>20||!sessions.recent.every(item=>metrics(item)&&typeof item.id==='string'&&typeof item.bookId==='string'&&typeof item.bookTitle==='string'&&date(item.localDay)&&stamp(item.startedAt)&&stamp(item.endedAt))||!['startedAt','endedAt'].every(key=>sessions.today[key]===null||stamp(sessions.today[key])))throw Error('写作统计读取失败，请重试。');
+    }
     return value;
   }
-  const model={monthGrid,shiftMonth,chartPoints,validate};
+  const model={monthGrid,shiftMonth,chartPoints,validate,localDate,duration};
   if(typeof module==='object'&&module.exports){module.exports=model;return;}
   global.WriterHomeDashboard=createController(global);
 
@@ -45,7 +52,7 @@
       header.append(titles,button('查看书架',()=>options.navigate?.('shelf'),'secondary-button'));host.append(header);
       if(error){const notice=node('div','home-error');notice.setAttribute('role','alert');notice.append(node('span',null,tr(error)),button('重试',()=>refresh(true),'text-button'));host.append(notice);}
       if(!data){if(!error){const loading=node('div','home-loading');loading.setAttribute('role','status');loading.setAttribute('aria-label',tr('正在读取写作统计…'));for(let i=0;i<4;i++)loading.append(node('div','home-loading-card'));host.append(loading);}root.scrollTop=scroll;return;}
-      host.append(renderMetrics());
+      host.append(renderMetrics());if(data.writingSessions)host.append(renderSessions());
       const activity=node('div','home-activity');activity.append(renderTrend(),renderCalendar());host.append(activity,renderRecent());
       root.scrollTop=scroll;
     }
@@ -73,6 +80,18 @@
         input.addEventListener('input',()=>{goalDraft=input.value;input.setCustomValidity('');});today.append(form);
       }
       cards.append(today,metric('书架总字数',totals.totalChars,'字',null,'home-total-chars'),metric('连续写作',totals.currentStreak,'天',tr('累计 {0} 天 · 最长 {1} 天',number(totals.writingDays),number(totals.bestStreak)),'home-streak'),metric('作品',totals.bookCount,'本',tr('长篇 {0} · 短篇 {1}',number(totals.longCount),number(totals.shortCount)),'home-book-count'));return cards;
+    }
+    function sessionTime(stamp){return stamp?new Date(stamp).toLocaleTimeString(language(),{hour:'2-digit',minute:'2-digit',hour12:false}):'—';}
+    function sessionFacts(record,className='home-session-facts'){
+      const grid=node('dl',className);const facts=[['字数',words(record.typedChars)],['码字速率',tr('{0} 字/时 · {1} 字/分',number(record.speedPerHour),number(record.speedPerMinute))],['码字时间',duration(record.activeMs)],['前台时间',duration(record.foregroundMs)],['空闲时间',duration(record.idleMs)],['开始 / 结束',sessionTime(record.startedAt)+' — '+sessionTime(record.endedAt)]];
+      for(const[label,value]of facts){const item=node('div','home-session-fact');item.append(node('dt',null,tr(label)),node('dd',null,value));grid.append(item);}return grid;
+    }
+    function renderSessions(){
+      const sessions=data.writingSessions,section=node('section','home-card home-writing-sessions');section.id='home-writing-sessions';section.append(heading('沉浸式码字',tr('今日 {0} 次',number(sessions.today.count))));
+      section.title=tr('码字记录按开始日期归档。');const facts=sessionFacts(sessions.today);facts.id='home-session-today';facts.title=tr('连续 5 秒没有正文输入计为空闲；切到其他窗口立即计为空闲。');section.append(facts);
+      if(!sessions.recent.length){section.append(node('p','home-session-empty',tr('还没有码字记录。')));return section;}
+      const list=node('div','home-session-records');list.setAttribute('aria-label',tr('最近码字'));
+      for(const record of sessions.recent){const item=node('details','home-session-record'),summary=node('summary','home-session-record-title'),book=node('strong',null,record.bookTitle),stamp=node('span','home-session-record-time',new Date(record.startedAt).toLocaleDateString(language(),{month:'numeric',day:'numeric'})+' '+sessionTime(record.startedAt));summary.append(book,stamp,node('span','home-session-record-chars',words(record.typedChars)),node('span','home-icon home-session-chevron','⌄'));item.dataset.sessionId=record.id;item.append(summary,sessionFacts(record,'home-session-record-facts'));list.append(item);}section.append(list);return section;
     }
     function renderTrend(){
       const section=node('section','home-card home-trend'),header=heading('字数趋势'),switcher=node('div','home-range');switcher.setAttribute('role','group');switcher.setAttribute('aria-label',tr('趋势范围'));
@@ -114,7 +133,7 @@
     async function refresh(force=false){
       if(disposed||!visible())return;if(pending){if(force){sequence++;data=null;lastLoaded=0;pending=null;}else return pending;}
       const current=++sequence;if(force){data=null;error='';paint();}
-      pending=(async()=>{try{const result=validate(await options.api('/api/home'));if(disposed||current!==sequence||!visible())return;data=result;lastLoaded=Date.now();month=month&&month>=result.days[0].date.slice(0,7)&&month<=result.today.slice(0,7)?month:null;error='';paint();}catch(problem){if(!disposed&&current===sequence&&visible()){data=null;error=problem.message;paint();}}finally{if(current===sequence)pending=null;}})();return pending;
+      pending=(async()=>{try{const result=validate(await options.api('/api/home?localDay='+encodeURIComponent(options.getLocalDay?.()||localDate())));if(disposed||current!==sequence||!visible())return;data=result;lastLoaded=Date.now();month=month&&month>=result.days[0].date.slice(0,7)&&month<=result.today.slice(0,7)?month:null;error='';paint();}catch(problem){if(!disposed&&current===sequence&&visible()){data=null;error=problem.message;paint();}}finally{if(current===sequence)pending=null;}})();return pending;
     }
     function configure(value){options=value||{};disposed=false;}
     function render(target=doc.getElementById('home-view')){if(root!==target){sequence++;pending=null;data=null;}root=target;paint();return refresh(true);}

@@ -4,6 +4,44 @@ const clientStorage=window.WriterDesktop?.storage||window.localStorage;
 let uiLanguage='zh';
 try{uiLanguage=clientStorage.getItem('writer-desk.language')==='en'?'en':'zh';}catch{}
 const englishMessages={
+  // Immersive writing sessions, 0.8.8.
+  "沉浸式码字": "Immersive writing",
+  "沉浸式码字（Esc 退出）": "Immersive writing (Esc to exit)",
+  "退出沉浸式码字": "Exit immersive writing",
+  "本次码字": "This writing session",
+  "码字速率": "Writing speed",
+  "码字时间": "Typing time",
+  "空闲时间": "Idle time",
+  "前台时间": "Foreground time",
+  "字数": "Characters",
+  "开始 / 结束": "Start / end",
+  "最近码字": "Recent sessions",
+  "收起作品大纲": "Hide book outline",
+  "{0} 字/时": "{0} chars/hour",
+  "{0} 字/时 · {1} 字/分": "{0} chars/hour · {1} chars/min",
+  "今日 {0} 次": "{0} sessions today",
+  "还没有码字记录。": "No writing sessions yet.",
+  "码字记录按开始日期归档。": "Sessions are grouped by their start date.",
+  "连续 5 秒没有正文输入计为空闲；切到其他窗口立即计为空闲。": "Idle begins after 5 seconds without manuscript input, or immediately when you switch windows.",
+  "码字记录已暂存本机，稍后自动重试。": "Session saved locally. It will retry automatically.",
+  "码字记录暂时无法保存，请稍后重试。": "Could not save this session. Please try again.",
+  "无法进入沉浸式码字。": "Could not enter immersive writing.",
+  "无法退出全屏，请按 Esc。": "Could not exit full screen. Press Esc.",
+  "码字日期格式不正确。": "Invalid writing date.",
+  "码字时间需要包含时区。": "Writing timestamps must include a timezone.",
+  "码字时间格式不正确。": "Invalid writing timestamp.",
+  "码字记录参数不正确。": "Invalid session data.",
+  "码字记录编号不正确。": "Invalid session ID.",
+  "码字记录需要关联作品。": "The session needs a book.",
+  "码字时长或结束时间不正确。": "Invalid session duration or end time.",
+  "码字日期与开始时间不一致。": "Session date does not match its start time.",
+  "码字字数与时长须为非负整数。": "Session counts and durations must be non-negative integers.",
+  "码字、空闲与前台时间不能超过实际时长。": "Typing, idle and foreground time cannot exceed elapsed time.",
+  "作品已移入回收站，码字记录未继续更新。": "This book is in the recycle bin. Session updates have stopped.",
+  "码字记录编号已属于另一次码字。": "This ID belongs to another writing session.",
+  "码字记录已更新，请保留最新记录。": "The session has been updated. Keep the latest record.",
+  "码字记录查询参数不正确。": "Invalid session query.",
+
   // Skill detail actions and switches, 0.8.5.
   "启用 Skill": "Enable Skill",
   "更多": "More",
@@ -2037,6 +2075,7 @@ function bindLanguageEvents(){
   window.WriterDesktop?.setLanguage(uiLanguage)?.catch(()=>{});
   window.WriterDesktop?.onBeforeClose(async()=>{
     if(state.composing){saveDraft();return false;}
-    return await requireSaved();
+    if(!await requireSaved())return false;
+    return window.WriterImmersiveWriting?await window.WriterImmersiveWriting.flush({finish:true}):true;
   });
 }
