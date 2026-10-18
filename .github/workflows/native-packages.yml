@@ -97,6 +97,7 @@ jobs:
           xvfb-run -a node node_modules/electron/cli.js --no-sandbox tests/skills-workflow-electron.cjs --report dist/skills-workflow-regression.json
       - name: Real editor typing and IME regression on Windows and macOS
         if: runner.os != 'Linux'
+        shell: bash
         run: |
           node node_modules/electron/cli.js tests/immersive-native-electron.cjs --report dist/immersive-native-regression.json
           node node_modules/electron/cli.js tests/immersive-writing-electron.cjs --report dist/immersive-writing-regression.json
@@ -152,6 +153,8 @@ jobs:
             dist/installer-smoke.json
             dist/update-installer-native.json
             dist/update-installer-electron.json
+            dist/immersive-native-regression.json
+            dist/immersive-writing-regression.json
             dist/editor-layout-regression.json
             dist/review-jump-regression.json
             dist/editor-tools-regression.json
@@ -174,6 +177,9 @@ jobs:
             dist/*smoke*.json
             dist/update-installer-native.json
             dist/update-installer-electron.json
+            dist/immersive-native-regression.json
+            dist/immersive-writing-regression.json
+            dist/immersive-writing-regression.png
             dist/linux-tar-*.json
             dist/linux-tar-*.log
             dist/editor-layout-regression.json

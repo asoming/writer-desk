@@ -38,7 +38,7 @@ async function harness(t, platform = 'darwin', options = {}) {
     loadURL(url) { this.webContents.mainFrame.url = url; return Promise.resolve(); }
     setMenu() {} setMenuBarVisibility() {} show() {} focus() {}
     isDestroyed() { return this.destroyed === true; }
-    isFullScreen() { return this.fullscreen; }
+    isFullScreen() { if (this.trackFullscreenChecks) this.fullscreenChecks = (this.fullscreenChecks || 0) + 1; return this.fullscreen; }
     isMaximized() { return this.maximized; }
     isMinimized() { return false; }
     getNormalBounds() { return { ...this.bounds }; }
@@ -50,6 +50,11 @@ async function harness(t, platform = 'darwin', options = {}) {
     setFullScreen(fullscreen) {
       calls.push(['fullscreen', fullscreen]);
       if (this.rejectFullscreen) throw new Error('Fixture native failure');
+      if (this.earlyFullscreenEvent) {
+        this.emit(fullscreen ? 'enter-full-screen' : 'leave-full-screen');
+        if (!this.ignoreFullscreenFlag) setTimeout(() => { this.fullscreen = fullscreen; }, 20);
+        return;
+      }
       if (this.holdFullscreen || this.ignoreFullscreen) { this.pending.push(fullscreen); return; }
       queueMicrotask(() => this.completeFullscreen(fullscreen));
     }
@@ -78,11 +83,58 @@ async function harness(t, platform = 'darwin', options = {}) {
   });
   await tick();
   assert.ok(win);
-  return { win, ipc, app, event, sent, calls, dialogs, invoke: (...args) => ipc['writer:immersive-writing'](event(), ...args),
+  return { win, ipc, app, event, sent, calls, dialogs, temporary, invoke: (...args) => ipc['writer:immersive-writing'](event(), ...args),
     state: () => copy(sent.filter(item => item.channel === 'writer:window-state').at(-1)?.state),
     key(key) { const input = { type: 'keyDown', key, control: false, meta: false, alt: false, shift: false, isComposing: false };
       const keyboardEvent = { preventDefault() { this.prevented = true; } }; win.webContents.emit('before-input-event', keyboardEvent, input); return keyboardEvent; } };
 }
+
+function storageRequest(h, request, sender = h.event()) {
+  const replies = []; let first;
+  Object.defineProperty(sender, 'returnValue', {
+    get: () => first,
+    set: value => { replies.push(copy(value)); if (replies.length === 1) first = copy(value); }
+  });
+  h.ipc.emit('writer:storage', sender, request);
+  assert.equal(replies.length, 1, 'Synchronous storage IPC must reply exactly once; Electron consumes the first assignment');
+  return first;
+}
+
+test('production storage replies once with the first real get/set/key/length/remove result', async t => {
+  const h = await harness(t, 'linux'), key = 'writer-desk.immersive.pending', value = '[{"title":"隔离码字记录"}]';
+  assert.deepEqual(storageRequest(h, { op: 'get', key }), { value: null });
+  assert.deepEqual(storageRequest(h, { op: 'length' }), { value: 0 });
+  assert.deepEqual(storageRequest(h, { op: 'key', key: 0 }), { value: null });
+  assert.deepEqual(storageRequest(h, { op: 'set', key, value }), { value: null });
+  const stored = path.join(h.temporary, 'client-storage.json');
+  assert.deepEqual(JSON.parse(fs.readFileSync(stored, 'utf8')), { [key]: value });
+  assert.deepEqual(storageRequest(h, { op: 'get', key }), { value });
+  assert.deepEqual(storageRequest(h, { op: 'length' }), { value: 1 });
+  assert.deepEqual(storageRequest(h, { op: 'key', key: 0 }), { value: key });
+  assert.deepEqual(storageRequest(h, { op: 'remove', key }), { value: null });
+  assert.deepEqual(storageRequest(h, { op: 'get', key }), { value: null });
+  assert.deepEqual(storageRequest(h, { op: 'length' }), { value: 0 });
+  assert.deepEqual(JSON.parse(fs.readFileSync(stored, 'utf8')), {});
+});
+
+test('production storage invalid requests reply once with an error and never mutate the file or state', async t => {
+  const h = await harness(t, 'linux'), key = 'writer-desk.immutable-fixture';
+  storageRequest(h, { op: 'set', key, value: 'original' });
+  const stored = path.join(h.temporary, 'client-storage.json'), before = fs.readFileSync(stored, 'utf8');
+  for (const sender of [{}, { sender: {}, senderFrame: h.win.webContents.mainFrame },
+    { sender: h.win.webContents, senderFrame: { url: h.win.webContents.mainFrame.url } }]) {
+    assert.deepEqual(storageRequest(h, { op: 'set', key, value: 'untrusted change' }, sender), { error: 'Storage unavailable' });
+    assert.equal(fs.readFileSync(stored, 'utf8'), before);
+  }
+  for (const request of [null, undefined, 'invalid', [], { op: 'set', key: '../../escape', value: 'invalid' },
+    { op: 'set', key, value: {} }, { op: 'remove', key: 'unscoped-key' }, { op: 'unknown', key },
+    { op: 'get', key: 'writer-desk.' + 'x'.repeat(512) }, { op: 'clear-book-content', key: '', value: '2026-10-18T00:00:00Z' },
+    { op: 'clear-book-content', key: 'fixture-book', value: 'not a receipt date' }]) {
+    assert.equal(typeof storageRequest(h, request).error, 'string');
+    assert.equal(fs.readFileSync(stored, 'utf8'), before);
+    assert.deepEqual(storageRequest(h, { op: 'get', key }), { value: 'original' });
+  }
+});
 
 test('immersive IPC authenticates the main frame and accepts exactly one boolean', async t => {
   const h = await harness(t);
@@ -141,6 +193,30 @@ test('macOS entry waits for its native event and Escape during entry queues a co
   await tick(); assert.deepEqual(h.win.pending, [true, false]); assert.equal(h.win.buttons, false);
   h.win.completeFullscreen(false); await tick();
   assert.equal(h.state().immersiveWriting, false); assert.equal(h.win.buttons, true); assert.equal(h.win.fullscreen, false);
+});
+
+test('Windows native events preceding the fullscreen flag wait for the actual requested state', async t => {
+  const h = await harness(t, 'win32'); h.win.earlyFullscreenEvent = true;
+  let entered = false;
+  const entering = h.invoke(true).then(value => { entered = true; return value; });
+  await tick(); assert.equal(entered, false); assert.equal(h.win.fullscreen, false);
+  const active = await entering; assert.equal(active.fullscreen, true); assert.equal(active.immersiveWriting, true);
+  let exited = false;
+  const exiting = h.invoke(false).then(value => { exited = true; return value; });
+  await tick(); assert.equal(exited, false); assert.equal(h.win.fullscreen, true);
+  const restored = await exiting; assert.equal(restored.fullscreen, false); assert.equal(restored.immersiveWriting, false);
+  assert.equal(h.win.listenerCount('enter-full-screen'), 1); assert.equal(h.win.listenerCount('leave-full-screen'), 1);
+});
+
+test('a native event without its fullscreen state times out and stops polling cleanly', async t => {
+  const h = await harness(t, 'win32', { fastTimeout: true });
+  h.win.earlyFullscreenEvent = true; h.win.ignoreFullscreenFlag = true; h.win.trackFullscreenChecks = true;
+  assert.equal((await h.invoke(true)).code, 'immersive-fullscreen-timeout');
+  assert.equal(h.state().immersiveWriting, false); assert.equal(h.state().priorWindowState, null);
+  const checks = h.win.fullscreenChecks;
+  await new Promise(resolve => setTimeout(resolve, 45));
+  assert.equal(h.win.fullscreenChecks, checks, 'No native state poll remains after timeout cleanup');
+  assert.equal(h.win.listenerCount('enter-full-screen'), 1); assert.equal(h.win.listenerCount('closed'), 2);
 });
 
 test('native fullscreen exit restores the previous state and notifies the renderer once complete', async t => {

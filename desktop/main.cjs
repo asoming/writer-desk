@@ -392,8 +392,11 @@ ipcMain.handle('writer:print-book-pdf', async (event, options) => {
   finally { if (temporary) { try { await fs.promises.unlink(temporary); } catch { } } pdfBusy = false; }
 });
 ipcMain.on('writer:storage', (event, request) => {
-  event.returnValue = { error: 'Storage unavailable' };
-  if (!trusted(event) || !request || typeof request !== 'object') return;
+  // Electron sends a synchronous IPC reply on the first assignment. Do not
+  // send a default error before the operation's real result is available.
+  if (!trusted(event) || !request || typeof request !== 'object') {
+    event.returnValue = { error: 'Storage unavailable' }; return;
+  }
   try {
     const { op, key, value } = request;
     if (op === 'length') { event.returnValue = { value: Object.keys(storage).length }; return; }

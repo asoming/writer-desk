@@ -1,5 +1,6 @@
 """Immersive counters and authenticated HTTP journeys use isolated libraries."""
 import argparse
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sqlite3
@@ -226,7 +227,9 @@ class SessionHTTPTests(unittest.TestCase):
         trashed = self.request("/api/books/" + first["id"] + "/trash", "POST", {"revision": restored["revision"]})
         self.request("/api/books/" + first["id"] + "/purge", "POST", {"revision": trashed["revision"]})
         self.assertEqual(self.request("/api/writing-sessions")["sessions"], [expected])
-        with sqlite3.connect(str(self.data / "writer.sqlite3")) as conn:
+        # SQLite's transaction context does not close its file handles. Close
+        # this inspection connection before Windows removes the test library.
+        with closing(sqlite3.connect(str(self.data / "writer.sqlite3"))) as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM writing_sessions WHERE book_id=?", (first["id"],)).fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM writing_sessions WHERE book_id=?", (other["id"],)).fetchone()[0], 1)
 

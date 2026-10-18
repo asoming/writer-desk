@@ -13,16 +13,30 @@ function createImmersiveWindow(target, { platform = process.platform, onState = 
     // Full screen changes are asynchronous on macOS. A request is complete
     // only after the matching native event, including any OS animation.
     return new Promise((resolve, reject) => {
-      let finished = false;
+      let finished = false, eventReceived = false, stateTimer = null;
       const finish = error => {
         if (finished) return;
         finished = true;
         clearTimeout(timer);
+        clearTimeout(stateTimer);
         target.removeListener(eventName, entered);
         target.removeListener('closed', closed);
         if (error) reject(error); else resolve();
       };
-      const entered = () => finish(matches() ? null : failure(failureCode));
+      const inspectState = () => {
+        if (finished) return;
+        if (target.isDestroyed()) { finish(failure('immersive-window-unavailable')); return; }
+        if (matches()) finish();
+        else stateTimer = setTimeout(inspectState, 16);
+      };
+      const entered = () => {
+        if (eventReceived) return;
+        eventReceived = true;
+        // Windows can emit enter-full-screen synchronously inside
+        // setFullScreen, before isFullScreen reflects the new state. Require
+        // both the matching event and its actual flag, within the same timeout.
+        queueMicrotask(inspectState);
+      };
       const closed = () => finish(failure('immersive-window-unavailable'));
       const timer = setTimeout(() => finish(failure(timeoutCode)), transitionTimeout);
       target.once(eventName, entered);
