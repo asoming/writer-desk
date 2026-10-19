@@ -1,0 +1,155 @@
+{
+  "version": "0.8.9",
+  "capturedOn": "2026-10-19",
+  "captureBaseCommit": "57697db582b7229d92d388ad62e5a4de658fa8cb",
+  "applicationSourceCommit": "3838270c6932973bf36819bf1664cd631b341053",
+  "productionPageAndService": true,
+  "desktopPreload": true,
+  "nativeFullscreenForImmersive": true,
+  "isolatedExample": true,
+  "sampleCharacters": 101506,
+  "sampleSHA256": "651a25b657275e524bbae51bb71cdb5a79b5c9a54d715eda885fbdee0f801506",
+  "sampleSourceUnchanged": true,
+  "realUserLibraryAccessed": false,
+  "paidAIRequests": 0,
+  "pixelEditing": false,
+  "mobileCapture": "responsive browser viewport, without desktop preload",
+  "gallery": {
+    "home": "home",
+    "writing": "writing",
+    "immersive": "immersive-writing",
+    "immersive-collapsed": "immersive-writing-collapsed",
+    "outline": "outline",
+    "characters": "character-main",
+    "growth": "character-growth",
+    "comparison": "compare",
+    "night": "night"
+  },
+  "screenshots": [
+    {
+      "path": "docs/annotations-v0.8.9.png",
+      "sha256": "6d9e4441d109c5f81da86831a2dc3681dce5f43fe813a236542f84f66120372f",
+      "width": 1440,
+      "height": 960,
+      "bytes": 247728
+    },
+    {
+      "path": "docs/character-growth-v0.8.9.png",
+      "sha256": "e11587b8a897dcfabcd174ff6abb18e048032765ea11d430e90d4eefe7ef9133",
+      "width": 1440,
+      "height": 960,
+      "bytes": 250141
+    },
+    {
+      "path": "docs/character-main-v0.8.9.png",
+      "sha256": "5ca776907f7b4c247439f8bf1fa48806a971044bae3240ed74db8d37a961cfab",
+      "width": 1440,
+      "height": 960,
+      "bytes": 161292
+    },
+    {
+      "path": "docs/compare-v0.8.9.png",
+      "sha256": "04fd989300656ade1325944048a83fa76b87e163256b78dea8300a7c49e95fab",
+      "width": 1440,
+      "height": 960,
+      "bytes": 302521
+    },
+    {
+      "path": "docs/home-v0.8.9.png",
+      "sha256": "bc90bfd1c2b9319900737d8edfd0ded8c661d824485779d835702bae37f62c3c",
+      "width": 1440,
+      "height": 960,
+      "bytes": 98430
+    },
+    {
+      "path": "docs/immersive-writing-collapsed-v0.8.9.png",
+      "sha256": "fded7e65e234cf78c260c03c6d1d4a8a9bc4cd720809269cf7c5e195e8b82729",
+      "width": 1440,
+      "height": 960,
+      "bytes": 165225
+    },
+    {
+      "path": "docs/immersive-writing-v0.8.9.png",
+      "sha256": "10406afa924a26a750d53fa4d4cb3103608742ea06760f7d912c74432a29d9ed",
+      "width": 1440,
+      "height": 960,
+      "bytes": 212425
+    },
+    {
+      "path": "docs/import-v0.8.9.png",
+      "sha256": "6edf00a54caed398dafd16689c4b8d3e47b6fc473b004af04da4281d966cb9ae",
+      "width": 1440,
+      "height": 960,
+      "bytes": 231342
+    },
+    {
+      "path": "docs/mobile-v0.8.9.png",
+      "sha256": "381788fb232b121cde602952702438b766eaa3a74a45695f8f51097030a63995",
+      "width": 390,
+      "height": 844,
+      "bytes": 91669
+    },
+    {
+      "path": "docs/night-v0.8.9.png",
+      "sha256": "2f143647de26eedd8e31ed17ebcb5076e479979c12d78d67949482de63a8eb04",
+      "width": 1440,
+      "height": 960,
+      "bytes": 234897
+    },
+    {
+      "path": "docs/outline-v0.8.9.png",
+      "sha256": "6be81240ee70c9188c474d8edd7b71b63a31c00f949e429b069f88abeb45ecad",
+      "width": 1440,
+      "height": 960,
+      "bytes": 249006
+    },
+    {
+      "path": "docs/proofreading-v0.8.9.png",
+      "sha256": "672cabf5f8bbd881e48a23d671b52a0e099a27c7df9396fb7b1eac7fd16e62a1",
+      "width": 1440,
+      "height": 960,
+      "bytes": 285695
+    },
+    {
+      "path": "docs/skills-manager-v0.8.9.png",
+      "sha256": "5bdd345f4cb4ca0fbf4f67d90b8fec7c4e316d522c2ac3d57847ab3106414617",
+      "width": 1440,
+      "height": 960,
+      "bytes": 221645
+    },
+    {
+      "path": "docs/skills-viewer-v0.8.9.png",
+      "sha256": "19c2bf3ae843e0909816e195c094ca8fae7733cee31b1d409b86975cf30d15e4",
+      "width": 1440,
+      "height": 960,
+      "bytes": 188313
+    },
+    {
+      "path": "docs/writing-v0.8.9.png",
+      "sha256": "d752bfcb01c4a6defe0ea9bbedbec2b226f28b83155feca1850aa4ff142ebd0a",
+      "width": 1440,
+      "height": 960,
+      "bytes": 284119
+    }
+  ],
+  "localWebsiteChecks": {
+    "passed": true,
+    "version": "0.8.9",
+    "checks": 90,
+    "languages": [
+      "zh",
+      "en"
+    ],
+    "widths": [
+      1440,
+      1024,
+      768,
+      390,
+      320
+    ],
+    "allImagesLoaded": true,
+    "noOverflow": true,
+    "keyboardHomeEndArrows": true,
+    "lightboxButtonAndEscape": true
+  }
+}

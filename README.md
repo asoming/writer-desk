@@ -104,51 +104,58 @@ Word 仅导入文字、表格文字与标题结构；旧 `.doc`、图片、Word 
 
 ## 界面预览
 
-![0.8.3 主脉络：核心人物、身份与目标及关系连线](docs/character-main-v0.8.3.png)
+以下为 **0.8.9 实际界面**，使用隔离的《潮汐档案馆》十万字示例副本。
 
-![0.8.3 人物成长轨迹：按人物与卷排列，编辑成长内容并跳转正文](docs/character-growth-v0.8.3.png)
+### 首页与写作
 
-上图为 0.8.3 实际界面，使用隔离的十万字示例作品。
+![0.8.9 首页：写作统计、目标、趋势与最近作品](docs/home-v0.8.9.png)
+
+![0.8.9 长篇写作：卷章目录、正文和作品大纲](docs/writing-v0.8.9.png)
+
+### 沉浸式码字
+
+进入沉浸模式后，长篇保留卷与章节，点击**左上角图标**收起或展开。同书切章先保存，本次字数、码字时间与空闲时间连续累计。
+
+![0.8.9 沉浸式码字：左侧卷章目录、正文与右上角本次统计](docs/immersive-writing-v0.8.9.png)
+
+收起目录后，正文拥有更多空间；作品大纲可单独展开。短篇始终是一篇连续正文。
+
+![0.8.9 沉浸式码字：卷章目录已收起，左上角图标可再次展开](docs/immersive-writing-collapsed-v0.8.9.png)
 
 <details>
-<summary>0.8.2 首页与旧版对照布局</summary>
+<summary>大纲、人物脉络与对照修改</summary>
 
-![0.8.2 首页：全库统计、目标、趋势与最近作品](docs/home-v0.8.2.png)
+![0.8.9 大纲：分层目录、主题分类与正文关联](docs/outline-v0.8.9.png)
 
-![0.8.2 同章对照修改：左侧原文标色，右侧编辑](docs/compare-v0.8.2.png)
+![0.8.9 主脉络：核心人物、身份与目标及关系连线](docs/character-main-v0.8.9.png)
 
-历史截图展示 0.8.2 的布局；0.8.3 对照稿改为独立保存，退出与采用规则见下文。
+![0.8.9 人物成长轨迹：按人物与卷排列，编辑成长内容并跳转正文](docs/character-growth-v0.8.9.png)
+
+![0.8.9 同章对照修改：左侧原文标色，右侧编辑独立对照稿](docs/compare-v0.8.9.png)
+
+对照稿独立保存在本机，确认「保存修改」后才采用到正式正文；退出与重开保留两稿。
 
 </details>
 
 <details>
-<summary>0.8.0 手机写作</summary>
+<summary>夜间模式与手机写作</summary>
 
-![0.8.0 手机正文编辑](docs/mobile-v0.8.0.png)
+![0.8.9 夜间模式写作界面](docs/night-v0.8.9.png)
 
-截图来自自建服务的手机界面。安装 PWA 和离线启动需要可信 HTTPS。
+![0.8.9 自建服务的手机正文编辑界面](docs/mobile-v0.8.9.png)
 
-</details>
-
-<details>
-<summary>历史写作界面与创作工具</summary>
-
-![0.6.0 长篇写作：卷章目录、正文与创作工具](docs/writing-v0.6.0.png)
-
-[伏笔追踪](docs/foreshadows-v0.6.0.png) · [故事时间线](docs/timeline-v0.6.0.png) · [版本差异](docs/versions-v0.6.0.png) · [写作统计](docs/statistics-v0.6.0.png) · [长篇记忆](docs/memory-v0.6.0.png) · [流式回复](docs/streaming-v0.6.0.png) · [作品大纲侧栏](docs/work-plan-v0.4.14.jpg) · [图片对话](docs/chat-images-v0.4.12.jpg) · [夜间模式](docs/appearance-night-v0.4.11.jpg)
+手机截图来自自建服务的移动界面。安装 PWA 和离线启动需要可信 HTTPS。
 
 </details>
 
 <details>
-<summary>0.7.0 实际界面：稿件导入、校对与批注</summary>
+<summary>稿件导入、本地校对与批注</summary>
 
-![稿件导入预览：分卷分章、标题与正文](docs/import-v0.7.0.png)
+![0.8.9 稿件导入预览：分卷分章、标题与正文](docs/import-v0.8.9.png)
 
-![离线本地校对：原文、提示与可选修正](docs/proofreading-v0.7.0.png)
+![0.8.9 离线本地校对：原文、提示与可选修正](docs/proofreading-v0.8.9.png)
 
-![段落批注与书签：关联原文及管理](docs/annotations-v0.7.0.png)
-
-截图来自隔离的十万字示例副本，记录 0.7.0 实际界面。
+![0.8.9 段落批注与书签：关联原文及管理](docs/annotations-v0.8.9.png)
 
 </details>
 
@@ -229,7 +236,7 @@ Linux 另提供便携压缩包 [WriterDesk-0.8.9-linux-x64.tar.gz](https://githu
 
 作品资料和图片仅在发送请求时交给所配置的服务；正常写作、保存与本地提及索引无需 AI。上下文默认由模型服务校验，App 不设固定字符上限或自动截断资料。密钥保存在本机独立配置中。
 
-![0.8.5 写作 Skill：文章式详情弹窗、滑动开关与更多菜单](docs/skills-viewer-v0.8.5.png)
+![0.8.9 写作 Skill：文章式详情弹窗、滑动开关与更多菜单](docs/skills-viewer-v0.8.9.png)
 
 「设置 → 写作 Skill」管理内置与自定义写作规则。安装包自带本项目原创的中文小说创作、小说项目规划和自然中文表达规则，沿用 `chinese-novelist`、`novelskill`、`human-writing` 三个 ID，兼容已有选择。换电脑后可直接选择内置规则，无需安装 Codex；AI 服务地址、密钥和模型仍需在新电脑独立配置。
 
@@ -240,11 +247,11 @@ Linux 另提供便携压缩包 [WriterDesk-0.8.9-linux-x64.tar.gz](https://githu
 原有本机 Codex Skill 导入继续保留：个人导入副本及本机修改优先于同 ID 的内置规则，恢复内置版只移除本机覆盖。个人下载的 Skill 原文不进入源码或安装包。程序只读取 Markdown 规则和参考，不执行脚本、不自动修改书稿。完整操作见 [写作 Skill 使用说明](docs/user-guide-zh.md#写作-skill)。
 
 <details>
-<summary>0.8.4 写作 Skill 管理界面</summary>
+<summary>0.8.9 写作 Skill 管理界面</summary>
 
-![0.8.4 写作 Skill：内置与自定义规则管理](docs/skills-manager-v0.8.4.png)
+![0.8.9 写作 Skill：内置与自定义规则管理](docs/skills-manager-v0.8.9.png)
 
-历史截图记录 0.8.4 的管理界面；0.8.5 使用文章式详情弹窗和自动保存滑动开关。
+默认规则使用滑动开关，调整后自动保存；点击「查看 Skill」图标阅读完整规则。
 
 </details>
 

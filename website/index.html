@@ -9,13 +9,13 @@
   <meta property="og:title" content="作家工作台 · Writer's Desk">
   <meta property="og:description" content="让故事，在这里成形。A quiet place for your next story.">
   <meta property="og:url" content="https://asoming.github.io/writer-desk/">
-  <meta property="og:image" content="https://asoming.github.io/writer-desk/assets/writing.png">
+  <meta property="og:image" content="https://asoming.github.io/writer-desk/assets/immersive.png?v=0.8.9">
   <meta name="theme-color" content="#f9fafc">
   <link rel="icon" type="image/png" href="./assets/icon.png">
   <link rel="apple-touch-icon" href="./assets/icon.png">
   <link rel="canonical" href="https://asoming.github.io/writer-desk/">
-  <link rel="stylesheet" href="./styles.css?v=0.8.9">
-  <script src="./app.js?v=0.8.9" defer></script>
+  <link rel="stylesheet" href="./styles.css?v=0.8.9-gallery1">
+  <script src="./app.js?v=0.8.9-gallery1" defer></script>
   <title>作家工作台 · Writer's Desk</title>
 </head>
 <body>
@@ -73,16 +73,19 @@
       <div class="preview-tabs" role="tablist" aria-label="选择界面" data-en-aria="Choose a view">
         <button type="button" role="tab" id="tab-home" aria-controls="preview-panel" aria-selected="true" data-view="home"><svg class="icon" aria-hidden="true"><use href="#monitor-icon"/></svg><span data-en="Home">写作首页</span></button>
         <button type="button" role="tab" id="tab-writing" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="writing"><svg class="icon" aria-hidden="true"><use href="#book-icon"/></svg><span data-en="Writing">正文写作</span></button>
+        <button type="button" role="tab" id="tab-immersive" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="immersive"><svg class="icon" aria-hidden="true"><use href="#expand-icon"/></svg><span data-en="Immersive">沉浸码字</span></button>
+        <button type="button" role="tab" id="tab-immersive-collapsed" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="immersive-collapsed"><svg class="icon" aria-hidden="true"><use href="#outline-icon"/></svg><span data-en="Collapsed sidebar">收起目录</span></button>
         <button type="button" role="tab" id="tab-outline" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="outline"><svg class="icon" aria-hidden="true"><use href="#outline-icon"/></svg><span data-en="Outlines">故事大纲</span></button>
         <button type="button" role="tab" id="tab-characters" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="characters"><svg class="icon" aria-hidden="true"><use href="#people-icon"/></svg><span data-en="Characters">人物脉络</span></button>
         <button type="button" role="tab" id="tab-growth" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="growth"><svg class="icon" aria-hidden="true"><use href="#people-icon"/></svg><span data-en="Development">人物成长</span></button>
+        <button type="button" role="tab" id="tab-comparison" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="comparison"><svg class="icon" aria-hidden="true"><use href="#book-icon"/></svg><span data-en="Compare drafts">对照修改</span></button>
         <button type="button" role="tab" id="tab-night" aria-controls="preview-panel" aria-selected="false" tabindex="-1" data-view="night"><svg class="icon" aria-hidden="true"><use href="#sun-icon"/></svg><span data-en="Night mode">夜间写作</span></button>
       </div>
       <div class="app-window" id="preview-panel" role="tabpanel" aria-labelledby="tab-home">
         <div class="window-chrome"><div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div><span>Writer's Desk</span><button class="preview-expand" type="button" aria-label="放大界面截图" data-en-aria="Enlarge screenshot"><svg class="icon" aria-hidden="true"><use href="#expand-icon"/></svg></button></div>
-        <img id="preview-image" src="./assets/home.png" alt="写作首页：全库统计、每日目标、写作日历与最近作品" width="1280" height="720" fetchpriority="high">
+        <img id="preview-image" src="./assets/home.png?v=0.8.9" alt="写作首页：全库统计、每日目标、写作日历与最近作品" width="1440" height="960" fetchpriority="high">
       </div>
-      <p class="preview-caption" aria-live="polite"><span id="preview-caption-text">从首页查看写作进度、日历和最近作品。</span><span id="preview-version">界面记录 · v0.8.2</span></p>
+      <p class="preview-caption" aria-live="polite"><span id="preview-caption-text">从首页查看写作进度、日历和最近作品。</span><span id="preview-version">界面记录 · v0.8.9</span></p>
     </section>
 
     <section id="features" class="features-section container">

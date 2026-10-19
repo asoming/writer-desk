@@ -54,51 +54,58 @@ Links between outlines, characters and prose target **chapters** and remain inta
 
 ## Preview
 
-![Writer's Desk 0.8.3: main relationships with character roles, goals and connections](docs/character-main-v0.8.3.png)
+These screenshots show the **actual 0.8.9 interface**, using an isolated copy of the 101,506-character **The Tide Archive** sample novel.
 
-![Writer's Desk 0.8.3: character development by volume, with editable cards and manuscript links](docs/character-growth-v0.8.3.png)
+### Home and writing
 
-Actual 0.8.3 interface using an isolated copy of the 101,506-character sample novel.
+![Writer's Desk 0.8.9: home dashboard with writing activity, goals, trends and recent books](docs/home-v0.8.9.png)
+
+![Writer's Desk 0.8.9: novel workspace with volume and chapter navigation, prose and the work outline](docs/writing-v0.8.9.png)
+
+### Immersive writing
+
+Immersive mode keeps a novel's volume and chapter directory. Use the **top-left icon** to collapse or expand it. Switching chapters within the same book saves the current chapter first and continues the same session's character count, writing time and idle time.
+
+![Writer's Desk 0.8.9: immersive writing with chapter navigation and session metrics](docs/immersive-writing-v0.8.9.png)
+
+Collapse the directory for more writing space; the work outline can be opened separately. Short stories remain a single continuous manuscript.
+
+![Writer's Desk 0.8.9: immersive writing with the directory collapsed and the top-left toggle available](docs/immersive-writing-collapsed-v0.8.9.png)
 
 <details>
-<summary>0.8.2 home and earlier comparison layout</summary>
+<summary>Outlines, character development and comparison drafts</summary>
 
-![Writer's Desk 0.8.2: home dashboard with writing activity and recent books](docs/home-v0.8.2.png)
+![Writer's Desk 0.8.9: outline hierarchy, categories and chapter links](docs/outline-v0.8.9.png)
 
-![Writer's Desk 0.8.2: original text beside the editable manuscript](docs/compare-v0.8.2.png)
+![Writer's Desk 0.8.9: main relationships with character roles, goals and connections](docs/character-main-v0.8.9.png)
 
-These historical screenshots show the 0.8.2 layout. Version 0.8.3 stores comparison drafts independently; exit and adoption behavior is described below.
+![Writer's Desk 0.8.9: character development by volume, with editable cards and manuscript links](docs/character-growth-v0.8.9.png)
+
+![Writer's Desk 0.8.9: marked original text beside an independently editable comparison draft](docs/compare-v0.8.9.png)
+
+Comparison drafts stay in separate local storage. Only **Save changes** adopts them into the manuscript; closing and reopening keeps both versions.
 
 </details>
 
 <details>
-<summary>0.8.0 mobile writing</summary>
+<summary>Dark theme and mobile writing</summary>
 
-![Writer's Desk 0.8.0 mobile manuscript editor](docs/mobile-v0.8.0.png)
+![Writer's Desk 0.8.9: dark writing workspace](docs/night-v0.8.9.png)
 
-Mobile interface from the self-hosted service. Trusted HTTPS is required for PWA installation and offline startup.
+![Writer's Desk 0.8.9: mobile manuscript editor from the self-hosted service](docs/mobile-v0.8.9.png)
 
-</details>
-
-<details>
-<summary>Earlier writing and story tools</summary>
-
-![Writer's Desk 0.6.0 writing workspace](docs/writing-v0.6.0.png)
-
-[Foreshadows](docs/foreshadows-v0.6.0.png) · [Timeline](docs/timeline-v0.6.0.png) · [Version comparison](docs/versions-v0.6.0.png) · [Writing statistics](docs/statistics-v0.6.0.png) · [Outline sidebar](docs/work-plan-v0.4.14.jpg) · [Image chat](docs/chat-images-v0.4.12.jpg) · [Dark theme](docs/appearance-night-v0.4.11.jpg)
+The mobile view uses the self-hosted service. Trusted HTTPS is required for PWA installation and offline startup.
 
 </details>
 
 <details>
-<summary>Actual 0.7.0 UI: import, proofreading and annotations</summary>
+<summary>Manuscript import, local proofreading and annotations</summary>
 
-![Manuscript import preview with volumes, chapters and prose](docs/import-v0.7.0.png)
+![Writer's Desk 0.8.9: manuscript import preview with volumes, chapters and prose](docs/import-v0.8.9.png)
 
-![Offline proofreading with source text and selectable fixes](docs/proofreading-v0.7.0.png)
+![Writer's Desk 0.8.9: offline proofreading with source text and selectable fixes](docs/proofreading-v0.8.9.png)
 
-![Paragraph annotations and bookmarks linked to prose](docs/annotations-v0.7.0.png)
-
-Captured from the actual 0.7.0 interface using an isolated copy of the full sample novel.
+![Writer's Desk 0.8.9: paragraph annotations and bookmarks linked to prose](docs/annotations-v0.8.9.png)
 
 </details>
 
@@ -227,7 +234,7 @@ You can keep several service profiles and switch them in chat. Usage records sto
 
 Book context and attached images are sent only when you submit a request. Ordinary writing, saving and local mention indexing do not need AI. Context size is validated by the model service by default; the app does not impose a fixed character cap or silently truncate your material. API keys are stored in separate local configuration.
 
-![Writer's Desk 0.8.5: article-style Skill dialog with toggle and menu](docs/skills-viewer-v0.8.5.png)
+![Writer's Desk 0.8.9: article-style Skill dialog with toggle and menu](docs/skills-viewer-v0.8.9.png)
 
 **Settings → Writing Skills** manages bundled and custom writing rules. The installers include original rules authored for this project for Chinese fiction, novel planning and natural Chinese prose. They retain the `chinese-novelist`, `novelskill` and `human-writing` IDs for compatibility with existing selections. These bundled rules work on another computer without Codex; configure your AI service URL, key and model separately on that computer.
 
@@ -238,11 +245,11 @@ Create, view, edit and delete custom Skills; import Markdown or an app-exported 
 The existing local Codex import remains available. Imported personal copies and local edits take priority over bundled rules with the same ID; restoring a bundled Skill removes only its local override. Downloaded personal Skill files are excluded from the source and installers. The app reads Markdown rules and references without executing scripts or automatically changing your manuscript. See the [Writing Skills guide](docs/user-guide-zh.md#写作-skill) for the full workflow.
 
 <details>
-<summary>0.8.4 writing Skill manager</summary>
+<summary>0.8.9 writing Skill manager</summary>
 
-![Writer's Desk 0.8.4: bundled and custom writing Skills](docs/skills-manager-v0.8.4.png)
+![Writer's Desk 0.8.9: bundled and custom writing Skills](docs/skills-manager-v0.8.9.png)
 
-Historical 0.8.4 manager screenshot. Version 0.8.5 uses an article-style detail dialog and automatically saved toggle switches.
+Default-rule toggles save automatically; use the **View Skill** icon to read the full rules.
 
 </details>
 
