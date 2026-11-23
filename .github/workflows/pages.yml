@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
   release:
     types: [published, edited]
-  schedule:
-    - cron: '17 * * * *'
+  # 不设定时部署：网站只在网站文件变更、发布 Release 或手动触发时发布。
+  # 定时部署只为刷新 Star 快照，却每小时产生一次部署和偶发的 artifact 竞态失败通知。
 
 permissions:
   contents: read
@@ -44,7 +44,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -93,4 +93,15 @@ jobs:
           path: website
       - name: Deploy
         id: deployment
+        uses: actions/deploy-pages@v4
+        # Pages 刚上传的 artifact 偶尔还没被索引，deploy-pages 会立刻报
+        #   No artifacts named "github-pages" were found for this workflow run
+        # 这一步允许失败后重试一次，避免整个 run 标红并发出失败通知。
+        continue-on-error: true
+      - name: Wait for the uploaded Pages artifact to be indexed
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 10
+      - name: Deploy again when the Pages artifact was not indexed yet
+        id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
