@@ -20,7 +20,7 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory website
 
 将 `website/` 或 `.github/workflows/pages.yml` 的修改推送到 `main` 后，[Website 工作流](https://github.com/asoming/writer-desk/actions/workflows/pages.yml)自动部署。也可在该工作流页面选择 **Run workflow → main** 手动发布。其他分支不会部署。
 
-工作流不设定时部署：仅网站文件变更、Release 发布或手动 **Run workflow → main** 时发布，避免每小时一次的无谓部署及偶发的 artifact 竞态失败。Star 数量快照因此只反映最近一次部署时的值，需要更新时手动运行工作流。每次上传前，工作流使用 GitHub 提供的临时凭据读取公开仓库的数量，并验证仓库名称、数量与更新时间，生成 `website/github-stars.json`。该文件只包含公开仓库名称、非负整数数量和毫秒时间戳；凭据只在构建环境中使用，不会进入页面或网站产物。
+工作流不设定时部署：仅网站文件变更、Release 发布或手动 **Run workflow → main** 时发布，避免每小时一次的无谓部署及偶发的 artifact 竞态失败。部署时若刚上传的 artifact 还没被 GitHub 索引，`Deploy` 会等待后自动重试一次，只有两次都失败才会让工作流失败。Star 数量快照因此只反映最近一次部署时的值，需要更新时手动运行工作流。每次上传前，工作流使用 GitHub 提供的临时凭据读取公开仓库的数量，并验证仓库名称、数量与更新时间，生成 `website/github-stars.json`。该文件只包含公开仓库名称、非负整数数量和毫秒时间戳；凭据只在构建环境中使用，不会进入页面或网站产物。
 
 工作流仅上传 `website/`，使用 `github-pages` 环境；源码、数据库、作品、API 密钥和完整文档目录不作为网站产物上传。并发部署按顺序完成，避免取消正在发布的版本。
 
